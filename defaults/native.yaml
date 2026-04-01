@@ -1,0 +1,45 @@
+# Native build — compile oscam for the local system
+name: native
+description: Build for local system
+
+toolchain: native
+
+build:
+  modules:
+    - WEBIF
+    - WEBIF_LIVELOG
+    - WEBIF_JQUERY
+    - TOUCH
+    - DVBAPI
+    - LB
+    - CACHEEX
+    - CW_CYCLE_CHECK
+    - LCD
+    - LED
+    - CLOCKFIX
+    - IPV6SUPPORT
+  protocols:
+    - CAMD35
+    - CAMD35_TCP
+    - CCCAM
+    - NEWCAMD
+    - RADEGAST
+    - SERIAL
+  readers:
+    - INTERNAL
+    - PHOENIX
+    - SC8IN1
+    - MP35
+    - SMARGO
+    - STINGER
+    - DRECAS
+    - PCSC
+  card_readers: []
+  use:
+    - USE_LIBCRYPTO
+  stapi: ""
+  extra_cc: ""
+  extra_ld: ""
+  confdir: /usr/local/etc
+
+upload: []

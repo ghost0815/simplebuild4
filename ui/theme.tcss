@@ -1,0 +1,62 @@
+Screen {
+    background: $surface;
+}
+
+#content {
+    height: 1fr;
+    padding: 0 1;
+}
+
+#target-bar {
+    height: 3;
+    padding: 0 1;
+}
+
+#target-bar .label {
+    width: 10;
+    padding: 1 0;
+}
+
+#target-select {
+    width: 1fr;
+}
+
+#target-bar Button {
+    min-width: 12;
+    margin: 0 0 0 1;
+}
+
+#info {
+    margin: 1 2;
+    padding: 1 1;
+    height: auto;
+    background: $boost;
+    border: solid $primary;
+}
+
+#action-bar {
+    height: 3;
+    padding: 0 2;
+}
+
+#action-bar Button {
+    min-width: 14;
+    margin: 0 1 0 0;
+}
+
+#output {
+    margin: 1 2;
+    height: 1fr;
+    border: solid $accent;
+}
+
+#tab-bar {
+    height: 3;
+    padding: 0 2;
+    dock: bottom;
+}
+
+#tab-bar Button {
+    min-width: 16;
+    margin: 0 1 0 0;
+}
