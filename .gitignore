@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+data/toolchains/
+data/toolchains.cfg/
+data/binaries/
+data/downloads/
+data/logs/
+data/patches/
+data/targets/

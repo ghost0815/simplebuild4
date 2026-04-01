@@ -1,0 +1,4 @@
+#!/bin/bash
+# Simplebuild4 launcher
+cd "$(dirname "$(readlink -f "$0")")"
+exec python3 s4.py "$@"
