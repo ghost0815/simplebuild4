@@ -158,7 +158,7 @@ toolchains:
 - name: cortexa15hf_oealliance_5.6
   description: oealliance 5.6 cortexa15hf-neon-vfpv4
   category: stb
-  arch: arm
+  arch: armv7
   machines: dags7252 dags72604 dagsmv200 hd51 hd60 hd66se hd61 vs1500 h7 h17 h9 i55plus
     h9combo h10 h11 h9combose h9se i55se 8100s gb7252 gb72604 gbmv200 et1x000 et13000
     u5 u51 u5pvr u52 u53 u532 u533 u54 u55 u56 u57 u571 multibox multiboxse multiboxpro
@@ -175,7 +175,7 @@ toolchains:
 - name: cortexa15hf_oealliance_6.0
   description: oealliance 6.0 cortexa15hf-neon-vfpv4
   category: stb
-  arch: arm
+  arch: armv7
   machines: pulse4k pulse4kmini h10 h11 h17 h7 h9 h9combo h9combose h9se i55plus i55se
     viper4k ip8 beyonwizv2 8100s dags7252 dags72604 dagsmv200 u5 u51 u52 u53 u532
     u533 u54 u55 u56 u57 u571 u5pvr dm900 dm920 osmini4k osmio4k osmio4kplus hd51
@@ -192,7 +192,7 @@ toolchains:
 - name: cortexa15hf_opendreambox_krogoth
   description: opendreambox krogoth cortexa15hf-neon-vfpv4
   category: stb
-  arch: arm
+  arch: armv7
   machines: dm900 dm920
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
@@ -204,7 +204,7 @@ toolchains:
 - name: cortexa15hf_opendreambox_pyro
   description: opendreambox pyro cortexa15hf-neon-vfpv4
   category: stb
-  arch: arm
+  arch: armv7
   machines: dm900 dm920
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
@@ -216,7 +216,7 @@ toolchains:
 - name: cortexa15hf_openpli_scarthgap
   description: openpli scarthgap cortexa15hf-neon-vfpv4
   category: stb
-  arch: arm
+  arch: armv7
   machines: pulse4k pulse4kmini e4hd bre2ze4k hd51 hd60 hd61 hd66se vs1500 gbquad4k
     gbquad4kpro gbtrio4k gbue4k multibox multiboxpro multiboxse sf8008 sf8008m sx88v2
     dual ustym4kpro ustym4ks2ottx h10 h11 h17 h17twin h7 h9combo h9combose h9 h9se
@@ -231,7 +231,7 @@ toolchains:
 - name: cortexa7hf_oealliance_5.6
   description: oealliance 5.6 cortexa7hf
   category: stb
-  arch: arm
+  arch: armv7
   machines: h8 hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
@@ -243,7 +243,7 @@ toolchains:
 - name: cortexa7hf_oealliance_6.0
   description: oealliance 6.0 cortexa7hf
   category: stb
-  arch: arm
+  arch: armv7
   machines: h8 hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
@@ -255,7 +255,7 @@ toolchains:
 - name: cortexa7hf_openpli_scarthgap
   description: openpli scarthgap cortexa7hf
   category: stb
-  arch: arm
+  arch: armv7
   machines: sfx6008 h8
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
@@ -267,7 +267,7 @@ toolchains:
 - name: cortexa7thf_openpli_scarthgap
   description: openpli scarthgap cortexa7thf
   category: stb
-  arch: arm
+  arch: armv7
   machines: hzero
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7t2hf-vfp-oe-linux-gnueabi
@@ -279,7 +279,7 @@ toolchains:
 - name: cortexa7vfp_arm
   description: HiSilicon Cortex-A7 MV430 devices
   category: stb
-  arch: arm
+  arch: armv7
   prefix: arm-cortexa7vfp-linux-gnueabihf-
   sysroot: arm-cortexa7vfp-linux-gnueabihf/sysroot
   cflags: -mfpu=vfp
@@ -289,7 +289,7 @@ toolchains:
 - name: cortexa9hf_oealliance_5.6
   description: oealliance 5.6 cortexa9hf-neon
   category: stb
-  arch: arm
+  arch: armv7
   machines: u41 u42 u43 u45
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
@@ -301,7 +301,7 @@ toolchains:
 - name: cortexa9hf_oealliance_6.0
   description: oealliance 6.0 cortexa9hf-neon
   category: stb
-  arch: arm
+  arch: armv7
   machines: u41 u42 u43 u45
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
@@ -404,7 +404,7 @@ toolchains:
 - name: android_10_arm
   description: Android 10 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -419,7 +419,7 @@ toolchains:
 - name: android_11_arm
   description: Android 11 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -434,7 +434,7 @@ toolchains:
 - name: android_12_arm
   description: Android 12 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -449,7 +449,7 @@ toolchains:
 - name: android_13_arm
   description: Android 13 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -464,7 +464,7 @@ toolchains:
 - name: android_14_arm
   description: Android 14 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -479,7 +479,7 @@ toolchains:
 - name: android_15_arm
   description: Android 15 STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -494,7 +494,7 @@ toolchains:
 - name: android_nougat_arm
   description: Android 7.x Nougat STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -509,7 +509,7 @@ toolchains:
 - name: android_oreo_arm
   description: Android 8.x Oreo STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -524,7 +524,7 @@ toolchains:
 - name: android_pie_arm
   description: Android 9.x Pie STBs
   category: android
-  arch: arm
+  arch: armv7
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
@@ -857,7 +857,7 @@ toolchains:
 - name: rpi_armv8
   description: Raspberry Pi 2 Model B v1.2, 3 Modell A+|B|B+, 4 Model B
   category: minipc
-  arch: arm
+  arch: armv7
   prefix: armv8-rpi3-linux-gnueabihf-
   sysroot: armv8-rpi3-linux-gnueabihf/sysroot
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv8.tar.xz
