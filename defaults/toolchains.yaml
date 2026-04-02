@@ -334,18 +334,6 @@ toolchains:
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa9hf_oealliance_6.0.tar.xz
   checksum: sha256:c99d38e8b9b94b05c7f8255590fab4564dc095299a132658f1fe936d87d54a70
 
-- name: dreamone_oealliance_8.0
-  description: OE-Alliance 8.0.0 Dream ONE UHD
-  category: stb
-  arch: aarch64
-  prefix: aarch64-oe-linux-
-  sysroot: sysroots/aarch64-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mbranch-protection=standard
-  ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
-  url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dreamone_oealliance_8.0.tar.xz
-  checksum: md5:5ef4caeacf89e95f42af1cb4cc9f4f0c
-
 - name: mips32el-nf_openpli_scarthgap
   description: openpli scarthgap mips32el-nf
   category: stb
@@ -706,15 +694,6 @@ toolchains:
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv7.tar.xz
   checksum: sha256:7c9366af0eef2e859e47a42091076b8afbb7a2952f7b53125ccfbb02e56adfc9
 
-- name: fos_u69x_mips
-  description: FRITZ!Box 7590|7490 6.9x
-  category: router
-  arch: mips
-  prefix: '-'
-  useflags: USE_LIBCRYPTO
-  url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fos_u69x_mips.tar.xz
-  checksum: md5:8dc5aea5b03dff8595f096f9e368e888
-
 - name: fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz
   description: FRITZ!Box 3272 3370 3390 6840 7272 7330 7330SL 7360v2 7390 SSL multi
     by MasterSaMMy
@@ -1016,8 +995,8 @@ toolchains:
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
   useflags: USE_LIBCRYPTO
-  url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
-  checksum: md5:636fd2655e931f23dc7136bbd3851101
+  url: https://files.streamboard.tv/toolchains/legacy/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
+  checksum: sha256:3d8f62c70d5d181d8413cae378ec3c575ebb372351ca75d3da7bd8fc48a94ce9
 
 - name: dockstar
   description: Dockstar

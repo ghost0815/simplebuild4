@@ -26,6 +26,8 @@ DELETE_LIST = {
     "sf8008_openpli_10.0",
     "vusolo4k_openbh_7.6",
     "vuultimo4k_openbh_7.6",
+    "dreamone_oealliance_8.0",
+    "fos_u69x_mips",
 }
 
 # Category mapping: toolchain name -> category
