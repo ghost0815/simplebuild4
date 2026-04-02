@@ -322,37 +322,25 @@ class ToolchainsScreen(Screen):
                     return
                 self._log("[green]Checksum OK[/green]")
 
-            # Extract
+            # Extract using system tar (handles symlinks, absolute paths)
             self._log(f"Extracting to {install_dir.name}...")
             try:
                 install_dir.mkdir(parents=True, exist_ok=True)
-                if filename.endswith(".tar.bz2") or filename.endswith(".tar.xz") or filename.endswith(".tar.gz"):
-                    with tarfile.open(filepath) as tar:
-                        tar.extractall(install_dir, filter='data')
-                    # Handle strip_components
-                    if tc.strip_components > 0:
-                        self._strip_components(install_dir, tc.strip_components)
-                else:
-                    subprocess.run(
-                        ["tar", "-xf", str(filepath), f"--strip-components={tc.strip_components}", "-C", str(install_dir)],
-                        check=True, capture_output=True,
-                    )
+                result = subprocess.run(
+                    ["tar", "-xf", str(filepath), f"--strip-components={tc.strip_components}", "-C", str(install_dir)],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    self._log(f"[red]Extract failed: {result.stderr.strip()}[/red]")
+                    shutil.rmtree(install_dir, ignore_errors=True)
+                    return
             except Exception as e:
                 self._log(f"[red]Extract failed: {e}[/red]")
                 shutil.rmtree(install_dir, ignore_errors=True)
                 return
 
-            # Run relocate-sdk.sh if present
-            relocate = install_dir / "relocate-sdk.sh"
-            if relocate.exists():
-                self._log("Running relocate-sdk.sh...")
-                try:
-                    subprocess.run(
-                        [str(relocate)], cwd=install_dir,
-                        capture_output=True, text=True, timeout=120,
-                    )
-                except Exception:
-                    pass
+            # Run relocate-sdk.sh (Bootlin) or relocate_sdk.py (OE-SDK)
+            self._relocate_toolchain(install_dir, tc)
 
             self._log(f"[green]{tc.name} installed successfully[/green]")
 
@@ -434,6 +422,95 @@ class ToolchainsScreen(Screen):
             shutil.rmtree(install_dir)
         self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
         self._refresh()
+
+    def _relocate_toolchain(self, install_dir: Path, tc: Toolchain) -> None:
+        """Run relocate-sdk.sh (Bootlin) or OE-SDK relocate_sdk.py."""
+        # Bootlin: relocate-sdk.sh
+        relocate_sh = install_dir / "relocate-sdk.sh"
+        if relocate_sh.exists():
+            self._log("Running relocate-sdk.sh...")
+            try:
+                subprocess.run(
+                    [str(relocate_sh)], cwd=install_dir,
+                    capture_output=True, text=True, timeout=120,
+                )
+            except Exception:
+                pass
+            return
+
+        # OE-SDK: relocate_sdk.py
+        nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
+        if not nss.is_dir():
+            return
+
+        # Find gcc and read ELF interpreter path
+        gcc_bins = list(nss.glob("usr/bin/*/**/*-gcc"))
+        gcc_bins = [g for g in gcc_bins if "++" not in g.name]
+        if not gcc_bins:
+            return
+
+        gcc = gcc_bins[0]
+        try:
+            output = subprocess.check_output(
+                ["readelf", "-l", str(gcc)], text=True, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            return
+
+        interp = ""
+        for line in output.splitlines():
+            if "interpreter" in line:
+                interp = line.split(":")[-1].strip().rstrip("]").strip()
+                break
+
+        if not interp:
+            return
+
+        # Check if loader exists at expected path — if yes, no relocate needed
+        if Path(interp).exists():
+            return
+
+        rpy = install_dir / "relocate_sdk.py"
+        if not rpy.exists():
+            return
+
+        # Derive old prefix and sdk loader
+        old_prefix = interp.split("/sysroots/")[0] if "/sysroots/" in interp else ""
+        if not old_prefix:
+            return
+
+        sdk_loader = nss / "lib" / Path(interp).name
+        if not sdk_loader.exists():
+            return
+
+        self._log(f"Relocating OE-SDK to {install_dir.name}...")
+
+        # Update old_prefix in relocate_sdk.py
+        rpy_text = rpy.read_text(encoding="utf-8", errors="replace")
+        import re
+        rpy_text = re.sub(
+            r'old_prefix = .*',
+            f'old_prefix = re.compile(b("{old_prefix}"))',
+            rpy_text,
+        )
+        rpy.write_text(rpy_text, encoding="utf-8")
+
+        # Find all executables in native sysroot
+        try:
+            exec_files = subprocess.check_output(
+                ["find", str(nss), "-type", "f", "(", "-perm", "-0100", "-o", "-perm", "-0010", "-o", "-perm", "-0001", ")"],
+                text=True, stderr=subprocess.DEVNULL, timeout=60,
+            ).strip().splitlines()
+        except Exception:
+            exec_files = []
+
+        if exec_files:
+            try:
+                cmd = ["python3", str(rpy), str(install_dir), str(sdk_loader)] + exec_files
+                subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                self._log("[green]OE-SDK relocated[/green]")
+            except Exception as e:
+                self._log(f"[yellow]Relocate warning: {e}[/yellow]")
 
     def _verify_checksum(self, filepath: Path, checksum: str) -> bool:
         """Verify file checksum. Format: 'md5:hash' or 'sha256:hash'."""
