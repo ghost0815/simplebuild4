@@ -121,7 +121,7 @@ class S4Footer(Horizontal):
 
         # Right: F10 Add/Update, F11 Remove
         if self._active_screen in UPDATE_SCREENS:
-            yield FooterItem(key="F10", label="Update", action="action_add", disabled=False)
+            yield FooterItem(key="F10", label="Update", action="action_add", disabled=True)
             yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=True)
         else:
             add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
