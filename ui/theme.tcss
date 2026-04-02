@@ -285,7 +285,7 @@ Switch.-on .switch--slider {
 
 #tc-detail {
     margin: 0;
-    padding: 1 1;
+    padding: 0 1;
     height: auto;
     border: solid #444444;
     overflow-x: hidden;

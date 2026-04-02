@@ -16,6 +16,7 @@ from textual.widgets import Static, Input, Button, Collapsible, DataTable, Selec
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
+from core.lib_builder import build_library
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -377,15 +378,32 @@ class ToolchainsScreen(Screen):
 
         self._log_sync(f"[bold]Building {len(actions)} library action(s) for {tc.name}...[/bold]")
 
-        for lib_name, action_str in actions:
-            parts = action_str.split(":", 1)
-            if len(parts) == 2:
+        def do_build():
+            for lib_name, action_str in actions:
+                parts = action_str.split(":", 1)
+                if len(parts) != 2:
+                    continue
                 action_type, version = parts
-                self._log_sync(f"  {action_type}: {lib_name} {version}")
-            else:
-                self._log_sync(f"  {action_str}: {lib_name}")
+                self._log(f"\n[bold]{action_type}: {lib_name} {version}[/bold]")
 
-        self._log_sync("[dim]Library building not yet implemented — recipes ready in libraries.yaml[/dim]")
+                success = build_library(
+                    lib_name=lib_name,
+                    version=version,
+                    toolchain_dir=self.app.paths.toolchains_dir / tc.name,
+                    toolchain_prefix=tc.prefix,
+                    toolchain_sysroot=tc.sysroot,
+                    toolchain_cflags=tc.cflags,
+                    toolchain_ldflags=tc.ldflags,
+                    libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
+                    downloads_dir=self.app.paths.downloads_dir,
+                    log=self._log,
+                )
+                if not success:
+                    self._log(f"[red]{lib_name} {version} FAILED[/red]")
+
+            self._log(f"\n[bold]Done[/bold]")
+
+        self._run_in_thread(do_build)
 
     def _refresh(self) -> None:
         self._registry = None
