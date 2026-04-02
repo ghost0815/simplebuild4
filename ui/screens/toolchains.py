@@ -443,25 +443,32 @@ class ToolchainsScreen(Screen):
         if not nss.is_dir():
             return
 
-        # Find gcc and read ELF interpreter path
-        gcc_bins = list(nss.glob("usr/bin/*/**/*-gcc"))
-        gcc_bins = [g for g in gcc_bins if "++" not in g.name]
-        if not gcc_bins:
+        # Find gcc (may be a shell wrapper), resolve to real ELF via ranlib
+        gcc_scripts = list(nss.glob("usr/bin/*/**/*-gcc"))
+        gcc_scripts = [g for g in gcc_scripts if "++" not in g.name]
+        if not gcc_scripts:
             return
 
-        gcc = gcc_bins[0]
+        # Use ranlib from same dir — it's always a real ELF binary
+        gcc_dir = gcc_scripts[0].parent
+        ranlib_bins = list(gcc_dir.glob("*-ranlib"))
+        if not ranlib_bins:
+            return
+
+        real_bin = ranlib_bins[0].resolve()  # resolve symlinks
+
+        # Read ELF interpreter
+        interp = ""
         try:
             output = subprocess.check_output(
-                ["readelf", "-l", str(gcc)], text=True, stderr=subprocess.DEVNULL,
+                ["readelf", "-l", str(real_bin)], text=True, stderr=subprocess.DEVNULL,
             )
+            for line in output.splitlines():
+                if "interpreter" in line:
+                    interp = line.split(":")[-1].strip().rstrip("]").strip()
+                    break
         except Exception:
             return
-
-        interp = ""
-        for line in output.splitlines():
-            if "interpreter" in line:
-                interp = line.split(":")[-1].strip().rstrip("]").strip()
-                break
 
         if not interp:
             return
@@ -495,10 +502,10 @@ class ToolchainsScreen(Screen):
         )
         rpy.write_text(rpy_text, encoding="utf-8")
 
-        # Find all executables in native sysroot
+        # Find all executables in native sysroot (same as s3)
         try:
             exec_files = subprocess.check_output(
-                ["find", str(nss), "-type", "f", "(", "-perm", "-0100", "-o", "-perm", "-0010", "-o", "-perm", "-0001", ")"],
+                ["find", str(nss), "-type", "f", "(", "-perm", "/0111", ")"],
                 text=True, stderr=subprocess.DEVNULL, timeout=60,
             ).strip().splitlines()
         except Exception:
