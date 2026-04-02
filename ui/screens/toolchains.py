@@ -384,10 +384,11 @@ class ToolchainsScreen(Screen):
 
         self._log_sync(f"[bold]Checking {tc.name}...[/bold]")
         install_dir = self.app.paths.toolchains_dir / tc.name
-        gcc = install_dir / "bin" / f"{tc.prefix}gcc"
+        ok = True
 
+        # Find gcc binary
+        gcc = install_dir / "bin" / f"{tc.prefix}gcc"
         if not gcc.exists():
-            # Search for it
             found = list(install_dir.glob(f"**/bin/{tc.prefix}gcc"))
             if found:
                 gcc = found[0]
@@ -396,30 +397,64 @@ class ToolchainsScreen(Screen):
             self._log_sync(f"  [red]gcc not found:[/red] {tc.prefix}gcc")
             return
 
-        self._log_sync(f"  gcc:     {gcc}")
+        self._log_sync(f"  gcc:       {gcc}")
+
+        # Check if gcc is executable (script or ELF)
         try:
             version = subprocess.check_output(
                 [str(gcc), "--version"], text=True, stderr=subprocess.STDOUT, timeout=10,
             ).splitlines()[0]
-            self._log_sync(f"  version: {version}")
+            self._log_sync(f"  version:   {version}")
+        except Exception as e:
+            self._log_sync(f"  [red]gcc not working: {e}[/red]")
+            ok = False
 
+        # Target architecture
+        try:
             target = subprocess.check_output(
                 [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.STDOUT, timeout=10,
             ).strip()
-            self._log_sync(f"  target:  {target}")
+            self._log_sync(f"  target:    {target}")
+        except Exception:
+            pass
 
-            sysroot = subprocess.check_output(
-                [str(gcc), "-print-sysroot"], text=True, stderr=subprocess.STDOUT, timeout=10,
-            ).strip()
-            self._log_sync(f"  sysroot: {sysroot}")
+        # Sysroot — use config value, not gcc -print-sysroot (unreliable for OE-SDKs)
+        if tc.sysroot:
+            sysroot_path = install_dir / tc.sysroot
+            if sysroot_path.is_dir():
+                self._log_sync(f"  sysroot:   {tc.sysroot} [green]OK[/green]")
+            else:
+                self._log_sync(f"  sysroot:   {tc.sysroot} [red]NOT FOUND[/red]")
+                ok = False
+        else:
+            self._log_sync(f"  sysroot:   [dim]not configured[/dim]")
 
+        # Check OE-SDK interpreter (was relocate successful?)
+        nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
+        if nss.is_dir():
+            ranlib_bins = list(nss.glob("usr/bin/*/**/*-ranlib"))
+            if ranlib_bins:
+                real_bin = ranlib_bins[0].resolve()
+                try:
+                    output = subprocess.check_output(
+                        ["readelf", "-l", str(real_bin)], text=True, stderr=subprocess.DEVNULL,
+                    )
+                    for line in output.splitlines():
+                        if "interpreter" in line:
+                            interp = line.split(":")[-1].strip().rstrip("]").strip()
+                            if Path(interp).exists():
+                                self._log_sync(f"  relocate:  [green]OK[/green]")
+                            else:
+                                self._log_sync(f"  relocate:  [red]FAILED — interpreter {interp} not found[/red]")
+                                ok = False
+                            break
+                except Exception:
+                    pass
+
+        if ok:
             self._log_sync(f"  [green]{tc.name} OK[/green]")
-        except subprocess.CalledProcessError as e:
-            self._log_sync(f"  [red]gcc error: {e.output.strip() if e.output else e}[/red]")
-        except FileNotFoundError:
-            self._log_sync(f"  [red]gcc not executable[/red]")
-        except Exception as e:
-            self._log_sync(f"  [red]check failed: {e}[/red]")
+        else:
+            self._log_sync(f"  [red]{tc.name} has issues[/red]")
 
     def _handle_remove(self) -> None:
         """Remove selected installed toolchain."""
