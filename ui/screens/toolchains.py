@@ -44,6 +44,8 @@ class ToolchainsScreen(Screen):
         super().__init__()
         self._registry: ToolchainRegistry | None = None
         self._mounted = False
+        self._building = False
+        self._cancel_requested = False
 
     def _get_registry(self) -> ToolchainRegistry:
         if self._registry is None:
@@ -198,13 +200,15 @@ class ToolchainsScreen(Screen):
             self._update_detail()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        if not self._mounted:
+        if not self._mounted or self._building:
             return
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
             self._update_active_tab()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if self._building:
+            return
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
             self._update_active_tab()
@@ -329,24 +333,35 @@ class ToolchainsScreen(Screen):
             pass
 
     def _update_f10_state(self) -> None:
-        """Enable/disable F10 Update button based on active tab."""
-        from ui.footer import FooterItem
+        """Update F10 button: Update/Cancel based on build state."""
         try:
             for item in self.query("FooterItem"):
                 if item._key == "F10":
-                    libs_active = self._is_libs_tab_active()
-                    item._disabled = not libs_active
-                    if libs_active:
+                    if self._building:
+                        item._label = "Cancel"
+                        item._disabled = False
                         item.remove_class("disabled")
                     else:
-                        item.add_class("disabled")
+                        item._label = "Update"
+                        libs_active = self._is_libs_tab_active()
+                        item._disabled = not libs_active
+                        if libs_active:
+                            item.remove_class("disabled")
+                        else:
+                            item.add_class("disabled")
                     item.refresh()
                     break
         except Exception:
             pass
 
     def do_add(self) -> None:
-        """F10 — execute library actions (install/update)."""
+        """F10 — execute library actions or cancel running build."""
+        if self._building:
+            # Cancel running build
+            self._cancel_requested = True
+            self._log_sync("[yellow]Cancelling build...[/yellow]")
+            return
+
         if not self._is_libs_tab_active():
             return
 
@@ -376,34 +391,51 @@ class ToolchainsScreen(Screen):
             self.notify("No library actions selected", severity="warning")
             return
 
+        self._building = True
+        self._cancel_requested = False
+        self._update_f10_state()
         self._log_sync(f"[bold]Building {len(actions)} library action(s) for {tc.name}...[/bold]")
 
+        def cancel_check() -> bool:
+            return self._cancel_requested
+
         def do_build():
-            for lib_name, action_str in actions:
-                parts = action_str.split(":", 1)
-                if len(parts) != 2:
-                    continue
-                action_type, version = parts
-                self._log(f"\n[bold]{action_type}: {lib_name} {version}[/bold]")
+            try:
+                for lib_name, action_str in actions:
+                    if self._cancel_requested:
+                        self._log("[yellow]Build cancelled[/yellow]")
+                        break
+                    parts = action_str.split(":", 1)
+                    if len(parts) != 2:
+                        continue
+                    action_type, version = parts
+                    self._log(f"\n[bold]{action_type}: {lib_name} {version}[/bold]")
 
-                success = build_library(
-                    lib_name=lib_name,
-                    version=version,
-                    toolchain_dir=self.app.paths.toolchains_dir / tc.name,
-                    toolchain_prefix=tc.prefix,
-                    toolchain_sysroot=tc.sysroot,
-                    toolchain_cflags=tc.cflags,
-                    toolchain_ldflags=tc.ldflags,
-                    libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
-                    downloads_dir=self.app.paths.downloads_dir,
-                    logs_dir=self.app.paths.logs_dir,
-                    max_cpus=self.app.settings.max_cpus,
-                    log=self._log,
-                )
-                if not success:
-                    self._log(f"[red]{lib_name} {version} FAILED[/red]")
+                    success = build_library(
+                        lib_name=lib_name,
+                        version=version,
+                        toolchain_dir=self.app.paths.toolchains_dir / tc.name,
+                        toolchain_prefix=tc.prefix,
+                        toolchain_sysroot=tc.sysroot,
+                        toolchain_cflags=tc.cflags,
+                        toolchain_ldflags=tc.ldflags,
+                        libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
+                        downloads_dir=self.app.paths.downloads_dir,
+                        logs_dir=self.app.paths.logs_dir,
+                        max_cpus=self.app.settings.max_cpus,
+                        cancel_check=cancel_check,
+                        log=self._log,
+                    )
+                    if not success:
+                        self._log(f"[red]{lib_name} {version} FAILED[/red]")
+                        if self._cancel_requested:
+                            break
 
-            self._log(f"\n[bold]Done[/bold]")
+                self._log(f"\n[bold]Done[/bold]")
+            finally:
+                self._building = False
+                self._cancel_requested = False
+                self.app.call_from_thread(self._update_f10_state)
 
         self._run_in_thread(do_build)
 
@@ -739,6 +771,9 @@ class ToolchainsScreen(Screen):
         return h.hexdigest() == expected
 
     def action_go_back(self) -> None:
+        if self._building:
+            self.notify("Build in progress — cancel first with F10", severity="warning")
+            return
         ToolchainsScreen._log_history.clear()
         ToolchainsScreen._selected_tc = ""
         self.app.pop_screen()

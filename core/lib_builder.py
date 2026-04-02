@@ -24,6 +24,7 @@ def build_library(
     downloads_dir: Path,
     logs_dir: Optional[Path] = None,
     max_cpus: int = 0,
+    cancel_check: Optional[Callable[[], bool]] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Build and install a library into the toolchain sysroot.
@@ -72,7 +73,7 @@ def build_library(
         result = _do_build(
             lib_name, version, toolchain_dir, toolchain_prefix,
             toolchain_sysroot, toolchain_cflags, toolchain_ldflags,
-            libraries_yaml, downloads_dir, max_cpus, log,
+            libraries_yaml, downloads_dir, max_cpus, cancel_check, log,
         )
         log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if log_file:
@@ -94,6 +95,7 @@ def _do_build(
     libraries_yaml: Path,
     downloads_dir: Path,
     max_cpus: int,
+    cancel_check: Optional[Callable[[], bool]],
     log: Callable[[str], None],
 ) -> bool:
     """Internal build logic."""
@@ -115,6 +117,9 @@ def _do_build(
     make_cmd = variant.get("make", lib_defaults.get("make", ""))
     install_cmd = variant.get("install", lib_defaults.get("install", ""))
     extra = variant.get("extra", lib_defaults.get("extra", {}))
+
+    def _cancelled() -> bool:
+        return cancel_check() if cancel_check else False
 
     if not source:
         if log:
@@ -150,7 +155,29 @@ def _do_build(
     make_cmd = _replace(make_cmd, replacements)
     install_cmd = _replace(install_cmd, replacements)
 
+    # Log resolved build commands
+    log(f"--- Resolved Build Commands ---")
+    log(f"Source:        {source}")
+    log(f"Pre-configure: {pre_configure or '(none)'}")
+    log(f"Configure:     {configure}")
+    log(f"Make:          {make_cmd}")
+    log(f"Install:       {install_cmd}")
+    log(f"Prefix:        {prefix}")
+    log(f"Target:        {target}")
+    log(f"CC:            {cc}")
+    log(f"CFLAGS:        {toolchain_cflags or '(none)'}")
+    log(f"LDFLAGS:       {toolchain_ldflags or '(none)'}")
+    log(f"CPUs:          {cpus}")
+    if extra and isinstance(extra, dict):
+        for trait, cmd in extra.items():
+            log(f"Extra ({trait}): {_replace(cmd, replacements)}")
+    log(f"-------------------------------")
+
     # Download source
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
+        return False
+
     downloads_dir.mkdir(parents=True, exist_ok=True)
     filename = source.split("/")[-1].split("?")[0]
     filepath = downloads_dir / filename
@@ -158,6 +185,10 @@ def _do_build(
     if log:
         log(f"Downloading {filename}...")
     if not _download(source, filepath, log):
+        return False
+
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
         return False
 
     # Extract
@@ -203,34 +234,54 @@ def _do_build(
                 if log:
                     log(f"Applying extra for {trait}...")
                 cmd = _replace(cmd, replacements)
-                _run_shell(cmd, build_dir, env, log)
+                _run_shell(cmd, build_dir, env, log, cancel_check)
+
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
+        shutil.rmtree(build_dir, ignore_errors=True)
+        return False
 
     # Pre-configure
     if pre_configure:
         if log:
             log(f"Pre-configure: {pre_configure}")
-        if not _run_shell(pre_configure, build_dir, env, log):
+        if not _run_shell(pre_configure, build_dir, env, log, cancel_check):
             return False
+
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
+        shutil.rmtree(build_dir, ignore_errors=True)
+        return False
 
     # Configure
     if configure:
         if log:
             log(f"Configure...")
-        if not _run_shell(configure, build_dir, env, log):
+        if not _run_shell(configure, build_dir, env, log, cancel_check):
             return False
+
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
+        shutil.rmtree(build_dir, ignore_errors=True)
+        return False
 
     # Make
     if make_cmd:
         if log:
             log(f"Building...")
-        if not _run_shell(make_cmd, build_dir, env, log):
+        if not _run_shell(make_cmd, build_dir, env, log, cancel_check):
             return False
+
+    if _cancelled():
+        log("[yellow]Cancelled[/yellow]")
+        shutil.rmtree(build_dir, ignore_errors=True)
+        return False
 
     # Install
     if install_cmd:
         if log:
             log(f"Installing...")
-        if not _run_shell(install_cmd, build_dir, env, log):
+        if not _run_shell(install_cmd, build_dir, env, log, cancel_check):
             return False
 
     if log:
@@ -326,8 +377,12 @@ def _download(url: str, filepath: Path, log: Optional[Callable[[str], None]] = N
     return False
 
 
-def _run_shell(cmd: str, cwd: Path, env: dict, log: Optional[Callable[[str], None]] = None) -> bool:
-    """Run a shell command."""
+def _run_shell(
+    cmd: str, cwd: Path, env: dict,
+    log: Optional[Callable[[str], None]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+) -> bool:
+    """Run a shell command. Kills process if cancel_check returns True."""
     try:
         proc = subprocess.Popen(
             ["bash", "-c", cmd],
@@ -335,8 +390,13 @@ def _run_shell(cmd: str, cwd: Path, env: dict, log: Optional[Callable[[str], Non
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
         for line in proc.stdout:
+            if cancel_check and cancel_check():
+                proc.kill()
+                proc.wait()
+                if log:
+                    log("[yellow]Process killed — cancelled[/yellow]")
+                return False
             if log:
-                # Escape Rich markup characters in build output
                 safe_line = line.rstrip().replace("[", "\\[")
                 log(f"  {safe_line}")
         proc.wait()
