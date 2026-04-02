@@ -40,6 +40,7 @@ class Toolchain:
 
     # Download / Install
     url: str = ""                  # Download URL
+    checksum: str = ""             # Format: "md5:hash" or "sha256:hash"
     strip_components: int = 1      # tar --strip-components
 
     # Runtime state (not persisted)
@@ -115,6 +116,7 @@ class ToolchainRegistry:
                 make_vars=entry.get("make_vars", ""),
                 stapi_lib=entry.get("stapi_lib", ""),
                 url=entry.get("url", ""),
+                checksum=entry.get("checksum", ""),
                 strip_components=entry.get("strip_components", 1),
             )
             if tc.name:
@@ -145,6 +147,7 @@ class ToolchainRegistry:
                     "make_vars": tc.make_vars,
                     "stapi_lib": tc.stapi_lib,
                     "url": tc.url,
+                    "checksum": tc.checksum,
                     "strip_components": tc.strip_components,
                 }
                 for tc in toolchains

@@ -151,8 +151,20 @@ def convert_to_s4(name: str, cfg: dict) -> dict:
         "make_vars": cfg.get("extra_use", ""),
         "stapi_lib": cfg.get("stapi_lib_custom", "") if cfg.get("stapi_allowed") == "1" else "",
         "url": url,
+        "checksum": _parse_checksum(cfg),
         "strip_components": int(cfg.get("_extract_strip", "1")),
     }
+
+
+def _parse_checksum(cfg: dict) -> str:
+    """Extract checksum from s3 config. Returns 'md5:hash' or empty."""
+    md5 = cfg.get("_md5sum", "")
+    if md5:
+        # Format in s3: "hash  filename" — extract just the hash
+        parts = md5.strip().split()
+        if parts:
+            return f"md5:{parts[0]}"
+    return ""
 
 
 def guess_arch(name: str, compiler: str) -> str:
@@ -265,6 +277,7 @@ def main():
 #   make_vars: "LIB_RT= LIB_PTHREAD="  # Raw make variable assignments (e.g. for Android)
 #   stapi_lib: "libwi.a"           # STAPI library name (empty = STAPI not supported, "default" = liboscam_stapi.a)
 #   url: https://example.com/tc.tar.gz  # Download URL
+#   checksum: "sha256:abc123..."    # Download verification: "md5:hash" or "sha256:hash"
 #   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
 #
 # Categories: standard (Bootlin generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
