@@ -12,6 +12,9 @@ class Paths:
     root: Path          # project root (where s4.py lives)
     defaults_dir: Path  # shipped default configs
     targets_dir: Path   # saved target configs (yaml)
+    repos_dir: Path     # checked out source repos
+    repos_config: Path  # repos.yaml config file
+    backup_dir: Path    # repo backups
     toolchains_dir: Path  # installed toolchains
     toolchains_cfg: Path  # toolchain config definitions
     logs_dir: Path
@@ -28,6 +31,9 @@ class Paths:
             root=root,
             defaults_dir=root / "defaults",
             targets_dir=data / "targets",
+            repos_dir=data / "repos",
+            repos_config=data / "repos.yaml",
+            backup_dir=data / "backups",
             toolchains_dir=data / "toolchains",
             toolchains_cfg=data / "toolchains.cfg",
             logs_dir=data / "logs",
@@ -40,7 +46,8 @@ class Paths:
     def ensure_dirs(self) -> None:
         """Create all data directories and seed defaults if needed."""
         for d in (
-            self.targets_dir, self.toolchains_dir, self.toolchains_cfg,
+            self.targets_dir, self.repos_dir, self.backup_dir,
+            self.toolchains_dir, self.toolchains_cfg,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)

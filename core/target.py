@@ -48,6 +48,7 @@ class Target:
 
     name: str = ""
     description: str = ""
+    source: str = "default"
     toolchain: str = ""
     build: BuildSettings = field(default_factory=BuildSettings)
     upload: list[UploadConfig] = field(default_factory=list)
@@ -57,6 +58,7 @@ class Target:
         data = {
             "name": self.name,
             "description": self.description,
+            "source": self.source,
             "toolchain": self.toolchain,
             "build": {
                 "modules": self.build.modules,
@@ -119,6 +121,7 @@ class Target:
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
+            source=data.get("source", "default"),
             toolchain=data.get("toolchain", ""),
             build=build,
             upload=uploads,
