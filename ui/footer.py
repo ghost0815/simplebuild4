@@ -21,7 +21,7 @@ SCREEN_MAP = {
 }
 
 # Screens where Add/Remove are available
-ADD_REMOVE_SCREENS = {"main", "repository"}
+ADD_REMOVE_SCREENS = {"main", "repository", "toolchains"}
 
 
 class FooterItem(Static):

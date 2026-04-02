@@ -15,7 +15,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
-from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates
+from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -104,7 +104,17 @@ class ToolchainsScreen(Screen):
                 # Libraries panel (hidden by default)
                 with VerticalScroll(id="tc-libs"):
                     yield Static("", id="tc-libs-header")
-                    yield Vertical(id="tc-libs-rows")
+                    # Pre-create rows for all known libraries
+                    for lib_name, _, _ in KNOWN_LIBS:
+                        safe_id = lib_name.replace(".", "-").replace(" ", "-")
+                        with Horizontal(classes="lib-action-row", id=f"lib-row-{safe_id}"):
+                            yield Static(f"  {lib_name:<15s} {'—':<12s}", id=f"lib-status-{safe_id}", classes="lib-status")
+                            yield Select(
+                                options=[("skip", "skip")],
+                                value="skip",
+                                id=f"lib-action-{safe_id}",
+                                classes="lib-select",
+                            )
 
                 # Output
                 with VerticalScroll(id="tc-output"):
@@ -234,7 +244,7 @@ class ToolchainsScreen(Screen):
             pass
 
     def _update_libraries(self) -> None:
-        """Scan and display libraries with action dropdowns."""
+        """Scan libraries and update pre-created rows with options."""
         try:
             name = ToolchainsScreen._selected_tc
             if not name:
@@ -245,13 +255,9 @@ class ToolchainsScreen(Screen):
                 return
 
             header = self.query_one("#tc-libs-header", Static)
-            rows_container = self.query_one("#tc-libs-rows", Vertical)
 
             if not tc.installed:
                 header.update(f"  [bold]{tc.name}[/bold]\n  [dim]Not installed — install first to scan libraries[/dim]")
-                # Clear old rows
-                for child in list(rows_container.children):
-                    child.remove()
                 return
 
             install_dir = self.app.paths.toolchains_dir / tc.name
@@ -260,53 +266,49 @@ class ToolchainsScreen(Screen):
             recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml")
             libs = check_library_updates(libs, recipes, has_c11=True)
 
-            # Build recipe map for version options
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  [bold]{tc.name}[/bold] — Libraries    [dim]Select actions, then press F10 to execute[/dim]")
-
-            # Clear old rows
-            for child in list(rows_container.children):
-                child.remove()
-
-            # Header row
-            rows_container.mount(Static(
-                f"  {'Library':<15s} {'Installed':<12s} Action",
-                classes="lib-header-row",
-            ))
+            header.update(f"  [bold]{tc.name}[/bold] — Libraries    [dim]Select actions, then press F10[/dim]")
 
             for lib in libs:
+                safe_id = lib.name.replace(".", "-").replace(" ", "-")
                 installed = lib.version if lib.found else "—"
 
-                # Build dropdown options for this library
+                # Update status label
+                try:
+                    status_widget = self.query_one(f"#lib-status-{safe_id}", Static)
+                    if lib.found and lib.up_to_date:
+                        status_widget.update(f"  [green]{lib.name:<15s}[/green] {installed:<12s}")
+                    elif lib.found:
+                        status_widget.update(f"  [yellow]{lib.name:<15s}[/yellow] {installed:<12s}")
+                    else:
+                        status_widget.update(f"  [dim]{lib.name:<15s}[/dim] {'—':<12s}")
+                except Exception:
+                    continue
+
+                # Build dropdown options
                 recipe = recipe_map.get(lib.name, {})
                 variants = recipe.get("variants", [])
 
-                options = [("skip", "skip")]
+                options: list[tuple[str, str]] = [("skip", "skip")]
 
                 if lib.found and lib.up_to_date:
-                    # Already latest — only offer skip or reinstall
                     options.append((f"reinstall {lib.version}", f"reinstall:{lib.version}"))
                 elif lib.found and lib.update_version:
-                    # Update available — recommend it
                     options.append((f"→ {lib.update_version} (recommended)", f"update:{lib.update_version}"))
                 elif not lib.found and lib.update_version:
-                    # Not installed — recommend install
                     options.append((f"install {lib.update_version} (recommended)", f"install:{lib.update_version}"))
 
-                # Add all other versions
                 for v in variants:
                     ver = v.get("version", "")
                     label = v.get("label", ver)
                     req = " [c11]" if v.get("requires") == "c11" else ""
                     action = "install" if not lib.found else "update"
-                    opt_label = f"{action} {ver} — {label}{req}"
                     opt_value = f"{action}:{ver}"
-                    # Don't duplicate the recommended one
                     if opt_value not in [o[1] for o in options]:
-                        options.append((opt_label, opt_value))
+                        options.append((f"{action} {ver} — {label}{req}", opt_value))
 
-                # Default selection
+                # Default
                 if lib.found and lib.up_to_date:
                     default = "skip"
                 elif lib.update_version:
@@ -315,23 +317,13 @@ class ToolchainsScreen(Screen):
                 else:
                     default = "skip"
 
-                # Status indicator
-                if lib.found and lib.up_to_date:
-                    status = f"[green]{lib.name:<15s}[/green] {installed:<12s}"
-                elif lib.found:
-                    status = f"[yellow]{lib.name:<15s}[/yellow] {installed:<12s}"
-                else:
-                    status = f"[dim]{lib.name:<15s}[/dim] {'—':<12s}"
-
-                row = Horizontal(classes="lib-action-row")
-                rows_container.mount(row)
-                row.mount(Static(f"  {status}", classes="lib-status"))
-                row.mount(Select(
-                    options=options,
-                    value=default,
-                    id=f"lib-action-{lib.name}",
-                    classes="lib-select",
-                ))
+                # Update select options
+                try:
+                    sel = self.query_one(f"#lib-action-{safe_id}", Select)
+                    sel.set_options(options)
+                    sel.value = default
+                except Exception:
+                    pass
 
         except Exception:
             pass
@@ -354,11 +346,14 @@ class ToolchainsScreen(Screen):
 
         # Collect actions from dropdowns
         actions = []
-        rows_container = self.query_one("#tc-libs-rows", Vertical)
-        for select in rows_container.query(Select):
-            if select.value and isinstance(select.value, str) and select.value != "skip":
-                lib_name = select.id.replace("lib-action-", "")
-                actions.append((lib_name, select.value))
+        for lib_name, _, _ in KNOWN_LIBS:
+            safe_id = lib_name.replace(".", "-").replace(" ", "-")
+            try:
+                sel = self.query_one(f"#lib-action-{safe_id}", Select)
+                if sel.value and isinstance(sel.value, str) and sel.value != "skip":
+                    actions.append((lib_name, sel.value))
+            except Exception:
+                pass
 
         if not actions:
             self.notify("No library actions selected", severity="warning")
