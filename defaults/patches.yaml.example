@@ -1,0 +1,11 @@
+# Patch download configuration
+# Copy this file to data/patches.yaml and adjust URLs
+#
+# Patches will be downloaded to data/patches/ when clicking "Download"
+# in the Repository screen. You can also place .patch files manually.
+
+patches:
+  # - name: 0001-my-fix.patch
+  #   url: https://example.com/patches/0001-my-fix.patch
+  # - name: 0002-feature.patch
+  #   url: https://example.com/patches/0002-feature.patch
