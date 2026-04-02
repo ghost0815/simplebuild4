@@ -1,4 +1,4 @@
-# Simplebuild4 Toolchain Registry
+# SimpleBuild4 (s4) Toolchain Registry
 #
 # Template — all available fields with descriptions:
 #
@@ -7,8 +7,7 @@
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
 #   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
-#   sysroot: sysroot                # Sysroot path relative to toolchain directory
-#   confdir: /etc/tuxbox/config     # Default oscam config directory on target
+#   sysroot: sysroot                # Sysroot path relative to toolchain directory (required)
 #   useflags: "USE_LIBCRYPTO"       # Default USE flags, space-separated
 #   cc_opts: "-mbranch-protection=standard"  # Compiler options → passed as CC_OPTS to make
 #   cflags: "-mfpu=vfpv3-d16"      # Architecture-specific C flags → EXTRA_CFLAGS
@@ -19,10 +18,10 @@
 #   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
 #
 # Notes:
-# - Only 'name' and 'prefix' are required, all others are optional
+# - 'name', 'prefix' and 'sysroot' are required, all others are optional
 # - Empty fields can be omitted
 # - User additions go to data/toolchains.local.yaml (not tracked by git)
-# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars/confdir
+# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars
 #   are copied as defaults and can be customized per target
 
 toolchains:
@@ -32,7 +31,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-buildroot-linux-gnu-
   sysroot: aarch64-buildroot-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2
 
@@ -41,7 +39,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=29 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -56,7 +53,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=30 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -71,7 +67,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=31 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -86,7 +81,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=33 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -101,7 +95,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=24 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -116,7 +109,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=26 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -131,7 +123,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -DANDROID
     -D__ANDROID_API__=28 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
@@ -146,7 +137,6 @@ toolchains:
   arch: arm
   prefix: arm-newnigma2-linux-gnueabihf-
   sysroot: arm-newnigma2-linux-gnueabihf
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-arm_dream.tar.xz
 
@@ -155,7 +145,6 @@ toolchains:
   arch: armv7
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2
 
@@ -164,7 +153,6 @@ toolchains:
   arch: arm
   prefix: arm-cx2450x-linux-gnueabi-
   sysroot: arm-cx2450x-linux-gnueabi/sys-root/usr
-  confdir: /etc/tuxbox/config
   useflags: USE_COOLAPI
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Coolstream_s_u_p.tar.xz
 
@@ -173,7 +161,6 @@ toolchains:
   arch: arm
   prefix: arm-pnx8400-linux-uclibcgnueabi-
   sysroot: arm-pnx8400-linux-uclibcgnueabi/sys-root/usr
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO USE_COOLAPI2
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Cool2_s_u_p.tar.xz
 
@@ -182,7 +169,6 @@ toolchains:
   arch: csky
   prefix: csky-linux-
   sysroot: csky-linux/libc
-  confdir: /etc/tuxbox/config
   useflags: USE_GXAPI
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-csky.tar.xz
 
@@ -191,7 +177,6 @@ toolchains:
   arch: arm
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
 
@@ -200,7 +185,6 @@ toolchains:
   arch: arm
   prefix: arm-none-linux-gnueabi-
   sysroot: arm-none-linux-gnueabi/libc/usr
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dockstar_s_u_p.tar.xz
 
@@ -209,7 +193,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-dreambox-linux-gnu-
   sysroot: aarch64-dreambox-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_aarch64.tar.xz
 
@@ -218,7 +201,6 @@ toolchains:
   arch: arm
   prefix: arm-dreambox-linux-gnueabihf-
   sysroot: arm-dreambox-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_arm.tar.xz
 
@@ -227,7 +209,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-dreambox-linux-gnu-
   sysroot: mipsel-dreambox-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_mipsel.tar.xz
 
@@ -236,7 +217,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-dream_one-linux-gnu-
   sysroot: aarch64-dream_one-linux-gnu/sysroot/
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-dream_one.tar.xz
 
@@ -245,7 +225,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-newnigma2-linux-gnu-
   sysroot: mipsel-newnigma2-linux-gnu/sysroot
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dreambox-HW_s_u_p.tar.xz
 
@@ -255,7 +234,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz.tar.xz
 
@@ -265,7 +243,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz.tar.xz
@@ -275,7 +252,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4020_7362_ssl_multi_mips-freetz.tar.xz
 
@@ -285,7 +261,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-uclibcgnueabi-
   sysroot: usr
-  confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz.tar.xz
@@ -295,7 +270,6 @@ toolchains:
   arch: i686
   prefix: i686-linux-uclibc-
   sysroot: usr
-  confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz.tar.xz
@@ -305,7 +279,6 @@ toolchains:
   arch: arm
   prefix: arm-unknown-linux-gnueabihf-
   sysroot: arm-unknown-linux-gnueabihf/sys-root/
-  confdir: /etc/tuxbox/config/oscam/
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-hd51.tar.xz
 
@@ -314,7 +287,6 @@ toolchains:
   arch: x86
   prefix: i686-igel-linux-gnu-
   sysroot: i686-igel-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-igel_x86.tar.xz
 
@@ -322,14 +294,12 @@ toolchains:
   description: Ineos ZX4
   arch: csky
   prefix: csky-linux-
-  confdir: /var/keys
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-ineos.tar.xz
 
 - name: mca
   description: MATRIX CAM AIR
   arch: arm
   prefix: arm-none-linux-gnueabi-
-  confdir: /var/mca/d1
   useflags: USE_LIBCRYPTO USE_MCA
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Matrix_s.tar.xz
 
@@ -338,7 +308,6 @@ toolchains:
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
   sysroot: mipsel-buildroot-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2
 
@@ -347,7 +316,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sys-root/usr
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE1.6_s_u_p.tar.xz
 
@@ -356,7 +324,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
 
@@ -365,7 +332,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
 
@@ -374,7 +340,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
 
@@ -382,7 +347,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sysroot
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE2.0_s_u_p.tar.xz
 
@@ -391,7 +355,6 @@ toolchains:
   arch: armv7
   prefix: armv7-oe20-linux-gnueabihf-
   sysroot: armv7-oe20-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_armv7.tar.xz
 
@@ -400,7 +363,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-oe20-linux-gnu-
   sysroot: mipsel-oe20-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_mipsel.tar.xz
 
@@ -409,7 +371,6 @@ toolchains:
   arch: sh4
   prefix: sh4-oe20-linux-gnu-
   sysroot: sh4-oe20-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh4.tar.xz
 
@@ -417,7 +378,6 @@ toolchains:
   description: OpenEmbedded 2.0 STBs with multilib support
   prefix: sh-oe20-linux-gnu-
   sysroot: sh-oe20-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh_multilib.tar.xz
 
@@ -426,7 +386,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-openpli40-linux-gnu-
   sysroot: mipsel-openpli40-linux-gnu/sysroot
-  confdir: /usr/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-OpenPLI_4.0.tar.xz
 
@@ -434,7 +393,6 @@ toolchains:
   description: OpenWRT 15.05.1 Chaos Calmer
   arch: mips
   prefix: mips-openwrt-linux-uclibc-
-  confdir: /etc/config/oscam
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-openwrt1505cc.tar.xz
 
@@ -443,7 +401,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-osmio4k-linux-gnu-
   sysroot: aarch64-osmio4k-linux-gnu/sysroot/
-  confdir: /var/keys/
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-osmio4k.tar.xz
 
@@ -452,7 +409,6 @@ toolchains:
   arch: mips
   prefix: mips-ar71xx-linux-musl-
   sysroot: mips-ar71xx-linux-musl/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ar71xx_mips.tar.xz
 
@@ -461,7 +417,6 @@ toolchains:
   arch: mips
   prefix: mips-ath79-linux-musl-
   sysroot: mips-ath79-linux-musl/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ath79_mips.tar.xz
 
@@ -470,7 +425,6 @@ toolchains:
   arch: arm
   prefix: arm-kirkwood-linux-musleabi-
   sysroot: arm-kirkwood-linux-musleabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_kirkwood_arm.tar.xz
 
@@ -479,7 +433,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-mediatek-linux-musl-
   sysroot: aarch64-mediatek-linux-musl/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mediatek_armv8.tar.xz
 
@@ -488,7 +441,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-mpc85xx-linux-musl-
   sysroot: powerpc-mpc85xx-linux-musl/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mpc85xx_ppc.tar.xz
 
@@ -497,7 +449,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-ramips-linux-musl-
   sysroot: mipsel-ramips-linux-musl/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ramips_mips.tar.xz
 
@@ -506,7 +457,6 @@ toolchains:
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv6.tar.xz
 
@@ -515,7 +465,6 @@ toolchains:
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv7.tar.xz
 
@@ -524,7 +473,6 @@ toolchains:
   arch: arm
   prefix: arm-pogoplug-linux-gnueabi-
   sysroot: arm-pogoplug-linux-gnueabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-pogoplug_arm.tar.xz
 
@@ -533,7 +481,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-buildroot-linux-gnu-
   sysroot: powerpc-buildroot-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2
 
@@ -541,7 +488,6 @@ toolchains:
   description: Dbox2 / Dreambox DM500 and DM500-S
   arch: powerpc
   prefix: powerpc-linux-
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-PPC-Tuxbox-old_s.tar.xz
 
@@ -550,7 +496,6 @@ toolchains:
   arch: armv5
   prefix: arm-qnap-linux-gnueabi-
   sysroot: arm-qnap-linux-gnueabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv5.tar.xz
 
@@ -559,7 +504,6 @@ toolchains:
   arch: armv7
   prefix: armv7-qnap-linux-gnueabihf-
   sysroot: armv7-qnap-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv7.tar.xz
 
@@ -568,7 +512,6 @@ toolchains:
   arch: x86_64
   prefix: x86_64-qnap-linux-gnu-
   sysroot: x86_64-qnap-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_x64.tar.xz
 
@@ -577,7 +520,6 @@ toolchains:
   arch: arm
   prefix: arm-bcm2708hardfp-linux-gnueabi-
   sysroot: arm-bcm2708hardfp-linux-gnueabi/sysroot/usr
-  confdir: /usr/local/etc
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Raspberrypi_hard_s_u_p.tar.xz
 
@@ -586,7 +528,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-rpi3-linux-gnu-
   sysroot: aarch64-rpi3-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_aarch64.tar.xz
 
@@ -595,7 +536,6 @@ toolchains:
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv6.tar.xz
 
@@ -604,7 +544,6 @@ toolchains:
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv7.tar.xz
 
@@ -613,7 +552,6 @@ toolchains:
   arch: arm
   prefix: armv8-rpi3-linux-gnueabihf-
   sysroot: armv8-rpi3-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv8.tar.xz
 
@@ -622,7 +560,6 @@ toolchains:
   arch: arm
   prefix: arm-v7a8v3r1-linux-gnueabi-
   sysroot: arm-v7a8v3r1-linux-gnueabi/sys-root/usr
-  confdir: /mtd_rwcommon/oscam
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SamsungTV.tar.xz
 
@@ -631,7 +568,6 @@ toolchains:
   arch: sh4
   prefix: sh4-linux-
   sysroot: sh4-linux/sys-root/usr
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SH4_s_u_p.tar.xz
 
@@ -640,7 +576,6 @@ toolchains:
   arch: sh4
   prefix: sh4-buildroot-linux-gnu-
   sysroot: sh4-buildroot-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/sh-sh4/tarballs/sh-sh4--glibc--stable-2018.11-1.tar.bz2
 
@@ -649,7 +584,6 @@ toolchains:
   arch: sh4
   prefix: sh4-streamboard-linux-gnu-
   sysroot: sh4-streamboard-linux-gnu/sysroot/usr
-  confdir: /var/keys
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-NEWSH4-Streamboard_s_u_p.tar.xz
 
@@ -658,7 +592,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-gnueabihf-
   sysroot: arm-linux-gnueabihf
-  confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-solo4k.tar.xz
 
@@ -666,7 +599,6 @@ toolchains:
   description: SYN_ATOM
   arch: x86_64
   prefix: x86_64-linux-gnu-
-  confdir: /usr/local/etc
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Syn_Atom.tar.xz
 
@@ -675,7 +607,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-ds418-linux-gnu-
   sysroot: aarch64-ds418-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_aarch64.tar.xz
 
@@ -684,7 +615,6 @@ toolchains:
   arch: armv5
   prefix: arm-synology-linux-gnueabi-
   sysroot: arm-synology-linux-gnueabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -DNO_PTHREAD_STACKSIZE
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv5.tar.xz
@@ -694,7 +624,6 @@ toolchains:
   arch: armv7
   prefix: arm-ds216_play-linux-gnueabi-
   sysroot: arm-ds216_play-linux-gnueabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7.tar.xz
 
@@ -703,7 +632,6 @@ toolchains:
   arch: armv7
   prefix: arm-marvell-linux-gnueabi-
   sysroot: arm-marvell-linux-gnueabi/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7a.tar.xz
 
@@ -712,7 +640,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-ds213+-linux-gnuspe-
   sysroot: powerpc-ds213+-linux-gnuspe/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_ppc.tar.xz
 
@@ -721,7 +648,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-ubnt-linux-gnu-
   sysroot: aarch64-ubnt-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_aarch64.tar.xz
 
@@ -730,7 +656,6 @@ toolchains:
   arch: mips64
   prefix: mips-ubnt-linux-gnu-
   sysroot: mips-ubnt-linux-gnu/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_mips64.tar.xz
 
@@ -739,7 +664,6 @@ toolchains:
   arch: arm
   prefix: arm-vuplus4k-linux-gnueabihf-
   sysroot: arm-vuplus4k-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_arm.tar.xz
 
@@ -748,7 +672,6 @@ toolchains:
   arch: armv7
   prefix: armv7-vuplus4k-linux-gnueabihf-
   sysroot: armv7-vuplus4k-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7.tar.xz
 
@@ -757,6 +680,5 @@ toolchains:
   arch: armv7
   prefix: armv7a-vuplus4k-linux-gnueabihf-
   sysroot: armv7a-vuplus4k-linux-gnueabihf/sysroot
-  confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7a.tar.xz

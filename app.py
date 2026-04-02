@@ -6,7 +6,7 @@ from core.paths import Paths
 
 
 def main():
-    """Launch simplebuild4."""
+    """Launch SimpleBuild4."""
     try:
         from textual.app import App
     except ImportError:

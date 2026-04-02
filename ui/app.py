@@ -9,9 +9,9 @@ from ui.commands import S4Commands
 
 
 class S4App(App):
-    """Simplebuild4 TUI application."""
+    """SimpleBuild4 TUI application."""
 
-    TITLE = "Simplebuild4"
+    TITLE = "SimpleBuild4"
     CSS_PATH = "theme.tcss"
 
     ENABLE_COMMAND_PALETTE = True

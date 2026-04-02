@@ -26,7 +26,6 @@ class Toolchain:
     # Compiler
     prefix: str = ""               # Compiler prefix (e.g. aarch64-oe-linux-)
     sysroot: str = ""              # Sysroot path relative to toolchain dir
-    confdir: str = "/etc/tuxbox/config"  # Default oscam config directory
 
     # Build defaults (copied to target on assignment)
     useflags: str = ""             # USE flags (e.g. "USE_LIBCRYPTO USE_EXTRA")
@@ -53,7 +52,6 @@ class Toolchain:
             "cflags": self.cflags,
             "ldflags": self.ldflags,
             "make_vars": self.make_vars,
-            "confdir": self.confdir,
             "stapi_lib": self.stapi_lib,
         }
 
@@ -108,7 +106,6 @@ class ToolchainRegistry:
                 machines=entry.get("machines", ""),
                 prefix=entry.get("prefix", ""),
                 sysroot=entry.get("sysroot", ""),
-                confdir=entry.get("confdir", "/etc/tuxbox/config"),
                 useflags=entry.get("useflags", ""),
                 cc_opts=entry.get("cc_opts", ""),
                 cflags=entry.get("cflags", ""),
@@ -138,7 +135,6 @@ class ToolchainRegistry:
                     "machines": tc.machines,
                     "prefix": tc.prefix,
                     "sysroot": tc.sysroot,
-                    "confdir": tc.confdir,
                     "useflags": tc.useflags,
                     "cc_opts": tc.cc_opts,
                     "cflags": tc.cflags,

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Simplebuild4 — Cross-compilation build system for oscam."""
+"""SimpleBuild4 (s4) — Cross-compilation build system for oscam."""
 
 import sys
 import os

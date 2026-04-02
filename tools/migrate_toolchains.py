@@ -50,7 +50,6 @@ def convert_to_s4(name: str, cfg: dict) -> dict:
         "machines": cfg.get("_machines", ""),
         "prefix": cfg.get("_compiler", ""),
         "sysroot": cfg.get("_sysroot", ""),
-        "confdir": cfg.get("_oscamconfdir_default", "/etc/tuxbox/config"),
         "useflags": cfg.get("default_use", ""),
         "cc_opts": cfg.get("extra_cc", ""),
         "cflags": cfg.get("extra_c", ""),
@@ -118,7 +117,7 @@ def main():
     raw = raw.replace("\n- name:", "\n\n- name:")
 
     # Prepend template comment
-    template = """# Simplebuild4 Toolchain Registry
+    template = """# SimpleBuild4 (s4) Toolchain Registry
 #
 # Template — all available fields with descriptions:
 #
@@ -127,8 +126,7 @@ def main():
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
 #   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
-#   sysroot: sysroot                # Sysroot path relative to toolchain directory
-#   confdir: /etc/tuxbox/config     # Default oscam config directory on target
+#   sysroot: sysroot                # Sysroot path relative to toolchain directory (required)
 #   useflags: "USE_LIBCRYPTO"       # Default USE flags, space-separated
 #   cc_opts: "-mbranch-protection=standard"  # Compiler options → passed as CC_OPTS to make
 #   cflags: "-mfpu=vfpv3-d16"      # Architecture-specific C flags → EXTRA_CFLAGS
@@ -139,10 +137,10 @@ def main():
 #   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
 #
 # Notes:
-# - Only 'name' and 'prefix' are required, all others are optional
+# - 'name', 'prefix' and 'sysroot' are required, all others are optional
 # - Empty fields can be omitted
 # - User additions go to data/toolchains.local.yaml (not tracked by git)
-# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars/confdir
+# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars
 #   are copied as defaults and can be customized per target
 
 """
