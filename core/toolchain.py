@@ -20,7 +20,7 @@ class Toolchain:
     # Identity
     name: str = ""
     description: str = ""
-    category: str = ""             # standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
+    category: str = ""             # common, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
     arch: str = ""
     machines: str = ""
 

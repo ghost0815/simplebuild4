@@ -4,7 +4,7 @@
 #
 # - name: my_toolchain              # Unique identifier (required)
 #   description: "My custom TC"     # Human-readable description
-#   category: standard              # Category: standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
+#   category: common              # Category: standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
 #   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
@@ -32,9 +32,9 @@
 
 toolchains:
 
-- name: aarch64_standard
+- name: aarch64_universal
   description: aarch64 stb's (generic)
-  category: standard
+  category: common
   arch: aarch64
   prefix: aarch64-buildroot-linux-gnu-
   sysroot: aarch64-buildroot-linux-gnu/sysroot
@@ -42,9 +42,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:abae0522480b9f37ff6cee4249e147e7cb78e1997cc6f76dba7e0fb8ec04221d
 
-- name: armv5_standard
+- name: armv5_universal
   description: armv5 devices (generic)
-  category: standard
+  category: common
   arch: armv5
   prefix: armv5-eabi-buildroot-linux-musleabi-
   sysroot: armv5-eabi-buildroot-linux-musleabi/sysroot
@@ -52,9 +52,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f6d91d016e0025c927e68a9cf62e4c49a88b46b6f26eb0f52ddd22265588aafe
 
-- name: armv6_standard
+- name: armv6_universal
   description: armv6 stb's (generic)
-  category: standard
+  category: common
   arch: armv6
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
@@ -62,9 +62,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/armv6-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f3d5bc10a3883dd40f0ea681714d6a834b49f2418f3ec3a406feedb697691e20
 
-- name: armv7_standard
+- name: armv7_universal
   description: armv7 stb's (generic)
-  category: standard
+  category: common
   arch: armv7
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
@@ -72,9 +72,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:c8d4d3ca70442652e0e72f57ae6e878375640508f1e08de3152f63414c43b2e4
 
-- name: mips32el_standard
+- name: mips32el_universal
   description: mips32el stb's (generic)
-  category: standard
+  category: common
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
   sysroot: mipsel-buildroot-linux-gnu/sysroot
@@ -82,9 +82,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:5b838521093a9b8c521ff518cc33e80ce8649b1c795013a47e167b79c175c049
 
-- name: powerpc_standard
+- name: powerpc_universal
   description: powerpc stb's (generic)
-  category: standard
+  category: common
   arch: powerpc
   prefix: powerpc-buildroot-linux-gnu-
   sysroot: powerpc-buildroot-linux-gnu/sysroot
@@ -92,9 +92,9 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:b06fd8740248309146e212214abf60ae4ba2018480ec42155286cafdcb401af4
 
-- name: sh4_standard
+- name: sh4_universal
   description: sh4 stb's (generic)
-  category: standard
+  category: common
   arch: sh4
   prefix: sh4-buildroot-linux-gnu-
   sysroot: sh4-buildroot-linux-gnu/sysroot
@@ -575,7 +575,7 @@ toolchains:
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_pie_arm.tar.xz
   checksum: sha256:0a5b0ad2f187a511c6dbee0d8fe3018a98858df249f64f42121f6fb03490b0b6
 
-- name: aarch64--musl--stable-2020.02-2_standard
+- name: aarch64--musl--stable-2020.02-2_universal
   description: aarch64 devices (generic)
   category: openwrt
   arch: aarch64
@@ -585,7 +585,7 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:0798b1b11969b0a6f792ae52f19e8da40d7fcce147d6c202fe27e1a43345375d
 
-- name: armv5-eabi--musl--stable-2020.02-2_standard
+- name: armv5-eabi--musl--stable-2020.02-2_universal
   description: armv5-eabi devices (generic)
   category: openwrt
   arch: armv5
@@ -595,7 +595,7 @@ toolchains:
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:4734ebcde0fa185132f0fa6aebe104a05ed78b28ba97290504e9f599c948ba1c
 
-- name: armv6-eabihf--musl--stable-2020.02-2_standard
+- name: armv6-eabihf--musl--stable-2020.02-2_universal
   description: armv6-eabihf devices (generic)
   category: openwrt
   arch: armv6

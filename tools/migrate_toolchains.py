@@ -33,13 +33,13 @@ DELETE_LIST = {
 # Category mapping: toolchain name -> category
 CATEGORY_MAP = {
     # standard (Bootlin generic)
-    "aarch64_standard": "standard",
-    "armv5_standard": "standard",
-    "armv6_standard": "standard",
-    "armv7_standard": "standard",
-    "mips32el_standard": "standard",
-    "powerpc_standard": "standard",
-    "sh4_standard": "standard",
+    "aarch64_universal": "common",
+    "armv5_universal": "common",
+    "armv6_universal": "common",
+    "armv7_universal": "common",
+    "mips32el_universal": "common",
+    "powerpc_universal": "common",
+    "sh4_universal": "common",
     # stb (OE-Alliance, OpenPLi, OpenDreambox, etc.)
     "aarch64_oealliance_5.6": "stb", "aarch64_oealliance_6.0": "stb",
     "aarch64_opendreambox_pyro": "stb",
@@ -64,11 +64,11 @@ CATEGORY_MAP = {
     "android_pie_arm": "android",
     # openwrt
     "aarch64--musl--stable-2020.02-2_generic": "openwrt",
-    "aarch64--musl--stable-2020.02-2_standard": "openwrt",
+    "aarch64--musl--stable-2020.02-2_universal": "openwrt",
     "armv5-eabi--musl--stable-2020.02-2_generic": "openwrt",
-    "armv5-eabi--musl--stable-2020.02-2_standard": "openwrt",
+    "armv5-eabi--musl--stable-2020.02-2_universal": "openwrt",
     "armv6-eabihf--musl--stable-2020.02-2_generic": "openwrt",
-    "armv6-eabihf--musl--stable-2020.02-2_standard": "openwrt",
+    "armv6-eabihf--musl--stable-2020.02-2_universal": "openwrt",
     "openwrt1505cc": "openwrt",
     "owrt_ar71xx_mips": "openwrt", "owrt_ath79_mips": "openwrt",
     "owrt_kirkwood_arm": "openwrt", "owrt_mediatek_armv8": "openwrt",
@@ -97,9 +97,9 @@ FRITZ_PREFIX = "fritz"
 
 # Rename map: old name -> new name
 RENAME_MAP = {
-    "aarch64--musl--stable-2020.02-2_generic": "aarch64--musl--stable-2020.02-2_standard",
-    "armv5-eabi--musl--stable-2020.02-2_generic": "armv5-eabi--musl--stable-2020.02-2_standard",
-    "armv6-eabihf--musl--stable-2020.02-2_generic": "armv6-eabihf--musl--stable-2020.02-2_standard",
+    "aarch64--musl--stable-2020.02-2_generic": "aarch64--musl--stable-2020.02-2_universal",
+    "armv5-eabi--musl--stable-2020.02-2_generic": "armv5-eabi--musl--stable-2020.02-2_universal",
+    "armv6-eabihf--musl--stable-2020.02-2_generic": "armv6-eabihf--musl--stable-2020.02-2_universal",
 }
 
 
@@ -126,7 +126,9 @@ def convert_to_s4(name: str, cfg: dict) -> dict:
 
     tc_name = cfg.get("_toolchainname", name)
     if tc_name.endswith("_generic"):
-        tc_name = tc_name.replace("_generic", "_standard")
+        tc_name = tc_name.replace("_generic", "_universal")
+    if tc_name.endswith("_standard"):
+        tc_name = tc_name.replace("_standard", "_universal")
 
     # Apply rename
     tc_name = RENAME_MAP.get(tc_name, tc_name)
@@ -197,9 +199,9 @@ def guess_arch(name: str, compiler: str) -> str:
 # Manual additions not in s3 configs
 MANUAL_ADDITIONS = [
     {
-        "name": "armv5_standard",
-        "description": "armv5 devices (generic)",
-        "category": "standard",
+        "name": "armv5_universal",
+        "description": "armv5 devices (universal)",
+        "category": "common",
         "arch": "armv5",
         "prefix": "armv5-eabi-buildroot-linux-musleabi-",
         "sysroot": "armv5-eabi-buildroot-linux-musleabi/sysroot",
@@ -254,7 +256,7 @@ def main():
             print(f"  Added manually: {tc['name']} [{tc.get('category', '')}]")
 
     # Sort by category then name
-    category_order = ["standard", "stb", "android", "openwrt", "router", "nas", "minipc", "tv", "legacy"]
+    category_order = ["common", "stb", "android", "openwrt", "router", "nas", "minipc", "tv", "legacy"]
     def sort_key(tc):
         cat = tc.get("category", "legacy")
         idx = category_order.index(cat) if cat in category_order else 99
@@ -281,7 +283,7 @@ def main():
 #
 # - name: my_toolchain              # Unique identifier (required)
 #   description: "My custom TC"     # Human-readable description
-#   category: standard              # Category: standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
+#   category: common                # Category: common, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
 #   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
@@ -296,7 +298,7 @@ def main():
 #   checksum: "sha256:abc123..."    # Download verification: "md5:hash" or "sha256:hash"
 #   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
 #
-# Categories: standard (Bootlin generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
+# Categories: common (universal/generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
 #   android, openwrt, router (Fritz/Ubiquiti), nas (Synology/QNAP),
 #   minipc (RPi/Pogoplug), tv, legacy, custom (user-defined)
 #
