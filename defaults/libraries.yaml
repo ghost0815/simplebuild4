@@ -156,9 +156,6 @@ libraries:
     variants:
       - version: "master"
         label: "latest (git)"
-      - version: "1.1.0"
-        label: "1.1.0 (stable)"
-        source: https://download.videolan.org/pub/videolan/libdvbcsa/@VERSION@/libdvbcsa-@VERSION@.tar.gz
       - version: "1.1.0-64"
         label: "1.1.0 64-bit batches"
       - version: "1.1.0-32"
