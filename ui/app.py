@@ -104,7 +104,9 @@ class S4App(App):
             self.push_screen(RepositoryScreen())
 
     def action_open_toolchains(self) -> None:
-        self.notify("Toolchains: not yet implemented", severity="warning")
+        from ui.screens.toolchains import ToolchainsScreen
+        if not isinstance(self.screen, ToolchainsScreen):
+            self.push_screen(ToolchainsScreen())
 
     def action_add(self) -> None:
         """Dispatch F10 Add to the current screen."""

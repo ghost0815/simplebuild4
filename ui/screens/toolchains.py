@@ -1,0 +1,403 @@
+"""Toolchains screen — browse, install, remove toolchains."""
+
+from __future__ import annotations
+
+import hashlib
+import shutil
+import subprocess
+import tarfile
+import threading
+from pathlib import Path
+
+from textual.app import ComposeResult
+from textual.screen import Screen
+from textual.widgets import Static, Input, Button, Select
+from textual.containers import Horizontal, Vertical, VerticalScroll
+
+from core.toolchain import Toolchain, ToolchainRegistry
+from ui.header import S4Header
+from ui.footer import S4Footer
+
+# Categories in display order
+CATEGORIES = [
+    ("common", "Common (universal)"),
+    ("stb", "STB (OE-Alliance/OpenPLi/OpenDreambox)"),
+    ("android", "Android"),
+    ("openwrt", "OpenWrt"),
+    ("router", "Router (Fritz/Ubiquiti)"),
+    ("nas", "NAS (Synology/QNAP)"),
+    ("minipc", "Mini PC (RPi/Pogoplug)"),
+    ("tv", "TV"),
+    ("legacy", "Legacy"),
+    ("custom", "Custom"),
+]
+
+
+class ToolchainsScreen(Screen):
+    BINDINGS = []
+
+    _log_history: list[str] = []
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._registry: ToolchainRegistry | None = None
+
+    def _get_registry(self) -> ToolchainRegistry:
+        if self._registry is None:
+            self._registry = ToolchainRegistry(
+                self.app.paths.toolchains_defaults,
+                self.app.paths.toolchains_local,
+                self.app.paths.toolchains_dir,
+            )
+            self._registry.load()
+        return self._registry
+
+    def compose(self) -> ComposeResult:
+        reg = self._get_registry()
+
+        yield S4Header()
+
+        with VerticalScroll(id="tc-scroll"):
+            # Status box — installed toolchains
+            installed = reg.installed_toolchains()
+            if installed:
+                lines = []
+                for tc in installed:
+                    lines.append(f"  [bold]{tc.name}[/bold]  {tc.description}  [dim]{tc.arch}[/dim]")
+                status_text = "\n".join(lines)
+            else:
+                status_text = "  [dim]No toolchains installed[/dim]"
+            info = Static(status_text, id="tc-info")
+            info.border_title = f"Installed ({len(installed)})"
+            yield info
+
+            # Output box
+            with VerticalScroll(id="tc-output"):
+                yield Static("", id="tc-output-text")
+
+            # Toolchains actions
+            with Vertical(id="tc-box"):
+                with Horizontal(classes="repo-actions-row"):
+                    # Category filter
+                    cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
+                    yield Select(options=cat_options, value="all", id="tc-category")
+                    yield Input(placeholder="Search...", id="tc-search")
+                    yield Static("", classes="spacer")
+                    yield Button("Install", id="btn-install", variant="primary")
+                    yield Button("Remove", id="btn-remove", variant="error")
+
+                # Available toolchains list
+                available_text = self._build_available_text(reg, "all", "")
+                avail = Static(available_text, id="tc-available")
+                yield avail
+
+            # Toolchain details
+            with Vertical(id="tc-detail-box"):
+                with Horizontal(classes="repo-row"):
+                    yield Static(" Toolchain", classes="repo-label")
+                    tc_options = self._build_tc_options(reg, "all", "")
+                    yield Select(options=tc_options, value=tc_options[0][1] if tc_options else Select.BLANK, id="tc-select", prompt="select toolchain")
+
+                yield Static("", id="tc-detail")
+
+        yield S4Footer(active_screen="toolchains")
+
+    def on_mount(self) -> None:
+        self.query_one("#tc-output", VerticalScroll).border_title = "Output"
+        self.query_one("#tc-box", Vertical).border_title = "Available"
+        self.query_one("#tc-detail-box", Vertical).border_title = "Details"
+        # Restore log
+        if ToolchainsScreen._log_history:
+            self._update_output()
+        # Show first toolchain details
+        self._update_detail()
+
+    def _build_tc_options(self, reg: ToolchainRegistry, category: str, search: str) -> list[tuple[str, str]]:
+        """Build Select options filtered by category and search."""
+        options = []
+        search_lower = search.lower()
+        for tc in reg.toolchains:
+            if category != "all" and tc.category != category:
+                continue
+            if search_lower and search_lower not in tc.name.lower() and search_lower not in tc.description.lower() and search_lower not in tc.machines.lower():
+                continue
+            status = "[green]●[/green] " if tc.installed else "  "
+            options.append((f"{status}{tc.name}", tc.name))
+        return options
+
+    def _build_available_text(self, reg: ToolchainRegistry, category: str, search: str) -> str:
+        """Build available toolchains text grouped by category."""
+        search_lower = search.lower()
+        lines = []
+        for cat_key, cat_label in CATEGORIES:
+            if category != "all" and category != cat_key:
+                continue
+            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+            if search_lower:
+                tcs = [tc for tc in tcs if search_lower in tc.name.lower() or search_lower in tc.description.lower() or search_lower in tc.machines.lower()]
+            if not tcs:
+                continue
+            lines.append(f"  [bold]{cat_label}[/bold]")
+            for tc in tcs:
+                status = "[green]●[/green]" if tc.installed else "[dim]○[/dim]"
+                lines.append(f"    {status} {tc.name:40s} {tc.description}")
+            lines.append("")
+        return "\n".join(lines) if lines else "  [dim]No toolchains match filter[/dim]"
+
+    def _update_detail(self) -> None:
+        """Update detail panel for selected toolchain."""
+        try:
+            sel = self.query_one("#tc-select", Select)
+            if sel.value is None or not isinstance(sel.value, str):
+                return
+            reg = self._get_registry()
+            tc = reg.get(sel.value)
+            if not tc:
+                return
+            status = "[green]installed[/green]" if tc.installed else "[red]not installed[/red]"
+            lines = [
+                f"  [bold]{tc.name}[/bold] — {tc.description}",
+                f"  Status:    {status}",
+                f"  Category:  {tc.category}",
+                f"  Arch:      {tc.arch}",
+            ]
+            if tc.machines:
+                lines.append(f"  Machines:  {tc.machines}")
+            lines.append(f"  Prefix:    {tc.prefix}")
+            if tc.sysroot:
+                lines.append(f"  Sysroot:   {tc.sysroot}")
+            if tc.cflags:
+                lines.append(f"  C flags:   {tc.cflags}")
+            if tc.ldflags:
+                lines.append(f"  LD flags:  {tc.ldflags}")
+            if tc.make_vars:
+                lines.append(f"  Make vars: {tc.make_vars}")
+            if tc.stapi_lib:
+                lines.append(f"  STAPI:     {tc.stapi_lib}")
+            if tc.url:
+                lines.append(f"  URL:       {tc.url}")
+            if tc.checksum:
+                lines.append(f"  Checksum:  {tc.checksum}")
+            self.query_one("#tc-detail", Static).update("\n".join(lines))
+        except Exception:
+            pass
+
+    def _refresh(self) -> None:
+        """Reload the screen."""
+        self._registry = None
+        ToolchainsScreen._log_history = list(ToolchainsScreen._log_history)
+        self.app.pop_screen()
+        self.app.push_screen(ToolchainsScreen())
+
+    def _log(self, msg: str) -> None:
+        ToolchainsScreen._log_history.append(msg)
+        self.app.call_from_thread(self._update_output)
+
+    def _log_sync(self, msg: str) -> None:
+        ToolchainsScreen._log_history.append(msg)
+        self._update_output()
+
+    def _update_output(self) -> None:
+        try:
+            text = "\n".join(ToolchainsScreen._log_history)
+            self.query_one("#tc-output-text", Static).update(text)
+            scroll = self.query_one("#tc-output", VerticalScroll)
+            scroll.scroll_end(animate=False)
+        except Exception:
+            pass
+
+    def _run_in_thread(self, func) -> None:
+        def wrapper():
+            func()
+            self.app.call_from_thread(self._refresh)
+        thread = threading.Thread(target=wrapper, daemon=True)
+        thread.start()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "tc-select":
+            self._update_detail()
+        elif event.select.id == "tc-category":
+            self._update_filter()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "tc-search":
+            self._update_filter()
+
+    def _update_filter(self) -> None:
+        """Update available list and select when filter changes."""
+        try:
+            reg = self._get_registry()
+            cat_sel = self.query_one("#tc-category", Select)
+            category = cat_sel.value if isinstance(cat_sel.value, str) else "all"
+            search = self.query_one("#tc-search", Input).value
+
+            # Update available text
+            available_text = self._build_available_text(reg, category, search)
+            self.query_one("#tc-available", Static).update(available_text)
+
+            # Update toolchain select
+            tc_sel = self.query_one("#tc-select", Select)
+            options = self._build_tc_options(reg, category, search)
+            tc_sel.set_options(options if options else [("(none)", None)])
+        except Exception:
+            pass
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        btn = event.button.id
+
+        if btn == "btn-install":
+            self._handle_install()
+        elif btn == "btn-remove":
+            self._handle_remove()
+
+    def _handle_install(self) -> None:
+        """Download and install selected toolchain."""
+        sel = self.query_one("#tc-select", Select)
+        if sel.value is None or not isinstance(sel.value, str):
+            self.notify("No toolchain selected", severity="warning")
+            return
+
+        reg = self._get_registry()
+        tc = reg.get(sel.value)
+        if not tc:
+            return
+
+        if tc.installed:
+            self.notify(f"{tc.name} is already installed", severity="warning")
+            return
+
+        if not tc.url:
+            self.notify(f"{tc.name} has no download URL", severity="error")
+            return
+
+        self._log_sync(f"[bold]Installing {tc.name}...[/bold]")
+
+        def do_install():
+            install_dir = self.app.paths.toolchains_dir / tc.name
+            downloads_dir = self.app.paths.downloads_dir
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+
+            # Resolve ${pversion}
+            url = tc.url.replace("${pversion}", "0.27.0")
+            filename = url.split("/")[-1]
+            filepath = downloads_dir / filename
+
+            # Download
+            self._log(f"Downloading {filename}...")
+            try:
+                result = subprocess.run(
+                    ["wget", "-q", "--show-progress", "-O", str(filepath), url],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    # Try curl
+                    result = subprocess.run(
+                        ["curl", "-L", "-o", str(filepath), url],
+                        capture_output=True, text=True, timeout=600,
+                    )
+                if result.returncode != 0:
+                    self._log(f"[red]Download failed[/red]")
+                    return
+            except Exception as e:
+                self._log(f"[red]Download failed: {e}[/red]")
+                return
+
+            # Verify checksum
+            if tc.checksum:
+                self._log("Verifying checksum...")
+                ok = self._verify_checksum(filepath, tc.checksum)
+                if not ok:
+                    self._log("[red]Checksum mismatch![/red]")
+                    filepath.unlink(missing_ok=True)
+                    return
+                self._log("[green]Checksum OK[/green]")
+
+            # Extract
+            self._log(f"Extracting to {install_dir.name}...")
+            try:
+                install_dir.mkdir(parents=True, exist_ok=True)
+                if filename.endswith(".tar.bz2") or filename.endswith(".tar.xz") or filename.endswith(".tar.gz"):
+                    with tarfile.open(filepath) as tar:
+                        tar.extractall(install_dir, filter='data')
+                    # Handle strip_components
+                    if tc.strip_components > 0:
+                        self._strip_components(install_dir, tc.strip_components)
+                else:
+                    subprocess.run(
+                        ["tar", "-xf", str(filepath), f"--strip-components={tc.strip_components}", "-C", str(install_dir)],
+                        check=True, capture_output=True,
+                    )
+            except Exception as e:
+                self._log(f"[red]Extract failed: {e}[/red]")
+                shutil.rmtree(install_dir, ignore_errors=True)
+                return
+
+            # Run relocate-sdk.sh if present
+            relocate = install_dir / "relocate-sdk.sh"
+            if relocate.exists():
+                self._log("Running relocate-sdk.sh...")
+                try:
+                    subprocess.run(
+                        [str(relocate)], cwd=install_dir,
+                        capture_output=True, text=True, timeout=120,
+                    )
+                except Exception:
+                    pass
+
+            self._log(f"[green]{tc.name} installed successfully[/green]")
+
+        self._run_in_thread(do_install)
+
+    def _handle_remove(self) -> None:
+        """Remove selected installed toolchain."""
+        sel = self.query_one("#tc-select", Select)
+        if sel.value is None or not isinstance(sel.value, str):
+            self.notify("No toolchain selected", severity="warning")
+            return
+
+        reg = self._get_registry()
+        tc = reg.get(sel.value)
+        if not tc:
+            return
+
+        if not tc.installed:
+            self.notify(f"{tc.name} is not installed", severity="warning")
+            return
+
+        install_dir = self.app.paths.toolchains_dir / tc.name
+        if install_dir.exists():
+            shutil.rmtree(install_dir)
+        self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
+        self._refresh()
+
+    def _verify_checksum(self, filepath: Path, checksum: str) -> bool:
+        """Verify file checksum. Format: 'md5:hash' or 'sha256:hash'."""
+        if ":" not in checksum:
+            return True
+        algo, expected = checksum.split(":", 1)
+        if algo == "sha256":
+            h = hashlib.sha256()
+        elif algo == "md5":
+            h = hashlib.md5()
+        else:
+            return True
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+        return h.hexdigest() == expected
+
+    def _strip_components(self, directory: Path, levels: int) -> None:
+        """Simulate tar --strip-components by moving nested contents up."""
+        for _ in range(levels):
+            subdirs = [d for d in directory.iterdir() if d.is_dir()]
+            if len(subdirs) == 1:
+                subdir = subdirs[0]
+                for item in subdir.iterdir():
+                    item.rename(directory / item.name)
+                subdir.rmdir()
+            else:
+                break
+
+    def action_go_back(self) -> None:
+        ToolchainsScreen._log_history.clear()
+        self.app.pop_screen()
