@@ -148,28 +148,38 @@ class TargetEditScreen(Screen):
             # Build options
             yield Static(" [bold]Build Options[/bold]", classes="section-title")
             yield Horizontal(
+                Static(" USE flags", classes="s-label-tall"),
+                Input(value=b.useflags, placeholder="e.g. USE_LIBCRYPTO USE_EXTRA", id="t-useflags"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(" CC options", classes="s-label-tall"),
+                Input(value=b.cc_opts, placeholder="Compiler options → CC_OPTS", id="t-cc-opts"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(" C flags", classes="s-label-tall"),
+                Input(value=b.cflags, placeholder="Architecture flags → EXTRA_CFLAGS", id="t-cflags"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(" LD flags", classes="s-label-tall"),
+                Input(value=b.ldflags, placeholder="Linker flags → EXTRA_LDFLAGS", id="t-ldflags"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(" Make variables", classes="s-label-tall"),
+                Input(value=b.make_vars, placeholder="Raw make assignments e.g. LIB_RT=", id="t-make-vars"),
+                classes="s-row",
+            )
+            yield Horizontal(
                 Static(" Config directory", classes="s-label-tall"),
                 Input(value=b.confdir, id="t-confdir"),
                 classes="s-row",
             )
             yield Horizontal(
-                Static(" Extra CFLAGS", classes="s-label-tall"),
-                Input(value=b.extra_cc, id="t-extra-cc"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" Extra LDFLAGS", classes="s-label-tall"),
-                Input(value=b.extra_ld, id="t-extra-ld"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" USE variables", classes="s-label-tall"),
-                Input(value=" ".join(b.use_vars), placeholder="e.g. USE_SSL USE_LIBCRYPTO", id="t-use-vars"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" STAPI variant", classes="s-label-tall"),
-                Input(value=b.stapi, id="t-stapi"),
+                Static(" STAPI library", classes="s-label-tall"),
+                Input(value=b.stapi_lib, placeholder="empty=disabled, default=liboscam_stapi.a", id="t-stapi-lib"),
                 classes="s-row",
             )
 
@@ -228,19 +238,18 @@ class TargetEditScreen(Screen):
         readers = [m for m in READERS if self.query_one(f"#m-{m}", Switch).value]
         card_readers = [m for m in CARD_READERS if self.query_one(f"#m-{m}", Switch).value]
 
-        use_str = self.query_one("#t-use-vars", Input).value.strip()
-        use_vars = use_str.split() if use_str else []
-
         build = BuildSettings(
             modules=modules,
             protocols=protocols,
             readers=readers,
             card_readers=card_readers,
-            use_vars=use_vars,
-            stapi=self.query_one("#t-stapi", Input).value.strip(),
-            extra_cc=self.query_one("#t-extra-cc", Input).value.strip(),
-            extra_ld=self.query_one("#t-extra-ld", Input).value.strip(),
+            useflags=self.query_one("#t-useflags", Input).value.strip(),
+            cc_opts=self.query_one("#t-cc-opts", Input).value.strip(),
+            cflags=self.query_one("#t-cflags", Input).value.strip(),
+            ldflags=self.query_one("#t-ldflags", Input).value.strip(),
+            make_vars=self.query_one("#t-make-vars", Input).value.strip(),
             confdir=self.query_one("#t-confdir", Input).value.strip(),
+            stapi_lib=self.query_one("#t-stapi-lib", Input).value.strip(),
         )
 
         # Upload

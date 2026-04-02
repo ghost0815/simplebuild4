@@ -1,7 +1,7 @@
 # Native build — compile oscam for the local system
 name: native
 description: Build for local system
-
+source: default
 toolchain: native
 
 build:
@@ -35,11 +35,12 @@ build:
     - DRECAS
     - PCSC
   card_readers: []
-  use:
-    - USE_LIBCRYPTO
-  stapi: ""
-  extra_cc: ""
-  extra_ld: ""
+  useflags: "USE_LIBCRYPTO"
+  cc_opts: ""
+  cflags: ""
+  ldflags: ""
+  make_vars: ""
   confdir: /usr/local/etc
+  stapi_lib: ""
 
 upload: []

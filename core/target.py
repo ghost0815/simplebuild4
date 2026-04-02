@@ -31,15 +31,20 @@ class UploadConfig:
 class BuildSettings:
     """Oscam build configuration."""
 
+    # Module selection
     modules: list[str] = field(default_factory=list)
     protocols: list[str] = field(default_factory=list)
     readers: list[str] = field(default_factory=list)
     card_readers: list[str] = field(default_factory=list)
-    use_vars: list[str] = field(default_factory=list)
-    stapi: str = ""
-    extra_cc: str = ""
-    extra_ld: str = ""
+
+    # Build flags (defaults from toolchain, editable per target)
+    useflags: str = ""             # USE flags (e.g. "USE_LIBCRYPTO USE_EXTRA")
+    cc_opts: str = ""              # Compiler options → CC_OPTS
+    cflags: str = ""               # Architecture C flags → EXTRA_CFLAGS
+    ldflags: str = ""              # Linker flags → EXTRA_LDFLAGS
+    make_vars: str = ""            # Raw make variable assignments
     confdir: str = "/etc/tuxbox/config"
+    stapi_lib: str = ""            # STAPI library (empty = not used)
 
 
 @dataclass
@@ -65,11 +70,13 @@ class Target:
                 "protocols": self.build.protocols,
                 "readers": self.build.readers,
                 "card_readers": self.build.card_readers,
-                "use": self.build.use_vars,
-                "stapi": self.build.stapi,
-                "extra_cc": self.build.extra_cc,
-                "extra_ld": self.build.extra_ld,
+                "useflags": self.build.useflags,
+                "cc_opts": self.build.cc_opts,
+                "cflags": self.build.cflags,
+                "ldflags": self.build.ldflags,
+                "make_vars": self.build.make_vars,
                 "confdir": self.build.confdir,
+                "stapi_lib": self.build.stapi_lib,
             },
             "upload": [
                 {
@@ -99,11 +106,13 @@ class Target:
             protocols=build_data.get("protocols", []),
             readers=build_data.get("readers", []),
             card_readers=build_data.get("card_readers", []),
-            use_vars=build_data.get("use", []),
-            stapi=build_data.get("stapi", ""),
-            extra_cc=build_data.get("extra_cc", ""),
-            extra_ld=build_data.get("extra_ld", ""),
+            useflags=build_data.get("useflags", ""),
+            cc_opts=build_data.get("cc_opts", ""),
+            cflags=build_data.get("cflags", ""),
+            ldflags=build_data.get("ldflags", ""),
+            make_vars=build_data.get("make_vars", ""),
             confdir=build_data.get("confdir", "/etc/tuxbox/config"),
+            stapi_lib=build_data.get("stapi_lib", ""),
         )
 
         uploads = []
