@@ -76,35 +76,43 @@ class ToolchainsScreen(Screen):
                 yield Static("", id="tc-output-text")
 
             # Toolchains actions
+            # Toolchain actions
             with Vertical(id="tc-box"):
                 with Horizontal(classes="repo-actions-row"):
-                    # Category filter
+                    tc_options = self._build_tc_options(reg, "all", "")
+                    yield Select(options=tc_options, value=tc_options[0][1] if tc_options else Select.BLANK, id="tc-select", prompt="select toolchain")
+                    yield Static("", classes="spacer")
+                    install_btn = Button("Install", id="btn-install", variant="primary")
+                    install_btn.tooltip = "Download and install the selected toolchain"
+                    yield install_btn
+                    check_btn = Button("Check", id="btn-check")
+                    check_btn.tooltip = "Verify the selected toolchain is working"
+                    yield check_btn
+                    remove_btn = Button("Remove", id="btn-remove", variant="error")
+                    remove_btn.tooltip = "Delete the selected toolchain from disk"
+                    yield remove_btn
+
+            # Browse available
+            with Vertical(id="tc-browse-box"):
+                with Horizontal(classes="repo-actions-row"):
                     cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
                     yield Select(options=cat_options, value="all", id="tc-category")
                     yield Input(placeholder="Search...", id="tc-search")
-                    yield Static("", classes="spacer")
-                    yield Button("Install", id="btn-install", variant="primary")
-                    yield Button("Remove", id="btn-remove", variant="error")
 
-                # Available toolchains list
                 available_text = self._build_available_text(reg, "all", "")
                 avail = Static(available_text, id="tc-available")
                 yield avail
 
             # Toolchain details
             with Vertical(id="tc-detail-box"):
-                with Horizontal(classes="repo-row"):
-                    yield Static(" Toolchain", classes="repo-label")
-                    tc_options = self._build_tc_options(reg, "all", "")
-                    yield Select(options=tc_options, value=tc_options[0][1] if tc_options else Select.BLANK, id="tc-select", prompt="select toolchain")
-
                 yield Static("", id="tc-detail")
 
         yield S4Footer(active_screen="toolchains")
 
     def on_mount(self) -> None:
         self.query_one("#tc-output", VerticalScroll).border_title = "Output"
-        self.query_one("#tc-box", Vertical).border_title = "Available"
+        self.query_one("#tc-box", Vertical).border_title = "Toolchains"
+        self.query_one("#tc-browse-box", Vertical).border_title = "Browse"
         self.query_one("#tc-detail-box", Vertical).border_title = "Details"
         # Restore log
         if ToolchainsScreen._log_history:
@@ -247,6 +255,8 @@ class ToolchainsScreen(Screen):
 
         if btn == "btn-install":
             self._handle_install()
+        elif btn == "btn-check":
+            self._handle_check()
         elif btn == "btn-remove":
             self._handle_remove()
 
@@ -347,6 +357,61 @@ class ToolchainsScreen(Screen):
             self._log(f"[green]{tc.name} installed successfully[/green]")
 
         self._run_in_thread(do_install)
+
+    def _handle_check(self) -> None:
+        """Check if selected toolchain is working."""
+        sel = self.query_one("#tc-select", Select)
+        if sel.value is None or not isinstance(sel.value, str):
+            self.notify("No toolchain selected", severity="warning")
+            return
+
+        reg = self._get_registry()
+        tc = reg.get(sel.value)
+        if not tc:
+            return
+
+        if not tc.installed:
+            self.notify(f"{tc.name} is not installed", severity="warning")
+            return
+
+        self._log_sync(f"[bold]Checking {tc.name}...[/bold]")
+        install_dir = self.app.paths.toolchains_dir / tc.name
+        gcc = install_dir / "bin" / f"{tc.prefix}gcc"
+
+        if not gcc.exists():
+            # Search for it
+            found = list(install_dir.glob(f"**/bin/{tc.prefix}gcc"))
+            if found:
+                gcc = found[0]
+
+        if not gcc.exists():
+            self._log_sync(f"  [red]gcc not found:[/red] {tc.prefix}gcc")
+            return
+
+        self._log_sync(f"  gcc:     {gcc}")
+        try:
+            version = subprocess.check_output(
+                [str(gcc), "--version"], text=True, stderr=subprocess.STDOUT, timeout=10,
+            ).splitlines()[0]
+            self._log_sync(f"  version: {version}")
+
+            target = subprocess.check_output(
+                [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.STDOUT, timeout=10,
+            ).strip()
+            self._log_sync(f"  target:  {target}")
+
+            sysroot = subprocess.check_output(
+                [str(gcc), "-print-sysroot"], text=True, stderr=subprocess.STDOUT, timeout=10,
+            ).strip()
+            self._log_sync(f"  sysroot: {sysroot}")
+
+            self._log_sync(f"  [green]{tc.name} OK[/green]")
+        except subprocess.CalledProcessError as e:
+            self._log_sync(f"  [red]gcc error: {e.output.strip() if e.output else e}[/red]")
+        except FileNotFoundError:
+            self._log_sync(f"  [red]gcc not executable[/red]")
+        except Exception as e:
+            self._log_sync(f"  [red]check failed: {e}[/red]")
 
     def _handle_remove(self) -> None:
         """Remove selected installed toolchain."""
