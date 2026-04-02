@@ -118,9 +118,10 @@ class S4Footer(Horizontal):
         # Spacer
         yield FooterSpacer()
 
-        # Right: Add / Remove
+        # Right: Add/Update / Remove
         add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
-        yield FooterItem(key="F10", label="Add", action="action_add", disabled=add_disabled)
+        add_label = "Update" if self._active_screen == "toolchains" else "Add"
+        yield FooterItem(key="F10", label=add_label, action="action_add", disabled=add_disabled)
         yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=add_disabled)
 
         # Right: Save
