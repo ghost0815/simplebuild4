@@ -20,6 +20,7 @@ class Toolchain:
     # Identity
     name: str = ""
     description: str = ""
+    category: str = ""             # standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
     arch: str = ""
     machines: str = ""
 
@@ -102,6 +103,7 @@ class ToolchainRegistry:
             tc = Toolchain(
                 name=entry.get("name", ""),
                 description=entry.get("description", ""),
+                category=entry.get("category", ""),
                 arch=entry.get("arch", ""),
                 machines=entry.get("machines", ""),
                 prefix=entry.get("prefix", ""),
@@ -131,6 +133,7 @@ class ToolchainRegistry:
                 {
                     "name": tc.name,
                     "description": tc.description,
+                    "category": tc.category,
                     "arch": tc.arch,
                     "machines": tc.machines,
                     "prefix": tc.prefix,
