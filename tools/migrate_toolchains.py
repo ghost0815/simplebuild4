@@ -147,8 +147,8 @@ def convert_to_s4(name: str, cfg: dict) -> dict:
         "prefix": cfg.get("_compiler", ""),
         "sysroot": cfg.get("_sysroot", ""),
         "useflags": cfg.get("default_use", ""),
-        "cc_opts": cfg.get("extra_cc", ""),
-        "cflags": cfg.get("extra_c", ""),
+        "cc_opts": "",
+        "cflags": _merge_cflags(cfg.get("extra_cc", ""), cfg.get("extra_c", "")),
         "ldflags": cfg.get("extra_ld", ""),
         "make_vars": cfg.get("extra_use", ""),
         "stapi_lib": cfg.get("stapi_lib_custom", "") if cfg.get("stapi_allowed") == "1" else "",
@@ -156,6 +156,20 @@ def convert_to_s4(name: str, cfg: dict) -> dict:
         "checksum": _parse_checksum(cfg),
         "strip_components": int(cfg.get("_extract_strip", "1")),
     }
+
+
+def _merge_cflags(extra_cc: str, extra_c: str) -> str:
+    """Merge extra_cc and extra_c into a single cflags string.
+
+    In s3, extra_cc went to CC_OPTS and extra_c to EXTRA_CFLAGS.
+    In s4, both are architecture-specific flags → cflags.
+    """
+    parts = []
+    if extra_cc.strip():
+        parts.append(extra_cc.strip())
+    if extra_c.strip():
+        parts.append(extra_c.strip())
+    return " ".join(parts)
 
 
 def _parse_checksum(cfg: dict) -> str:

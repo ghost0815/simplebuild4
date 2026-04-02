@@ -110,7 +110,7 @@ toolchains:
   prefix: aarch64-oe-linux-
   sysroot: sysroots/aarch64-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mbranch-protection=standard
+  cflags: -mbranch-protection=standard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-aarch64_oealliance_5.6.tar.xz
   checksum: sha256:17abf53817d53caf0eaf0a4830109a3a3951109674ca7767ce0708269e2e43f1
@@ -123,7 +123,7 @@ toolchains:
   prefix: aarch64-oe-linux-
   sysroot: sysroots/aarch64-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mbranch-protection=standard
+  cflags: -mbranch-protection=standard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-aarch64_oealliance_6.0.tar.xz
   checksum: sha256:dd55c1e8846f8446bdf861b37a8f10bed16cb7640fbe92dd3391d2fcab8dbb23
@@ -149,7 +149,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/armv7ahf-neon-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -march=armv7-a -mfpu=neon -mfloat-abi=hard
+  cflags: -march=armv7-a -mfpu=neon -mfloat-abi=hard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-armv7ahf_openpli_scarthgap.tar.xz
   checksum: sha256:e39883fa8250eb16c45e3bc33bd996fab0d9fd34922cc3d35c5a3789c41d7e5d
@@ -162,7 +162,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/armv7vehf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard
+  cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-armv7vehf_openpli_scarthgap.tar.xz
   checksum: sha256:9fdb848a93d30fda7de4d9407493dbc052cd8fe38b17f057f59984f4e35c3b90
@@ -180,7 +180,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
+  cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_oealliance_5.6.tar.xz
   checksum: sha256:17d29159d6e79e3e201a73b17a63fff18a8a4d965f65bc31dd51bb9dbafa0cf9
@@ -198,7 +198,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
+  cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_oealliance_6.0.tar.xz
   checksum: sha256:d7cde066d25e52bccf75f813c8f93a0139a04a514c3fb8e63df11fe176d6f2f6
@@ -211,7 +211,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
+  cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_opendreambox_krogoth.tar.xz
   checksum: sha256:238cf895f437624ecbe4940cd80932f17f74ed9916daf365900c895d243993c2
@@ -224,7 +224,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
+  cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_opendreambox_pyro.tar.xz
   checksum: sha256:549d6cb4ec462785f88d8ce259b177de722728f58cfca4e5054c2150851a3af2
@@ -240,7 +240,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
+  cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_openpli_scarthgap.tar.xz
   checksum: sha256:5367b6421addc22f653d1ed4f095854b0299f056abfc359591db18f6fbee32f0
@@ -253,7 +253,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
+  cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_oealliance_5.6.tar.xz
   checksum: sha256:5a76f66e852e5b294c338e978a45117d3c6675edcd0e8ee8c736dba7d4a2c501
@@ -266,7 +266,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
+  cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_oealliance_6.0.tar.xz
   checksum: sha256:2f3d5ac3e33a42d3323d9daeff2fc39ab834598d2f3b17e8b5ff7509d0a446c7
@@ -279,7 +279,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
+  cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_openpli_scarthgap.tar.xz
   checksum: sha256:047227c01edb89b310406979dc0cdacf4bd88bd0cdfe7478096961f17849cdb2
@@ -292,7 +292,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7t2hf-vfp-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mthumb -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
+  cflags: -mthumb -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7thf_openpli_scarthgap.tar.xz
   checksum: sha256:274835948b625e5e8410cd9688fe2873d31dcec3dc70acfb1203b114b170a938
@@ -316,7 +316,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
+  cflags: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa9hf_oealliance_5.6.tar.xz
   checksum: sha256:4f872fdf04b9e0558a43b18b1c11278acbc086e13f9aea0fa1dbe3704e90a459
@@ -329,7 +329,7 @@ toolchains:
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
+  cflags: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa9hf_oealliance_6.0.tar.xz
   checksum: sha256:c99d38e8b9b94b05c7f8255590fab4564dc095299a132658f1fe936d87d54a70
@@ -342,7 +342,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-nf-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mel -mabi=32 -msoft-float -march=mips32
+  cflags: -mel -mabi=32 -msoft-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el-nf_openpli_scarthgap.tar.xz
   checksum: sha256:b025d145ef959198022d2249dea60916cc2825cc0e9528883064e3d3c318bb22
 
@@ -363,7 +363,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -EL -mabi=32 -mhard-float -march=mips32
+  cflags: -EL -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_oealliance_5.6.tar.xz
   checksum: sha256:e6a7e7f14064a38de55a50b5dcf5fbb7d09a2080034cf16a1dfaf45ed475c0d1
 
@@ -384,7 +384,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -EL -mabi=32 -mhard-float -march=mips32
+  cflags: -EL -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_oealliance_6.0.tar.xz
   checksum: sha256:5b7e30fc47c3c4123858ade1216cc3aeb7a8db84afe0553cef849f1c26d27358
 
@@ -396,7 +396,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mel -mabi=32 -mhard-float -march=mips32
+  cflags: -mel -mabi=32 -mhard-float -march=mips32
   ldflags: -Wl,--dynamic-linker=/lib/ld-2.23.so
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_opendreambox_krogoth.tar.xz
   checksum: sha256:72746de7ed005a6895f4795e66cebc4ebd6b9792b9eb8c0458389929f6666d89
@@ -409,7 +409,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mel -mabi=32 -mhard-float -march=mips32
+  cflags: -mel -mabi=32 -mhard-float -march=mips32
   ldflags: -Wl,--dynamic-linker=/lib/ld-2.25.so
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_opendreambox_pyro.tar.xz
   checksum: sha256:26db83015f0eabab6c07d21d2fd84af96215d2119f1a8c8b6643f1f86aab02ac
@@ -427,7 +427,7 @@ toolchains:
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
   useflags: USE_LIBCRYPTO USE_EXTRA
-  cc_opts: -mel -mabi=32 -mhard-float -march=mips32
+  cflags: -mel -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_openpli_scarthgap.tar.xz
   checksum: sha256:70edbbad5858e45d125677d217928a0199a8fff66c47d52858404dbdc817bcd1
 
@@ -844,7 +844,7 @@ toolchains:
   prefix: arm-synology-linux-gnueabi-
   sysroot: arm-synology-linux-gnueabi/sysroot
   useflags: USE_LIBCRYPTO
-  cc_opts: -DNO_PTHREAD_STACKSIZE
+  cflags: -DNO_PTHREAD_STACKSIZE
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv5.tar.xz
   checksum: sha256:6e35a78ba4d42e0882532cddd1a22656057ebc8c8596e2df11f36a0b8e5cecc4
 
@@ -995,8 +995,8 @@ toolchains:
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
   useflags: USE_LIBCRYPTO
-  url: https://files.streamboard.tv/toolchains/legacy/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
-  checksum: sha256:3d8f62c70d5d181d8413cae378ec3c575ebb372351ca75d3da7bd8fc48a94ce9
+  url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
+  checksum: md5:636fd2655e931f23dc7136bbd3851101
 
 - name: dockstar
   description: Dockstar
