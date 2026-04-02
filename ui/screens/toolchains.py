@@ -130,23 +130,23 @@ class ToolchainsScreen(Screen):
         if ToolchainsScreen._log_history:
             self._update_output()
 
-        # Restore selection — move cursor to selected row in installed table
+        # Set selection — either restore previous or pick first installed
+        tbl = self.query_one("#tbl-installed", DataTable)
         if ToolchainsScreen._selected_tc:
-            self._update_detail()
+            # Try to select the saved toolchain in installed table
             try:
-                tbl = self.query_one("#tbl-installed", DataTable)
-                for idx in range(tbl.row_count):
-                    row_key = tbl.get_row_at(idx)
-                    # get_row_at returns row data, we need the key
-                    pass
-                # Try to move cursor by finding the row
-                tbl.move_cursor(row=0)  # Focus the table
                 for i, key in enumerate(tbl.rows):
                     if key.value == ToolchainsScreen._selected_tc:
                         tbl.move_cursor(row=i)
                         break
             except Exception:
                 pass
+        elif tbl.row_count > 0:
+            # First open — select first installed toolchain
+            first_key = list(tbl.rows.keys())[0]
+            ToolchainsScreen._selected_tc = first_key.value
+
+        self._update_detail()
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.row_key and event.row_key.value:
