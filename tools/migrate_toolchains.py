@@ -101,11 +101,53 @@ def main():
                 toolchains.append(tc)
                 print(f"  Converted: {tc['name']}")
 
-    data = {"toolchains": toolchains}
+    # Remove empty string values from each toolchain
+    cleaned = []
+    for tc in toolchains:
+        cleaned.append({k: v for k, v in tc.items() if v != "" and v != 0})
+        # Always keep name
+        if "name" not in cleaned[-1]:
+            cleaned[-1]["name"] = tc["name"]
+        # strip_components=1 is default, only keep if different
+        if tc.get("strip_components", 1) == 1 and "strip_components" in cleaned[-1]:
+            del cleaned[-1]["strip_components"]
+
+    data = {"toolchains": cleaned}
     raw = yaml.dump(data, default_flow_style=False, sort_keys=False, allow_unicode=True)
     # Add blank line between toolchain entries
     raw = raw.replace("\n- name:", "\n\n- name:")
-    output_path.write_text(raw, encoding="utf-8")
+
+    # Prepend template comment
+    template = """# Simplebuild4 Toolchain Registry
+#
+# Template — all available fields with descriptions:
+#
+# - name: my_toolchain              # Unique identifier (required)
+#   description: "My custom TC"     # Human-readable description
+#   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
+#   machines: "dm920 dm900"         # Space-separated list of target devices
+#   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
+#   sysroot: sysroot                # Sysroot path relative to toolchain directory
+#   confdir: /etc/tuxbox/config     # Default oscam config directory on target
+#   useflags: "USE_LIBCRYPTO"       # Default USE flags, space-separated
+#   cc_opts: "-mbranch-protection=standard"  # Compiler options → passed as CC_OPTS to make
+#   cflags: "-mfpu=vfpv3-d16"      # Architecture-specific C flags → EXTRA_CFLAGS
+#   ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1"  # Linker flags → EXTRA_LDFLAGS
+#   make_vars: "LIB_RT= LIB_PTHREAD="  # Raw make variable assignments (e.g. for Android)
+#   stapi_lib: "libwi.a"           # STAPI library name (empty = STAPI not supported, "default" = liboscam_stapi.a)
+#   url: https://example.com/tc.tar.gz  # Download URL
+#   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
+#
+# Notes:
+# - Only 'name' and 'prefix' are required, all others are optional
+# - Empty fields can be omitted
+# - User additions go to data/toolchains.local.yaml (not tracked by git)
+# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars/confdir
+#   are copied as defaults and can be customized per target
+
+"""
+
+    output_path.write_text(template + raw, encoding="utf-8")
     print(f"\nWrote {len(toolchains)} toolchains to {output_path}")
 
 

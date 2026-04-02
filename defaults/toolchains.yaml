@@ -1,25 +1,44 @@
+# Simplebuild4 Toolchain Registry
+#
+# Template — all available fields with descriptions:
+#
+# - name: my_toolchain              # Unique identifier (required)
+#   description: "My custom TC"     # Human-readable description
+#   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
+#   machines: "dm920 dm900"         # Space-separated list of target devices
+#   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
+#   sysroot: sysroot                # Sysroot path relative to toolchain directory
+#   confdir: /etc/tuxbox/config     # Default oscam config directory on target
+#   useflags: "USE_LIBCRYPTO"       # Default USE flags, space-separated
+#   cc_opts: "-mbranch-protection=standard"  # Compiler options → passed as CC_OPTS to make
+#   cflags: "-mfpu=vfpv3-d16"      # Architecture-specific C flags → EXTRA_CFLAGS
+#   ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1"  # Linker flags → EXTRA_LDFLAGS
+#   make_vars: "LIB_RT= LIB_PTHREAD="  # Raw make variable assignments (e.g. for Android)
+#   stapi_lib: "libwi.a"           # STAPI library name (empty = STAPI not supported, "default" = liboscam_stapi.a)
+#   url: https://example.com/tc.tar.gz  # Download URL
+#   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
+#
+# Notes:
+# - Only 'name' and 'prefix' are required, all others are optional
+# - Empty fields can be omitted
+# - User additions go to data/toolchains.local.yaml (not tracked by git)
+# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars/confdir
+#   are copied as defaults and can be customized per target
+
 toolchains:
 
 - name: aarch64_standard
   description: aarch64 stb's (generic)
   arch: aarch64
-  machines: ''
   prefix: aarch64-buildroot-linux-gnu-
   sysroot: aarch64-buildroot-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2
-  strip_components: 1
 
 - name: android_10_arm
   description: Android 10 STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -28,17 +47,13 @@ toolchains:
     -D__ANDROID_API__=29 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_10_arm.tar.xz
-  strip_components: 1
 
 - name: android_11_arm
   description: Android 11 STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -47,17 +62,13 @@ toolchains:
     -D__ANDROID_API__=30 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_11_arm.tar.xz
-  strip_components: 1
 
 - name: android_12_arm
   description: Android 12 STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -66,17 +77,13 @@ toolchains:
     -D__ANDROID_API__=31 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_12_arm.tar.xz
-  strip_components: 1
 
 - name: android_13_arm
   description: Android 13 STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -85,17 +92,13 @@ toolchains:
     -D__ANDROID_API__=33 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_13_arm.tar.xz
-  strip_components: 1
 
 - name: android_nougat_arm
   description: Android 7.x Nougat STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -104,17 +107,13 @@ toolchains:
     -D__ANDROID_API__=24 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_nougat_arm.tar.xz
-  strip_components: 1
 
 - name: android_oreo_arm
   description: Android 8.x Oreo STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -123,17 +122,13 @@ toolchains:
     -D__ANDROID_API__=26 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_oreo_arm.tar.xz
-  strip_components: 1
 
 - name: android_pie_arm
   description: Android 9.x Pie STBs
   arch: arm
-  machines: ''
   prefix: arm-linux-androideabi-
   sysroot: sysroot
   confdir: /etc/tuxbox/config
@@ -142,1116 +137,626 @@ toolchains:
     -D__ANDROID_API__=28 -fpic -fno-addrsig -ffunction-sections -fdata-sections -funwind-tables
     -fstack-protector-strong -no-canonical-prefixes -Wno-invalid-command-line-argument
     -Wno-unused-command-line-argument
-  cflags: ''
-  ldflags: ''
   make_vars: LIB_RT= LIB_PTHREAD=
   stapi_lib: libwi.a
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-android_pie_arm.tar.xz
-  strip_components: 1
 
 - name: arm_dream
   description: Dreambox ARM
   arch: arm
-  machines: ''
   prefix: arm-newnigma2-linux-gnueabihf-
   sysroot: arm-newnigma2-linux-gnueabihf
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-arm_dream.tar.xz
-  strip_components: 1
 
 - name: armv7_standard
   description: armv7 stb's (generic)
   arch: armv7
-  machines: ''
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2
-  strip_components: 1
 
 - name: cool
   description: COOLSTREAM
   arch: arm
-  machines: ''
   prefix: arm-cx2450x-linux-gnueabi-
   sysroot: arm-cx2450x-linux-gnueabi/sys-root/usr
   confdir: /etc/tuxbox/config
   useflags: USE_COOLAPI
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Coolstream_s_u_p.tar.xz
-  strip_components: 1
 
 - name: cool2
   description: COOLSTREAM HD2
   arch: arm
-  machines: ''
   prefix: arm-pnx8400-linux-uclibcgnueabi-
   sysroot: arm-pnx8400-linux-uclibcgnueabi/sys-root/usr
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO USE_COOLAPI2
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Cool2_s_u_p.tar.xz
-  strip_components: 1
 
 - name: csky
   description: GX-API Box
   arch: csky
-  machines: ''
   prefix: csky-linux-
   sysroot: csky-linux/libc
   confdir: /etc/tuxbox/config
   useflags: USE_GXAPI
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-csky.tar.xz
-  strip_components: 1
 
 - name: dcube
   description: Dcube-R2
   arch: arm
-  machines: ''
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
-  strip_components: 1
 
 - name: dockstar
   description: Dockstar
   arch: arm
-  machines: ''
   prefix: arm-none-linux-gnueabi-
   sysroot: arm-none-linux-gnueabi/libc/usr
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dockstar_s_u_p.tar.xz
-  strip_components: 1
 
 - name: dream_aarch64
   description: Dreambox ONE|TWO
   arch: aarch64
-  machines: ''
   prefix: aarch64-dreambox-linux-gnu-
   sysroot: aarch64-dreambox-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_aarch64.tar.xz
-  strip_components: 1
 
 - name: dream_arm
   description: Dreambox DM9x0 UHD
   arch: arm
-  machines: ''
   prefix: arm-dreambox-linux-gnueabihf-
   sysroot: arm-dreambox-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_arm.tar.xz
-  strip_components: 1
 
 - name: dream_mipsel
   description: Dreambox 500 HD|52x|8x0 HD|70x0 HD
   arch: mipsel
-  machines: ''
   prefix: mipsel-dreambox-linux-gnu-
   sysroot: mipsel-dreambox-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_mipsel.tar.xz
-  strip_components: 1
 
 - name: dream_one
   description: DreamOne aarch64
   arch: aarch64
-  machines: ''
   prefix: aarch64-dream_one-linux-gnu-
   sysroot: aarch64-dream_one-linux-gnu/sysroot/
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-dream_one.tar.xz
-  strip_components: 1
 
 - name: dreambox_fpu
   description: Dreambox & VU+ (OE 2.0 FPU)
   arch: mipsel
-  machines: ''
   prefix: mipsel-newnigma2-linux-gnu-
   sysroot: mipsel-newnigma2-linux-gnu/sysroot
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dreambox-HW_s_u_p.tar.xz
-  strip_components: 1
 
 - name: fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz
   description: FRITZ!Box 3272 3370 3390 6840 7272 7330 7330SL 7360v2 7390 SSL multi
     by MasterSaMMy
   arch: mips
-  machines: ''
   prefix: mips-linux-uclibc-
   sysroot: usr
   confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz.tar.xz
-  strip_components: 0
 
 - name: fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz
   description: FRITZ!Box 3490 5490 5491 6890 7430 7490 7560 7580 7583 7583vdsl 7590
     7590AX 7690 SSL multi by MasterSaMMy
   arch: mips
-  machines: ''
   prefix: mips-linux-uclibc-
   sysroot: usr
   confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz.tar.xz
-  strip_components: 0
 
 - name: fritz4020_7362_ssl_multi_mips-freetz
   description: FRITZ!Box 4020 7362 SSL Multi by MasterSaMMy
   arch: mips
-  machines: ''
   prefix: mips-linux-uclibc-
   sysroot: usr
   confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4020_7362_ssl_multi_mips-freetz.tar.xz
-  strip_components: 0
 
 - name: fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz
   description: FRITZ!Box 4040 4050 4060 5590 5690Pro 68504g 68505g 7510 7520 7520B
     7530 7530AX SSL multi by MasterSaMMy
   arch: arm
-  machines: ''
   prefix: arm-linux-uclibcgnueabi-
   sysroot: usr
   confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz.tar.xz
-  strip_components: 0
 
 - name: fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz
   description: FRITZ!Box 6430 6490 6590 6591 6660 6670 6690 SSL multi by MasterSaMMy
   arch: i686
-  machines: ''
   prefix: i686-linux-uclibc-
   sysroot: usr
   confdir: /var/media/ftp/addon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz.tar.xz
-  strip_components: 0
 
 - name: hd51
   description: AX/Mutant HD51
   arch: arm
-  machines: ''
   prefix: arm-unknown-linux-gnueabihf-
   sysroot: arm-unknown-linux-gnueabihf/sys-root/
   confdir: /etc/tuxbox/config/oscam/
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-hd51.tar.xz
-  strip_components: 1
 
 - name: igel_x86
   description: Igel VIA VX855, x86 devices
   arch: x86
-  machines: ''
   prefix: i686-igel-linux-gnu-
   sysroot: i686-igel-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-igel_x86.tar.xz
-  strip_components: 1
 
 - name: ineos
   description: Ineos ZX4
   arch: csky
-  machines: ''
   prefix: csky-linux-
-  sysroot: ''
   confdir: /var/keys
-  useflags: ''
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-ineos.tar.xz
-  strip_components: 1
 
 - name: mca
   description: MATRIX CAM AIR
   arch: arm
-  machines: ''
   prefix: arm-none-linux-gnueabi-
-  sysroot: ''
   confdir: /var/mca/d1
   useflags: USE_LIBCRYPTO USE_MCA
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Matrix_s.tar.xz
-  strip_components: 1
 
 - name: mips32el_standard
   description: mips32el stb's (generic)
   arch: mips32el
-  machines: ''
   prefix: mipsel-buildroot-linux-gnu-
   sysroot: mipsel-buildroot-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2
-  strip_components: 1
 
 - name: mipsel
   description: Dreambox & VU+ (OE 1.6)
   arch: mipsel
-  machines: ''
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sys-root/usr
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE1.6_s_u_p.tar.xz
-  strip_components: 1
 
 - name: mipsel_s3_ssl098
   description: generic mipsel ssl 0.9.8
   arch: mipsel
-  machines: ''
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
-  strip_components: 1
 
 - name: mipsel_s3_ssl100
   description: generic mipsel ssl 1.0.0
   arch: mipsel
-  machines: ''
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
-  strip_components: 1
 
 - name: mipsel_s3_ssl102
   description: generic mipsel ssl 1.0.2
   arch: mipsel
-  machines: ''
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
-  strip_components: 1
 
 - name: mipsoe20
-  description: ''
   arch: mipsel
-  machines: ''
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sysroot
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE2.0_s_u_p.tar.xz
-  strip_components: 1
 
 - name: oe20_armv7
   description: OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices
   arch: armv7
-  machines: ''
   prefix: armv7-oe20-linux-gnueabihf-
   sysroot: armv7-oe20-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_armv7.tar.xz
-  strip_components: 1
 
 - name: oe20_mipsel
   description: OpenEmbedded 2.0 STBs
   arch: mipsel
-  machines: ''
   prefix: mipsel-oe20-linux-gnu-
   sysroot: mipsel-oe20-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_mipsel.tar.xz
-  strip_components: 1
 
 - name: oe20_sh4
   description: OpenEmbedded 2.0 STBs
   arch: sh4
-  machines: ''
   prefix: sh4-oe20-linux-gnu-
   sysroot: sh4-oe20-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh4.tar.xz
-  strip_components: 1
 
 - name: oe20_sh_multilib
   description: OpenEmbedded 2.0 STBs with multilib support
-  arch: ''
-  machines: ''
   prefix: sh-oe20-linux-gnu-
   sysroot: sh-oe20-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh_multilib.tar.xz
-  strip_components: 1
 
 - name: openpli40
   description: Openpli Dreambox Vu+ and other
   arch: mipsel
-  machines: ''
   prefix: mipsel-openpli40-linux-gnu-
   sysroot: mipsel-openpli40-linux-gnu/sysroot
   confdir: /usr/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-OpenPLI_4.0.tar.xz
-  strip_components: 1
 
 - name: openwrt1505cc
   description: OpenWRT 15.05.1 Chaos Calmer
   arch: mips
-  machines: ''
   prefix: mips-openwrt-linux-uclibc-
-  sysroot: ''
   confdir: /etc/config/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-openwrt1505cc.tar.xz
-  strip_components: 1
 
 - name: osmio4k
   description: Edision OS MIO 4k aarch64
   arch: aarch64
-  machines: ''
   prefix: aarch64-osmio4k-linux-gnu-
   sysroot: aarch64-osmio4k-linux-gnu/sysroot/
   confdir: /var/keys/
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-osmio4k.tar.xz
-  strip_components: 1
 
 - name: owrt_ar71xx_mips
   description: OpenWrt 18.06 ar71xx, mips_24kc BE devices
   arch: mips
-  machines: ''
   prefix: mips-ar71xx-linux-musl-
   sysroot: mips-ar71xx-linux-musl/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ar71xx_mips.tar.xz
-  strip_components: 1
 
 - name: owrt_ath79_mips
   description: OpenWrt 19.07|21.02 ath79, mips_24kc BE devices
   arch: mips
-  machines: ''
   prefix: mips-ath79-linux-musl-
   sysroot: mips-ath79-linux-musl/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ath79_mips.tar.xz
-  strip_components: 1
 
 - name: owrt_kirkwood_arm
   description: OpenWrt 19.07|21.02 kirkwood, Pogoplug V2 LE devices
   arch: arm
-  machines: ''
   prefix: arm-kirkwood-linux-musleabi-
   sysroot: arm-kirkwood-linux-musleabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_kirkwood_arm.tar.xz
-  strip_components: 1
 
 - name: owrt_mediatek_armv8
   description: OpenWrt 19.07|21.02 mediatek, GLinet Brume2 devices
   arch: aarch64
-  machines: ''
   prefix: aarch64-mediatek-linux-musl-
   sysroot: aarch64-mediatek-linux-musl/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mediatek_armv8.tar.xz
-  strip_components: 1
 
 - name: owrt_mpc85xx_ppc
   description: OpenWrt 19.07|21.02 mpc85xx, Freescale MPC85xx BE devices
   arch: powerpc
-  machines: ''
   prefix: powerpc-mpc85xx-linux-musl-
   sysroot: powerpc-mpc85xx-linux-musl/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mpc85xx_ppc.tar.xz
-  strip_components: 1
 
 - name: owrt_ramips_mips
   description: OpenWrt 19.07|21.02 ramips, Mediatek/Ralink mips_24kc LE devices
   arch: mipsel
-  machines: ''
   prefix: mipsel-ramips-linux-musl-
   sysroot: mipsel-ramips-linux-musl/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ramips_mips.tar.xz
-  strip_components: 1
 
 - name: owrt_rpi_armv6
   description: OpenWrt 19.07|21.02 Raspberry Pi Zero W|WH, 1 Model A|A+|B|B+
   arch: armv6
-  machines: ''
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv6.tar.xz
-  strip_components: 1
 
 - name: owrt_rpi_armv7
   description: OpenWrt 19.07|21.02 Raspberry Pi 2 Model B
   arch: armv7
-  machines: ''
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv7.tar.xz
-  strip_components: 1
 
 - name: pogoplug_arm
   description: Marvell Kirkwood devices, Pogoplug V2
   arch: arm
-  machines: ''
   prefix: arm-pogoplug-linux-gnueabi-
   sysroot: arm-pogoplug-linux-gnueabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-pogoplug_arm.tar.xz
-  strip_components: 1
 
 - name: powerpc_standard
   description: powerpc stb's (generic)
   arch: powerpc
-  machines: ''
   prefix: powerpc-buildroot-linux-gnu-
   sysroot: powerpc-buildroot-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2
-  strip_components: 1
 
 - name: ppcold
   description: Dbox2 / Dreambox DM500 and DM500-S
   arch: powerpc
-  machines: ''
   prefix: powerpc-linux-
-  sysroot: ''
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-PPC-Tuxbox-old_s.tar.xz
-  strip_components: 1
 
 - name: qnap_armv5
   description: QNAP Marvell 628x devices, QNAP TS-119P II
   arch: armv5
-  machines: ''
   prefix: arm-qnap-linux-gnueabi-
   sysroot: arm-qnap-linux-gnueabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv5.tar.xz
-  strip_components: 1
 
 - name: qnap_armv7
   description: QNAP ARM-Cortex-A9 devices
   arch: armv7
-  machines: ''
   prefix: armv7-qnap-linux-gnueabihf-
   sysroot: armv7-qnap-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv7.tar.xz
-  strip_components: 1
 
 - name: qnap_x64
   description: QNAP x64 devices
   arch: x86_64
-  machines: ''
   prefix: x86_64-qnap-linux-gnu-
   sysroot: x86_64-qnap-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_x64.tar.xz
-  strip_components: 1
 
 - name: rasb_hard
   description: RaspberryPI Hardware FPU
   arch: arm
-  machines: ''
   prefix: arm-bcm2708hardfp-linux-gnueabi-
   sysroot: arm-bcm2708hardfp-linux-gnueabi/sysroot/usr
   confdir: /usr/local/etc
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Raspberrypi_hard_s_u_p.tar.xz
-  strip_components: 1
 
 - name: rpi_aarch64
   description: Raspberry Pi 3 Modell B+, 4 Model B
   arch: aarch64
-  machines: ''
   prefix: aarch64-rpi3-linux-gnu-
   sysroot: aarch64-rpi3-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_aarch64.tar.xz
-  strip_components: 1
 
 - name: rpi_armv6
   description: Raspberry Pi Zero W|WH, 1 Model A|A+|B|B+
   arch: armv6
-  machines: ''
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv6.tar.xz
-  strip_components: 1
 
 - name: rpi_armv7
   description: Raspberry Pi 2 Model B
   arch: armv7
-  machines: ''
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv7.tar.xz
-  strip_components: 1
 
 - name: rpi_armv8
   description: Raspberry Pi 2 Model B v1.2, 3 Modell A+|B|B+, 4 Model B
   arch: arm
-  machines: ''
   prefix: armv8-rpi3-linux-gnueabihf-
   sysroot: armv8-rpi3-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv8.tar.xz
-  strip_components: 1
 
 - name: samsungtv
   description: SamsungTV
   arch: arm
-  machines: ''
   prefix: arm-v7a8v3r1-linux-gnueabi-
   sysroot: arm-v7a8v3r1-linux-gnueabi/sys-root/usr
   confdir: /mtd_rwcommon/oscam
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SamsungTV.tar.xz
-  strip_components: 1
 
 - name: sh4
   description: SH4
   arch: sh4
-  machines: ''
   prefix: sh4-linux-
   sysroot: sh4-linux/sys-root/usr
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SH4_s_u_p.tar.xz
-  strip_components: 1
 
 - name: sh4_standard
   description: sh4 stb's (generic)
   arch: sh4
-  machines: ''
   prefix: sh4-buildroot-linux-gnu-
   sysroot: sh4-buildroot-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/sh-sh4/tarballs/sh-sh4--glibc--stable-2018.11-1.tar.bz2
-  strip_components: 1
 
 - name: sh_4
   description: SH4
   arch: sh4
-  machines: ''
   prefix: sh4-streamboard-linux-gnu-
   sysroot: sh4-streamboard-linux-gnu/sysroot/usr
   confdir: /var/keys
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-NEWSH4-Streamboard_s_u_p.tar.xz
-  strip_components: 1
 
 - name: solo4k
   description: VU+ Solo4k
   arch: arm
-  machines: ''
   prefix: arm-linux-gnueabihf-
   sysroot: arm-linux-gnueabihf
   confdir: /var/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-solo4k.tar.xz
-  strip_components: 1
 
 - name: syn_atom
   description: SYN_ATOM
   arch: x86_64
-  machines: ''
   prefix: x86_64-linux-gnu-
-  sysroot: ''
   confdir: /usr/local/etc
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Syn_Atom.tar.xz
-  strip_components: 1
 
 - name: synology_aarch64
   description: Synology DS418
   arch: aarch64
-  machines: ''
   prefix: aarch64-ds418-linux-gnu-
   sysroot: aarch64-ds418-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_aarch64.tar.xz
-  strip_components: 1
 
 - name: synology_armv5
   description: Synology Marvell 628x devices, Synology DS112x
   arch: armv5
-  machines: ''
   prefix: arm-synology-linux-gnueabi-
   sysroot: arm-synology-linux-gnueabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
   cc_opts: -DNO_PTHREAD_STACKSIZE
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv5.tar.xz
-  strip_components: 1
 
 - name: synology_armv7
   description: Synology DS216play, ZyXEL NAS326|NAS520
   arch: armv7
-  machines: ''
   prefix: arm-ds216_play-linux-gnueabi-
   sysroot: arm-ds216_play-linux-gnueabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7.tar.xz
-  strip_components: 1
 
 - name: synology_armv7a
   description: Synology Marvell ARMADA 375 devices, Synology DS115
   arch: armv7
-  machines: ''
   prefix: arm-marvell-linux-gnueabi-
   sysroot: arm-marvell-linux-gnueabi/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7a.tar.xz
-  strip_components: 1
 
 - name: synology_ppc
   description: Synology DS213+
   arch: powerpc
-  machines: ''
   prefix: powerpc-ds213+-linux-gnuspe-
   sysroot: powerpc-ds213+-linux-gnuspe/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_ppc.tar.xz
-  strip_components: 1
 
 - name: ubnt_aarch64
   description: Ubiquiti Networks devices, UDM|UDM-Pro
   arch: aarch64
-  machines: ''
   prefix: aarch64-ubnt-linux-gnu-
   sysroot: aarch64-ubnt-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_aarch64.tar.xz
-  strip_components: 1
 
 - name: ubnt_mips64
   description: Ubiquiti Networks devices, USG|USG-Pro
   arch: mips64
-  machines: ''
   prefix: mips-ubnt-linux-gnu-
   sysroot: mips-ubnt-linux-gnu/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_mips64.tar.xz
-  strip_components: 1
 
 - name: vuplus4k_arm
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
   arch: arm
-  machines: ''
   prefix: arm-vuplus4k-linux-gnueabihf-
   sysroot: arm-vuplus4k-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_arm.tar.xz
-  strip_components: 1
 
 - name: vuplus4k_armv7
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
   arch: armv7
-  machines: ''
   prefix: armv7-vuplus4k-linux-gnueabihf-
   sysroot: armv7-vuplus4k-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7.tar.xz
-  strip_components: 1
 
 - name: vuplus4k_armv7a
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
   arch: armv7
-  machines: ''
   prefix: armv7a-vuplus4k-linux-gnueabihf-
   sysroot: armv7a-vuplus4k-linux-gnueabihf/sysroot
   confdir: /etc/tuxbox/config
   useflags: USE_LIBCRYPTO
-  cc_opts: ''
-  cflags: ''
-  ldflags: ''
-  make_vars: ''
-  stapi_lib: ''
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7a.tar.xz
-  strip_components: 1
