@@ -219,67 +219,50 @@ Switch.-on .switch--slider {
 }
 
 /* Toolchains screen */
-#tc-scroll {
+#tc-main {
+    height: 1fr;
+}
+
+#tc-browser {
+    width: 1fr;
     padding: 0 1;
 }
 
+#tc-browser DataTable {
+    height: auto;
+    max-height: 15;
+}
+
+#tc-right {
+    width: 1fr;
+    padding: 0 1;
+}
+
+#tc-actions {
+    height: 3;
+    align: right middle;
+}
+
+#tc-actions Button {
+    margin: 0 0 0 1;
+}
+
+#tc-detail {
+    margin: 0;
+    padding: 1 1;
+    height: auto;
+    border: solid #444444;
+    border-title-color: $accent;
+    border-title-style: bold;
+}
 
 #tc-output {
-    margin: 0 1;
-    height: 10;
+    margin: 1 0;
+    height: 1fr;
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
     padding: 0 1;
-}
-
-#tc-box {
-    margin: 1 1;
-    border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
-    height: auto;
-    padding: 0 1;
-}
-
-#tc-detail-box {
-    margin: 1 1;
-    border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
-    height: auto;
-    padding: 0 1;
-}
-
-#tc-installed {
-    margin: 0 1;
-    height: auto;
-    max-height: 12;
-    border: solid $primary;
-    border-title-color: $text;
-    border-title-style: bold;
-}
-
-#tc-available-table {
-    height: auto;
-    max-height: 20;
-}
-
-#tc-detail {
-    padding: 0 1;
-    height: auto;
-}
-
-#tc-search {
-    width: 40;
-}
-
-#tc-category {
-    width: 45;
-}
-
-#tc-select {
-    width: 50;
 }
 
 .repo-row {

@@ -5,28 +5,28 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
+import re
 import tarfile
 import threading
 from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Select, DataTable
+from textual.widgets import Static, Input, Button, Collapsible, DataTable
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry
 from ui.header import S4Header
 from ui.footer import S4Footer
 
-# Categories in display order
 CATEGORIES = [
-    ("common", "Common (universal)"),
-    ("stb", "STB (OE-Alliance/OpenPLi/OpenDreambox)"),
+    ("common", "Common"),
+    ("stb", "STB"),
     ("android", "Android"),
     ("openwrt", "OpenWrt"),
-    ("router", "Router (Fritz/Ubiquiti)"),
-    ("nas", "NAS (Synology/QNAP)"),
-    ("minipc", "Mini PC (RPi/Pogoplug)"),
+    ("router", "Router"),
+    ("nas", "NAS"),
+    ("minipc", "Mini PC"),
     ("tv", "TV"),
     ("legacy", "Legacy"),
     ("custom", "Custom"),
@@ -38,8 +38,6 @@ class ToolchainsScreen(Screen):
 
     _log_history: list[str] = []
     _selected_tc: str = ""
-    _selected_category: str = "all"
-    _search_text: str = ""
 
     def __init__(self) -> None:
         super().__init__()
@@ -60,23 +58,28 @@ class ToolchainsScreen(Screen):
 
         yield S4Header()
 
-        with VerticalScroll(id="tc-scroll"):
-            # Installed toolchains table
-            installed = reg.installed_toolchains()
-            table = DataTable(id="tc-installed", cursor_type="row", zebra_stripes=True)
-            yield table
+        with Horizontal(id="tc-main"):
+            # Left: Toolchain browser (half screen)
+            with VerticalScroll(id="tc-browser"):
+                # Installed (virtual category, always expanded)
+                installed = reg.installed_toolchains()
+                with Collapsible(title=f"Installed ({len(installed)})", collapsed=False, id="cat-installed"):
+                    table = DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
+                    yield table
 
-            # Output box
-            with VerticalScroll(id="tc-output"):
-                yield Static("", id="tc-output-text")
+                # Registry categories
+                for cat_key, cat_label in CATEGORIES:
+                    tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+                    if not tcs:
+                        continue
+                    with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
+                        table = DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+                        yield table
 
-            # Actions
-            with Vertical(id="tc-box"):
-                with Horizontal(classes="repo-actions-row"):
-                    cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
-                    yield Select(options=cat_options, value=ToolchainsScreen._selected_category, id="tc-category")
-                    yield Input(value=ToolchainsScreen._search_text, placeholder="Search...", id="tc-search")
-                    yield Static("", classes="spacer")
+            # Right: Details + Output
+            with Vertical(id="tc-right"):
+                # Actions
+                with Horizontal(id="tc-actions"):
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
                     yield install_btn
@@ -87,63 +90,61 @@ class ToolchainsScreen(Screen):
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
 
-                # Available toolchains table
-                avail_table = DataTable(id="tc-available-table", cursor_type="row", zebra_stripes=True)
-                yield avail_table
-
-            # Toolchain details
-            with Vertical(id="tc-detail-box"):
+                # Details
                 yield Static("", id="tc-detail")
+
+                # Output
+                with VerticalScroll(id="tc-output"):
+                    yield Static("", id="tc-output-text")
 
         yield S4Footer(active_screen="toolchains")
 
     def on_mount(self) -> None:
-        self.query_one("#tc-output", VerticalScroll).border_title = "Output"
-        self.query_one("#tc-box", Vertical).border_title = "Toolchains"
-        self.query_one("#tc-detail-box", Vertical).border_title = "Details"
+        reg = self._get_registry()
 
         # Populate installed table
-        reg = self._get_registry()
-        inst_table = self.query_one("#tc-installed", DataTable)
-        inst_table.add_columns("Name", "Description", "Category", "Arch")
+        tbl = self.query_one("#tbl-installed", DataTable)
+        tbl.add_columns("Name", "Arch", "Description")
         for tc in reg.installed_toolchains():
-            inst_table.add_row(tc.name, tc.description, tc.category, tc.arch, key=tc.name)
-        inst_table.border_title = f"Installed ({inst_table.row_count})"
+            tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
 
-        # Populate available table
-        self._populate_available_table()
+        # Populate category tables
+        for cat_key, _ in CATEGORIES:
+            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+            if not tcs:
+                continue
+            try:
+                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
+                tbl.add_columns("●", "Name", "Arch", "Description")
+                for tc in tcs:
+                    status = "●" if tc.installed else ""
+                    tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+            except Exception:
+                pass
+
+        # Border titles
+        self.query_one("#tc-detail", Static).border_title = "Details"
+        self.query_one("#tc-output", VerticalScroll).border_title = "Output"
 
         # Restore log
         if ToolchainsScreen._log_history:
             self._update_output()
 
-    def _populate_available_table(self) -> None:
-        """Fill the available toolchains table based on current filters."""
-        reg = self._get_registry()
-        try:
-            cat_sel = self.query_one("#tc-category", Select)
-            category = cat_sel.value if isinstance(cat_sel.value, str) else "all"
-        except Exception:
-            category = "all"
-        try:
-            search = self.query_one("#tc-search", Input).value.lower()
-        except Exception:
-            search = ""
+        # Restore selection
+        if ToolchainsScreen._selected_tc:
+            self._update_detail()
 
-        table = self.query_one("#tc-available-table", DataTable)
-        table.clear(columns=True)
-        table.add_columns("Status", "Name", "Description", "Category", "Arch")
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if event.row_key and event.row_key.value:
+            ToolchainsScreen._selected_tc = event.row_key.value
+            self._update_detail()
 
-        for tc in reg.toolchains:
-            if category != "all" and tc.category != category:
-                continue
-            if search and search not in tc.name.lower() and search not in tc.description.lower() and search not in tc.machines.lower():
-                continue
-            status = "●" if tc.installed else "○"
-            table.add_row(status, tc.name, tc.description, tc.category, tc.arch, key=tc.name)
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.row_key and event.row_key.value:
+            ToolchainsScreen._selected_tc = event.row_key.value
+            self._update_detail()
 
     def _update_detail(self) -> None:
-        """Update detail panel for selected toolchain."""
         try:
             name = ToolchainsScreen._selected_tc
             if not name:
@@ -156,8 +157,7 @@ class ToolchainsScreen(Screen):
             lines = [
                 f"  [bold]{tc.name}[/bold] — {tc.description}",
                 f"  Status:    {status}",
-                f"  Category:  {tc.category}",
-                f"  Arch:      {tc.arch}",
+                f"  Category:  {tc.category}     Arch: {tc.arch}",
             ]
             if tc.machines:
                 lines.append(f"  Machines:  {tc.machines}")
@@ -173,29 +173,13 @@ class ToolchainsScreen(Screen):
             if tc.stapi_lib:
                 lines.append(f"  STAPI:     {tc.stapi_lib}")
             if tc.url:
-                lines.append(f"  URL:       {tc.url}")
-            if tc.checksum:
-                lines.append(f"  Checksum:  {tc.checksum}")
+                url = tc.url[:80] + "..." if len(tc.url) > 80 else tc.url
+                lines.append(f"  URL:       {url}")
             self.query_one("#tc-detail", Static).update("\n".join(lines))
         except Exception:
             pass
 
-    def _save_state(self) -> None:
-        """Save current UI state before refresh."""
-        try:
-            sel = self.query_one("#tc-select", Select)
-            if isinstance(sel.value, str):
-                ToolchainsScreen._selected_tc = sel.value
-            cat = self.query_one("#tc-category", Select)
-            if isinstance(cat.value, str):
-                ToolchainsScreen._selected_category = cat.value
-            ToolchainsScreen._search_text = self.query_one("#tc-search", Input).value
-        except Exception:
-            pass
-
     def _refresh(self) -> None:
-        """Reload the screen."""
-        self._save_state()
         self._registry = None
         self.app.pop_screen()
         self.app.push_screen(ToolchainsScreen())
@@ -224,29 +208,8 @@ class ToolchainsScreen(Screen):
         thread = threading.Thread(target=wrapper, daemon=True)
         thread.start()
 
-    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Handle row selection in either table."""
-        if event.row_key and event.row_key.value:
-            ToolchainsScreen._selected_tc = event.row_key.value
-            self._update_detail()
-
-    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
-        """Update detail when cursor moves."""
-        if event.row_key and event.row_key.value:
-            ToolchainsScreen._selected_tc = event.row_key.value
-            self._update_detail()
-
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "tc-category":
-            self._populate_available_table()
-
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "tc-search":
-            self._populate_available_table()
-
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id
-
         if btn == "btn-install":
             self._handle_install()
         elif btn == "btn-check":
@@ -255,21 +218,17 @@ class ToolchainsScreen(Screen):
             self._handle_remove()
 
     def _handle_install(self) -> None:
-        """Download and install selected toolchain."""
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify("No toolchain selected", severity="warning")
             return
-
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
-
         if tc.installed:
             self.notify(f"{tc.name} is already installed", severity="warning")
             return
-
         if not tc.url:
             self.notify(f"{tc.name} has no download URL", severity="error")
             return
@@ -281,42 +240,36 @@ class ToolchainsScreen(Screen):
             downloads_dir = self.app.paths.downloads_dir
             downloads_dir.mkdir(parents=True, exist_ok=True)
 
-            # Resolve ${pversion}
             url = tc.url.replace("${pversion}", "0.27.0")
             filename = url.split("/")[-1]
             filepath = downloads_dir / filename
 
-            # Download
             self._log(f"Downloading {filename}...")
             try:
                 result = subprocess.run(
-                    ["wget", "-q", "--show-progress", "-O", str(filepath), url],
+                    ["wget", "-q", "-O", str(filepath), url],
                     capture_output=True, text=True, timeout=600,
                 )
                 if result.returncode != 0:
-                    # Try curl
                     result = subprocess.run(
-                        ["curl", "-L", "-o", str(filepath), url],
+                        ["curl", "-sL", "-o", str(filepath), url],
                         capture_output=True, text=True, timeout=600,
                     )
                 if result.returncode != 0:
-                    self._log(f"[red]Download failed[/red]")
+                    self._log("[red]Download failed[/red]")
                     return
             except Exception as e:
                 self._log(f"[red]Download failed: {e}[/red]")
                 return
 
-            # Verify checksum
             if tc.checksum:
                 self._log("Verifying checksum...")
-                ok = self._verify_checksum(filepath, tc.checksum)
-                if not ok:
+                if not self._verify_checksum(filepath, tc.checksum):
                     self._log("[red]Checksum mismatch![/red]")
                     filepath.unlink(missing_ok=True)
                     return
                 self._log("[green]Checksum OK[/green]")
 
-            # Extract using system tar (handles symlinks, absolute paths)
             self._log(f"Extracting to {install_dir.name}...")
             try:
                 install_dir.mkdir(parents=True, exist_ok=True)
@@ -333,25 +286,20 @@ class ToolchainsScreen(Screen):
                 shutil.rmtree(install_dir, ignore_errors=True)
                 return
 
-            # Run relocate-sdk.sh (Bootlin) or relocate_sdk.py (OE-SDK)
             self._relocate_toolchain(install_dir, tc)
-
             self._log(f"[green]{tc.name} installed successfully[/green]")
 
         self._run_in_thread(do_install)
 
     def _handle_check(self) -> None:
-        """Check if selected toolchain is working."""
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify("No toolchain selected", severity="warning")
             return
-
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
-
         if not tc.installed:
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
@@ -360,7 +308,6 @@ class ToolchainsScreen(Screen):
         install_dir = self.app.paths.toolchains_dir / tc.name
         ok = True
 
-        # Find gcc binary
         gcc = install_dir / "bin" / f"{tc.prefix}gcc"
         if not gcc.exists():
             found = list(install_dir.glob(f"**/bin/{tc.prefix}gcc"))
@@ -373,7 +320,6 @@ class ToolchainsScreen(Screen):
 
         self._log_sync(f"  gcc:       {gcc}")
 
-        # Check if gcc is executable (script or ELF)
         try:
             version = subprocess.check_output(
                 [str(gcc), "--version"], text=True, stderr=subprocess.STDOUT, timeout=10,
@@ -383,7 +329,6 @@ class ToolchainsScreen(Screen):
             self._log_sync(f"  [red]gcc not working: {e}[/red]")
             ok = False
 
-        # Target architecture
         try:
             target = subprocess.check_output(
                 [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.STDOUT, timeout=10,
@@ -392,7 +337,6 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
-        # Sysroot — use config value, not gcc -print-sysroot (unreliable for OE-SDKs)
         if tc.sysroot:
             sysroot_path = install_dir / tc.sysroot
             if sysroot_path.is_dir():
@@ -400,10 +344,7 @@ class ToolchainsScreen(Screen):
             else:
                 self._log_sync(f"  sysroot:   {tc.sysroot} [red]NOT FOUND[/red]")
                 ok = False
-        else:
-            self._log_sync(f"  sysroot:   [dim]not configured[/dim]")
 
-        # Check OE-SDK interpreter (was relocate successful?)
         nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
         if nss.is_dir():
             ranlib_bins = list(nss.glob("usr/bin/*/**/*-ranlib"))
@@ -419,29 +360,23 @@ class ToolchainsScreen(Screen):
                             if Path(interp).exists():
                                 self._log_sync(f"  relocate:  [green]OK[/green]")
                             else:
-                                self._log_sync(f"  relocate:  [red]FAILED — interpreter {interp} not found[/red]")
+                                self._log_sync(f"  relocate:  [red]FAILED — {interp}[/red]")
                                 ok = False
                             break
                 except Exception:
                     pass
 
-        if ok:
-            self._log_sync(f"  [green]{tc.name} OK[/green]")
-        else:
-            self._log_sync(f"  [red]{tc.name} has issues[/red]")
+        self._log_sync(f"  [green]{tc.name} OK[/green]" if ok else f"  [red]{tc.name} has issues[/red]")
 
     def _handle_remove(self) -> None:
-        """Remove selected installed toolchain."""
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify("No toolchain selected", severity="warning")
             return
-
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
-
         if not tc.installed:
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
@@ -453,8 +388,6 @@ class ToolchainsScreen(Screen):
         self._refresh()
 
     def _relocate_toolchain(self, install_dir: Path, tc: Toolchain) -> None:
-        """Run relocate-sdk.sh (Bootlin) or OE-SDK relocate_sdk.py."""
-        # Bootlin: relocate-sdk.sh
         relocate_sh = install_dir / "relocate-sdk.sh"
         if relocate_sh.exists():
             self._log("Running relocate-sdk.sh...")
@@ -467,26 +400,22 @@ class ToolchainsScreen(Screen):
                 pass
             return
 
-        # OE-SDK: relocate_sdk.py
         nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
         if not nss.is_dir():
             return
 
-        # Find gcc (may be a shell wrapper), resolve to real ELF via ranlib
         gcc_scripts = list(nss.glob("usr/bin/*/**/*-gcc"))
         gcc_scripts = [g for g in gcc_scripts if "++" not in g.name]
         if not gcc_scripts:
             return
 
-        # Use ranlib from same dir — it's always a real ELF binary
         gcc_dir = gcc_scripts[0].parent
         ranlib_bins = list(gcc_dir.glob("*-ranlib"))
         if not ranlib_bins:
             return
 
-        real_bin = ranlib_bins[0].resolve()  # resolve symlinks
+        real_bin = ranlib_bins[0].resolve()
 
-        # Read ELF interpreter
         interp = ""
         try:
             output = subprocess.check_output(
@@ -501,8 +430,6 @@ class ToolchainsScreen(Screen):
 
         if not interp:
             return
-
-        # Check if loader exists at expected path — if yes, no relocate needed
         if Path(interp).exists():
             return
 
@@ -510,7 +437,6 @@ class ToolchainsScreen(Screen):
         if not rpy.exists():
             return
 
-        # Derive old prefix and sdk loader
         old_prefix = interp.split("/sysroots/")[0] if "/sysroots/" in interp else ""
         if not old_prefix:
             return
@@ -521,9 +447,7 @@ class ToolchainsScreen(Screen):
 
         self._log(f"Relocating OE-SDK to {install_dir.name}...")
 
-        # Update old_prefix in relocate_sdk.py
         rpy_text = rpy.read_text(encoding="utf-8", errors="replace")
-        import re
         rpy_text = re.sub(
             r'old_prefix = .*',
             f'old_prefix = re.compile(b("{old_prefix}"))',
@@ -531,7 +455,6 @@ class ToolchainsScreen(Screen):
         )
         rpy.write_text(rpy_text, encoding="utf-8")
 
-        # Find all executables in native sysroot (same as s3)
         try:
             exec_files = subprocess.check_output(
                 ["find", str(nss), "-type", "f", "(", "-perm", "/0111", ")"],
@@ -549,7 +472,6 @@ class ToolchainsScreen(Screen):
                 self._log(f"[yellow]Relocate warning: {e}[/yellow]")
 
     def _verify_checksum(self, filepath: Path, checksum: str) -> bool:
-        """Verify file checksum. Format: 'md5:hash' or 'sha256:hash'."""
         if ":" not in checksum:
             return True
         algo, expected = checksum.split(":", 1)
@@ -564,21 +486,7 @@ class ToolchainsScreen(Screen):
                 h.update(chunk)
         return h.hexdigest() == expected
 
-    def _strip_components(self, directory: Path, levels: int) -> None:
-        """Simulate tar --strip-components by moving nested contents up."""
-        for _ in range(levels):
-            subdirs = [d for d in directory.iterdir() if d.is_dir()]
-            if len(subdirs) == 1:
-                subdir = subdirs[0]
-                for item in subdir.iterdir():
-                    item.rename(directory / item.name)
-                subdir.rmdir()
-            else:
-                break
-
     def action_go_back(self) -> None:
         ToolchainsScreen._log_history.clear()
         ToolchainsScreen._selected_tc = ""
-        ToolchainsScreen._selected_category = "all"
-        ToolchainsScreen._search_text = ""
         self.app.pop_screen()
