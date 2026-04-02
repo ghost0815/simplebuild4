@@ -29,7 +29,6 @@ class Toolchain:
     sysroot: str = ""              # Sysroot path relative to toolchain dir
 
     # Build defaults (copied to target on assignment)
-    useflags: str = ""             # USE flags (e.g. "USE_LIBCRYPTO USE_EXTRA")
     cc_opts: str = ""              # Compiler options → CC_OPTS
     cflags: str = ""               # Architecture C flags → EXTRA_CFLAGS
     ldflags: str = ""              # Linker flags → EXTRA_LDFLAGS
@@ -42,6 +41,7 @@ class Toolchain:
     url: str = ""                  # Download URL
     checksum: str = ""             # Format: "md5:hash" or "sha256:hash"
     strip_components: int = 1      # tar --strip-components
+    selfbuild: bool = False        # True if toolchain was built locally (not downloaded)
 
     # Runtime state (not persisted)
     installed: bool = False
@@ -49,7 +49,6 @@ class Toolchain:
     def build_defaults(self) -> dict[str, str]:
         """Return the build defaults that get copied into a target."""
         return {
-            "useflags": self.useflags,
             "cc_opts": self.cc_opts,
             "cflags": self.cflags,
             "ldflags": self.ldflags,
@@ -109,7 +108,6 @@ class ToolchainRegistry:
                 machines=entry.get("machines", ""),
                 prefix=entry.get("prefix", ""),
                 sysroot=entry.get("sysroot", ""),
-                useflags=entry.get("useflags", ""),
                 cc_opts=entry.get("cc_opts", ""),
                 cflags=entry.get("cflags", ""),
                 ldflags=entry.get("ldflags", ""),
@@ -118,6 +116,7 @@ class ToolchainRegistry:
                 url=entry.get("url", ""),
                 checksum=entry.get("checksum", ""),
                 strip_components=entry.get("strip_components", 1),
+                selfbuild=entry.get("selfbuild", False),
             )
             if tc.name:
                 result.append(tc)
@@ -140,7 +139,6 @@ class ToolchainRegistry:
                     "machines": tc.machines,
                     "prefix": tc.prefix,
                     "sysroot": tc.sysroot,
-                    "useflags": tc.useflags,
                     "cc_opts": tc.cc_opts,
                     "cflags": tc.cflags,
                     "ldflags": tc.ldflags,
@@ -149,6 +147,7 @@ class ToolchainRegistry:
                     "url": tc.url,
                     "checksum": tc.checksum,
                     "strip_components": tc.strip_components,
+                    "selfbuild": tc.selfbuild,
                 }
                 for tc in toolchains
             ]

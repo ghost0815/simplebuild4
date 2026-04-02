@@ -4,13 +4,12 @@
 #
 # - name: my_toolchain              # Unique identifier (required)
 #   description: "My custom TC"     # Human-readable description
-#   category: common              # Category: standard, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
+#   category: common                # Category: common, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
 #   prefix: aarch64-linux-gnu-      # Compiler prefix (required), e.g. arm-linux-gnueabihf-
 #   sysroot: sysroot                # Sysroot path relative to toolchain directory (required)
-#   useflags: "USE_LIBCRYPTO"       # Default USE flags, space-separated
-#   cc_opts: "-mbranch-protection=standard"  # Compiler options → passed as CC_OPTS to make
+#   cc_opts: ""                     # Compiler options → passed as CC_OPTS to make
 #   cflags: "-mfpu=vfpv3-d16"      # Architecture-specific C flags → EXTRA_CFLAGS
 #   ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1"  # Linker flags → EXTRA_LDFLAGS
 #   make_vars: "LIB_RT= LIB_PTHREAD="  # Raw make variable assignments (e.g. for Android)
@@ -18,8 +17,9 @@
 #   url: https://example.com/tc.tar.gz  # Download URL
 #   checksum: "sha256:abc123..."    # Download verification: "md5:hash" or "sha256:hash"
 #   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
+#   selfbuild: false                # true if toolchain was built locally (not downloaded)
 #
-# Categories: standard (Bootlin generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
+# Categories: common (universal/generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
 #   android, openwrt, router (Fritz/Ubiquiti), nas (Synology/QNAP),
 #   minipc (RPi/Pogoplug), tv, legacy, custom (user-defined)
 #
@@ -27,7 +27,7 @@
 # - 'name', 'prefix' and 'sysroot' are required, all others are optional
 # - Empty fields can be omitted
 # - User additions go to data/toolchains.local.yaml (not tracked by git)
-# - When assigned to a target, useflags/cc_opts/cflags/ldflags/make_vars
+# - When assigned to a target, cc_opts/cflags/ldflags/make_vars
 #   are copied as defaults and can be customized per target
 
 toolchains:
@@ -38,7 +38,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-buildroot-linux-gnu-
   sysroot: aarch64-buildroot-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:abae0522480b9f37ff6cee4249e147e7cb78e1997cc6f76dba7e0fb8ec04221d
 
@@ -48,7 +47,6 @@ toolchains:
   arch: armv5
   prefix: armv5-eabi-buildroot-linux-musleabi-
   sysroot: armv5-eabi-buildroot-linux-musleabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f6d91d016e0025c927e68a9cf62e4c49a88b46b6f26eb0f52ddd22265588aafe
 
@@ -58,7 +56,6 @@ toolchains:
   arch: armv6
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/armv6-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f3d5bc10a3883dd40f0ea681714d6a834b49f2418f3ec3a406feedb697691e20
 
@@ -68,7 +65,6 @@ toolchains:
   arch: armv7
   prefix: arm-buildroot-linux-gnueabihf-
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:c8d4d3ca70442652e0e72f57ae6e878375640508f1e08de3152f63414c43b2e4
 
@@ -78,7 +74,6 @@ toolchains:
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
   sysroot: mipsel-buildroot-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:5b838521093a9b8c521ff518cc33e80ce8649b1c795013a47e167b79c175c049
 
@@ -88,7 +83,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-buildroot-linux-gnu-
   sysroot: powerpc-buildroot-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:b06fd8740248309146e212214abf60ae4ba2018480ec42155286cafdcb401af4
 
@@ -98,7 +92,6 @@ toolchains:
   arch: sh4
   prefix: sh4-buildroot-linux-gnu-
   sysroot: sh4-buildroot-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/sh-sh4/tarballs/sh-sh4--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:0845d8e46d8c0d9a79cfb1c054fc1a8631e48b220d5b11e4f166decd2b532997
 
@@ -109,7 +102,6 @@ toolchains:
   machines: dreamone dreamtwo
   prefix: aarch64-oe-linux-
   sysroot: sysroots/aarch64-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mbranch-protection=standard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-aarch64_oealliance_5.6.tar.xz
@@ -122,7 +114,6 @@ toolchains:
   machines: dreamone dreamtwo
   prefix: aarch64-oe-linux-
   sysroot: sysroots/aarch64-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mbranch-protection=standard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-aarch64_oealliance_6.0.tar.xz
@@ -135,7 +126,6 @@ toolchains:
   machines: dreamone dreamtwo
   prefix: aarch64-oe-linux-
   sysroot: sysroots/aarch64-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-aarch64_opendreambox_pyro.tar.xz
   checksum: sha256:7f41146c1f3023437602d0c80f4d9df4bf13b7e540de596f095a00c92619bdae
@@ -148,7 +138,6 @@ toolchains:
     vuuno4kse vuzero4k galaxy4k revo4k
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/armv7ahf-neon-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -march=armv7-a -mfpu=neon -mfloat-abi=hard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-armv7ahf_openpli_scarthgap.tar.xz
@@ -161,7 +150,6 @@ toolchains:
   machines: osmini4k osmio4k osmio4kplus
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/armv7vehf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-armv7vehf_openpli_scarthgap.tar.xz
@@ -179,7 +167,6 @@ toolchains:
     vuduo4k vuduo4kse vusolo4k vuultimo4k vuuno4k vuuno4kse vuzero4k
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_oealliance_5.6.tar.xz
@@ -197,7 +184,6 @@ toolchains:
     vuduo4k vuduo4kse vusolo4k vuultimo4k vuuno4k vuuno4kse vuzero4k et13000 et1x000
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_oealliance_6.0.tar.xz
@@ -210,7 +196,6 @@ toolchains:
   machines: dm900 dm920
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_opendreambox_krogoth.tar.xz
@@ -223,7 +208,6 @@ toolchains:
   machines: dm900 dm920
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_opendreambox_pyro.tar.xz
@@ -239,7 +223,6 @@ toolchains:
     i55plus i55se
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa15hf_openpli_scarthgap.tar.xz
@@ -252,7 +235,6 @@ toolchains:
   machines: h8 hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_oealliance_5.6.tar.xz
@@ -265,7 +247,6 @@ toolchains:
   machines: h8 hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_oealliance_6.0.tar.xz
@@ -278,7 +259,6 @@ toolchains:
   machines: sfx6008 h8
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7hf_openpli_scarthgap.tar.xz
@@ -291,7 +271,6 @@ toolchains:
   machines: hzero
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7t2hf-vfp-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mthumb -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7thf_openpli_scarthgap.tar.xz
@@ -303,7 +282,6 @@ toolchains:
   arch: arm
   prefix: arm-cortexa7vfp-linux-gnueabihf-
   sysroot: arm-cortexa7vfp-linux-gnueabihf/sysroot
-  useflags: USE_UTF8 USE_LIBCRYPTO
   cflags: -mfpu=vfp
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa7vfp_arm.tar.xz
   checksum: sha256:886604b9f51464e672656662f8cbf19e465272cf74f7dad64abc452c42de8999
@@ -315,7 +293,6 @@ toolchains:
   machines: u41 u42 u43 u45
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa9hf_oealliance_5.6.tar.xz
@@ -328,7 +305,6 @@ toolchains:
   machines: u41 u42 u43 u45
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa9hf-neon-oe-linux-gnueabi
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9
   ldflags: -Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-cortexa9hf_oealliance_6.0.tar.xz
@@ -341,7 +317,6 @@ toolchains:
   machines: hd1100 hd500c
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-nf-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mel -mabi=32 -msoft-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el-nf_openpli_scarthgap.tar.xz
   checksum: sha256:b025d145ef959198022d2249dea60916cc2825cc0e9528883064e3d3c318bb22
@@ -362,7 +337,6 @@ toolchains:
     vuzero et10000 et4x00 et5x00 et6x00 et7x00 et8000 et8500 et9x00
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -EL -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_oealliance_5.6.tar.xz
   checksum: sha256:e6a7e7f14064a38de55a50b5dcf5fbb7d09a2080034cf16a1dfaf45ed475c0d1
@@ -383,7 +357,6 @@ toolchains:
     xp1000 et10000 et4x00 et5x00 et6x00 et7x00 et8000 et8500 et9x00
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -EL -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_oealliance_6.0.tar.xz
   checksum: sha256:5b7e30fc47c3c4123858ade1216cc3aeb7a8db84afe0553cef849f1c26d27358
@@ -395,7 +368,6 @@ toolchains:
   machines: dm500hdv2 dm520 dm7020hd dm7020hdv2 dm7080 dm8000 dm800sev2 dm820 qemumipsel
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mel -mabi=32 -mhard-float -march=mips32
   ldflags: -Wl,--dynamic-linker=/lib/ld-2.23.so
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_opendreambox_krogoth.tar.xz
@@ -408,7 +380,6 @@ toolchains:
   machines: dm520 dm7080 dm820
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mel -mabi=32 -mhard-float -march=mips32
   ldflags: -Wl,--dynamic-linker=/lib/ld-2.25.so
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_opendreambox_pyro.tar.xz
@@ -426,7 +397,6 @@ toolchains:
     et5x00 et6x00 et7x00 et8000 et8500 et9x00 h3 h4 h5 h6 i55 lc sh1
   prefix: mipsel-oe-linux-
   sysroot: sysroots/mips32el-oe-linux
-  useflags: USE_LIBCRYPTO USE_EXTRA
   cflags: -mel -mabi=32 -mhard-float -march=mips32
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-mips32el_openpli_scarthgap.tar.xz
   checksum: sha256:70edbbad5858e45d125677d217928a0199a8fff66c47d52858404dbdc817bcd1
@@ -437,7 +407,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=29 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -453,7 +422,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=30 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -469,7 +437,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=31 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -485,7 +452,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=33 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -501,7 +467,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=34 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -517,7 +482,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=35 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -533,7 +497,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=24 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -549,7 +512,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=26 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -565,7 +527,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-androideabi-
   sysroot: sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -march=armv7-a -mtune=cortex-a9 -mfloat-abi=softfp -mfpu=vfpv3-d16 -U__ANDROID_API__
     -DANDROID -D__ANDROID_API__=28 -fpic -fno-addrsig -funwind-tables -fstack-protector-strong
     -no-canonical-prefixes -Wno-unused-but-set-variable -Wno-invalid-command-line-argument
@@ -581,7 +542,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-buildroot-linux-musl-
   sysroot: aarch64-buildroot-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:0798b1b11969b0a6f792ae52f19e8da40d7fcce147d6c202fe27e1a43345375d
 
@@ -591,7 +551,6 @@ toolchains:
   arch: armv5
   prefix: arm-buildroot-linux-musleabi-
   sysroot: arm-buildroot-linux-musleabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:4734ebcde0fa185132f0fa6aebe104a05ed78b28ba97290504e9f599c948ba1c
 
@@ -601,7 +560,6 @@ toolchains:
   arch: armv6
   prefix: arm-buildroot-linux-musleabihf-
   sysroot: arm-buildroot-linux-musleabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/armv6-eabihf--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:c49d8fa512bd98eeacff91924cdc05342e0cffcca325f87ca3d076e950af5116
 
@@ -610,7 +568,6 @@ toolchains:
   category: openwrt
   arch: mips
   prefix: mips-openwrt-linux-uclibc-
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-openwrt1505cc.tar.xz
   checksum: sha256:648118bc1d3e64e19be4ceefcf90e9d70ccd0c85b79d0d38bbf56ec53fc95d0e
 
@@ -620,7 +577,6 @@ toolchains:
   arch: mips
   prefix: mips-ar71xx-linux-musl-
   sysroot: mips-ar71xx-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ar71xx_mips.tar.xz
   checksum: sha256:24310a4d518c33d4fa2f01bd5205a32415017dfdbe7c72f43e2f5e8b703f3b98
 
@@ -630,7 +586,6 @@ toolchains:
   arch: mips
   prefix: mips-ath79-linux-musl-
   sysroot: mips-ath79-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ath79_mips.tar.xz
   checksum: sha256:9c701159010a1ad763ed6100d63d520fb9e8ab58112d500ea7b0c3dd770b9f1f
 
@@ -640,7 +595,6 @@ toolchains:
   arch: arm
   prefix: arm-kirkwood-linux-musleabi-
   sysroot: arm-kirkwood-linux-musleabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_kirkwood_arm.tar.xz
   checksum: sha256:79bfbf6c7dcc6335f894d287da41ca91aeb90c8c43eeccfe7c35565845b1467b
 
@@ -650,7 +604,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-mediatek-linux-musl-
   sysroot: aarch64-mediatek-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mediatek_armv8.tar.xz
   checksum: sha256:bd6a3cbb3cf4a51cc262570095bebb4c5453cb0429b7d748dada69b3ca874564
 
@@ -660,7 +613,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-mpc85xx-linux-musl-
   sysroot: powerpc-mpc85xx-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_mpc85xx_ppc.tar.xz
   checksum: sha256:9ef39c603bff3153867a31c4dac2d9311d7887dd9a5237d84f712de5ed26987c
 
@@ -670,7 +622,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-ramips-linux-musl-
   sysroot: mipsel-ramips-linux-musl/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_ramips_mips.tar.xz
   checksum: sha256:bce92586d688c39031b58713de5b8ac810f4d1c245277cf31c9d74ace7a9e05e
 
@@ -680,7 +631,6 @@ toolchains:
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv6.tar.xz
   checksum: sha256:b8d80b5ecd9a4e2a7d44ff2612fde7d4a11cb6bd5b5ef5bd0710d6a1ce694cc6
 
@@ -690,7 +640,6 @@ toolchains:
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-owrt_rpi_armv7.tar.xz
   checksum: sha256:7c9366af0eef2e859e47a42091076b8afbb7a2952f7b53125ccfbb02e56adfc9
 
@@ -701,7 +650,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz.tar.xz
   checksum: sha256:522bc4ac2649209b0ba3e756cd74585f9995c1845089059fde3e9f1f5a3a5d39
 
@@ -712,7 +660,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz.tar.xz
   checksum: sha256:53e0b143e494652332c21c5d5f7d9eb586be2263b94772fc5aaa35d3f5366355
@@ -723,7 +670,6 @@ toolchains:
   arch: mips
   prefix: mips-linux-uclibc-
   sysroot: usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4020_7362_ssl_multi_mips-freetz.tar.xz
   checksum: sha256:85acfffc4e2487578a19d19983d7dd87fda2c0de24ae320a7d4fc846bfe5f1f8
 
@@ -734,7 +680,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-uclibcgnueabi-
   sysroot: usr
-  useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz.tar.xz
   checksum: sha256:fc0d3ce8073e51315166761b3d4cb3e336a398c47d783de941345af67dd371c1
@@ -745,7 +690,6 @@ toolchains:
   arch: i686
   prefix: i686-linux-uclibc-
   sysroot: usr
-  useflags: USE_LIBCRYPTO
   ldflags: -Wl,-dynamic-linker,/usr/lib/freetz/ld-uClibc.so.0
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz.tar.xz
   checksum: sha256:0301ba8c584422ecf2d40f82295109a9c2fb96bd5c06a266f49b152e84db5e30
@@ -755,7 +699,6 @@ toolchains:
   category: router
   arch: mips
   prefix: mips-linux-uclibc-
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Fritz73xxOS65X.tar.xz
   checksum: sha256:88c2d31cacf21e541afc56add35420169713ecbeca4981407e295eda19e3c989
 
@@ -764,7 +707,6 @@ toolchains:
   category: router
   arch: mips
   prefix: mips-linux-uclibc-
-  useflags: USE_UTF8 USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Fritz74xxOS65X.tar.xz
   checksum: sha256:0794173496d7bb7937a690f4fe49bff7ed03841498c49a6ff6d070bc0903b4f8
 
@@ -774,7 +716,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-ubnt-linux-gnu-
   sysroot: aarch64-ubnt-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_aarch64.tar.xz
   checksum: sha256:19b8a52da346d4174dfd35de2703bf16ae8278da29b5401914064ebb43726eda
 
@@ -784,7 +725,6 @@ toolchains:
   arch: mips64
   prefix: mips-ubnt-linux-gnu-
   sysroot: mips-ubnt-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-ubnt_mips64.tar.xz
   checksum: sha256:57e4d27d6808e87eddaf9e2e1ebfa13d0ac954076960ba796a5f4405abee1057
 
@@ -794,7 +734,6 @@ toolchains:
   arch: armv5
   prefix: arm-qnap-linux-gnueabi-
   sysroot: arm-qnap-linux-gnueabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv5.tar.xz
   checksum: sha256:8804c588db391438b3ccd3578636c7bd65536631c6a3a8390af4aca97f6799f0
 
@@ -804,7 +743,6 @@ toolchains:
   arch: armv7
   prefix: armv7-qnap-linux-gnueabihf-
   sysroot: armv7-qnap-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_armv7.tar.xz
   checksum: sha256:91572be25abc51d335977272f3aefb6bc0b3770f55a8c97c87b60ce02e92a52a
 
@@ -814,7 +752,6 @@ toolchains:
   arch: x86_64
   prefix: x86_64-qnap-linux-gnu-
   sysroot: x86_64-qnap-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-qnap_x64.tar.xz
   checksum: sha256:13030a0cf981758a2123289e7ab598fb05ecbc973b17f2c95bc9bbcf0ff02edc
 
@@ -823,7 +760,6 @@ toolchains:
   category: nas
   arch: x86_64
   prefix: x86_64-linux-gnu-
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Syn_Atom.tar.xz
   checksum: sha256:e1c187804b1403519615ca5908501bc02167e882f0af4b7015c0cf61ba628079
 
@@ -833,7 +769,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-ds418-linux-gnu-
   sysroot: aarch64-ds418-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_aarch64.tar.xz
   checksum: sha256:3bef80e3dceb0a0eb1c819d1c46e16e66785bfd545521ef9c2d44a7a7a569687
 
@@ -843,7 +778,6 @@ toolchains:
   arch: armv5
   prefix: arm-synology-linux-gnueabi-
   sysroot: arm-synology-linux-gnueabi/sysroot
-  useflags: USE_LIBCRYPTO
   cflags: -DNO_PTHREAD_STACKSIZE
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv5.tar.xz
   checksum: sha256:6e35a78ba4d42e0882532cddd1a22656057ebc8c8596e2df11f36a0b8e5cecc4
@@ -854,7 +788,6 @@ toolchains:
   arch: armv7
   prefix: arm-ds216_play-linux-gnueabi-
   sysroot: arm-ds216_play-linux-gnueabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7.tar.xz
   checksum: sha256:7fdaf18b9c5ae7e4a86f3cac742ad7b9cc68d5d44874a9678549db33b4d26de3
 
@@ -864,7 +797,6 @@ toolchains:
   arch: armv7
   prefix: arm-marvell-linux-gnueabi-
   sysroot: arm-marvell-linux-gnueabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_armv7a.tar.xz
   checksum: sha256:10b1b0b767b2054c83f95a34832a43b9abd3e09a9370304f2d9b34614e59b965
 
@@ -874,7 +806,6 @@ toolchains:
   arch: powerpc
   prefix: powerpc-ds213+-linux-gnuspe-
   sysroot: powerpc-ds213+-linux-gnuspe/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-synology_ppc.tar.xz
   checksum: sha256:e590ba14b2331465771ab85db2281065d7d1ec785c86b93f60a6f5695592838d
 
@@ -884,7 +815,6 @@ toolchains:
   arch: x86
   prefix: i686-igel-linux-gnu-
   sysroot: i686-igel-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-igel_x86.tar.xz
   checksum: sha256:6c4683874a6880225f3204488c0926d026196f0e3c2c99c61732445f60fbf9d1
 
@@ -894,7 +824,6 @@ toolchains:
   arch: arm
   prefix: arm-pogoplug-linux-gnueabi-
   sysroot: arm-pogoplug-linux-gnueabi/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-pogoplug_arm.tar.xz
   checksum: sha256:ac053d6e93f3adb09ac94fc76b34e875f234ee093788351f19e3816d1d8be65b
 
@@ -904,7 +833,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-rpi3-linux-gnu-
   sysroot: aarch64-rpi3-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_aarch64.tar.xz
   checksum: sha256:21c2f4e7c3fa784db880ad99dab4a20c216b7364e20647f1a0f43cc25b82dda1
 
@@ -914,7 +842,6 @@ toolchains:
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
   sysroot: armv6-rpi1-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv6.tar.xz
   checksum: sha256:5ce835a7dc11fcde28d892703ef7524affefd18f3ea9a78f2774eae3e50387b0
 
@@ -924,7 +851,6 @@ toolchains:
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
   sysroot: armv7-rpi2-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv7.tar.xz
   checksum: sha256:68b65b8ba66138b809c1261c5afe9fb7323f5b47719189ec17503ee7cbfa6df2
 
@@ -934,7 +860,6 @@ toolchains:
   arch: arm
   prefix: armv8-rpi3-linux-gnueabihf-
   sysroot: armv8-rpi3-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-rpi_armv8.tar.xz
   checksum: sha256:07b442b9d273e89f0add817aee396a25940b9234f537ebc7277e94f5dd14d656
 
@@ -944,7 +869,6 @@ toolchains:
   arch: arm
   prefix: arm-v7a8v3r1-linux-gnueabi-
   sysroot: arm-v7a8v3r1-linux-gnueabi/sys-root/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SamsungTV.tar.xz
   checksum: sha256:4632a7b5ae6ef41c2db3801856d7b82e32479ceff66e008d7f44235e35000c4f
 
@@ -954,7 +878,6 @@ toolchains:
   arch: arm
   prefix: arm-newnigma2-linux-gnueabihf-
   sysroot: arm-newnigma2-linux-gnueabihf
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-arm_dream.tar.xz
   checksum: sha256:85bb8811a72d0d6a7661318a22e5fc73c93d6395c0f98f7e19a5c997f2a008fa
 
@@ -964,7 +887,6 @@ toolchains:
   arch: arm
   prefix: arm-cx2450x-linux-gnueabi-
   sysroot: arm-cx2450x-linux-gnueabi/sys-root/usr
-  useflags: USE_COOLAPI
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Coolstream_s_u_p.tar.xz
   checksum: sha256:0fa3755c40afd82ce0dcc15dcbe2216dfc8d3f6495c63b512dac24196ca9710c
 
@@ -974,7 +896,6 @@ toolchains:
   arch: arm
   prefix: arm-pnx8400-linux-uclibcgnueabi-
   sysroot: arm-pnx8400-linux-uclibcgnueabi/sys-root/usr
-  useflags: USE_LIBCRYPTO USE_COOLAPI2
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Cool2_s_u_p.tar.xz
   checksum: sha256:285fd6764fc397d9a090a9afb45a2e23c3f8d4ca7a66d98ed2a4a3844d93ebab
 
@@ -984,7 +905,6 @@ toolchains:
   arch: csky
   prefix: csky-linux-
   sysroot: csky-linux/libc
-  useflags: USE_GXAPI
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-csky.tar.xz
   checksum: sha256:0958d22eef925b1a50795a1975b805f56693182f4da627a4d8b39ee2048a54c5
 
@@ -994,7 +914,6 @@ toolchains:
   arch: arm
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
-  useflags: USE_LIBCRYPTO
   url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
   checksum: md5:636fd2655e931f23dc7136bbd3851101
 
@@ -1004,7 +923,6 @@ toolchains:
   arch: arm
   prefix: arm-none-linux-gnueabi-
   sysroot: arm-none-linux-gnueabi/libc/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dockstar_s_u_p.tar.xz
   checksum: sha256:c4bae607d43e14c031e79cbe065759b1c9230e1c18bf40e2e6c65d5cb6f83237
 
@@ -1014,7 +932,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-dreambox-linux-gnu-
   sysroot: aarch64-dreambox-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_aarch64.tar.xz
   checksum: sha256:e3329fbb91e245abf6277174414907a9967a1ec631875491fb08e27f1a524edf
 
@@ -1024,7 +941,6 @@ toolchains:
   arch: arm
   prefix: arm-dreambox-linux-gnueabihf-
   sysroot: arm-dreambox-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_arm.tar.xz
   checksum: sha256:a634582ee6de874865b6f92dab523fbd452c7c84bb6ef55ba627b6951eac6f89
 
@@ -1034,7 +950,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-dreambox-linux-gnu-
   sysroot: mipsel-dreambox-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-dream_mipsel.tar.xz
   checksum: sha256:8e8c74ff8e2b9c729f54ec58a36ebd144adda9ba235ba8648eab627d1c21aab3
 
@@ -1044,7 +959,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-dream_one-linux-gnu-
   sysroot: aarch64-dream_one-linux-gnu/sysroot/
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-dream_one.tar.xz
   checksum: sha256:4763ccee1e715289114f3fa8986242ca3481e1defc6457f9c3c7d7965a42c6d8
 
@@ -1054,7 +968,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-newnigma2-linux-gnu-
   sysroot: mipsel-newnigma2-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dreambox-HW_s_u_p.tar.xz
   checksum: sha256:342a0a59b5ef728f42f52a49d84142291cde0ec26097af94c996b44a420a6a22
 
@@ -1064,7 +977,6 @@ toolchains:
   arch: arm
   prefix: arm-unknown-linux-gnueabihf-
   sysroot: arm-unknown-linux-gnueabihf/sys-root/
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-hd51.tar.xz
   checksum: sha256:1f4a24d76e7b5e6c900f3db76d0b317cafc5dd3805b4f8e4fcbc7428ca9e8930
 
@@ -1081,7 +993,6 @@ toolchains:
   category: legacy
   arch: arm
   prefix: arm-none-linux-gnueabi-
-  useflags: USE_LIBCRYPTO USE_MCA
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Matrix_s.tar.xz
   checksum: sha256:b157d35dd07fd634c6e298146f3197f4d6619e7667ac9afb368a1e2335c07f49
 
@@ -1091,7 +1002,6 @@ toolchains:
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
   sysroot: mipsel-buildroot-linux-gnu/sysroot
-  useflags: USE_UTF8 USE_LIBCRYPTO
 
 - name: mipsel
   description: Dreambox & VU+ (OE 1.6)
@@ -1099,7 +1009,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sys-root/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE1.6_s_u_p.tar.xz
   checksum: sha256:7e554e152e172f735c17483bcb659b80154d8a429dadf8689472375e725c4e7e
 
@@ -1109,7 +1018,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
   checksum: sha256:dce6ceda5bc829ae8d462b21c62b58f533cf57d3aa654bcb84d036ceb5a7066c
 
@@ -1119,7 +1027,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
   checksum: sha256:23c0c0938e5012cfffd369ef0d970453cdfcd442b1cfd924ef25c87080247691
 
@@ -1129,7 +1036,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
   sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
   checksum: sha256:110607cc3395002360f826303cb30b9dde1c561a6f58b64369314b1edc881b60
 
@@ -1138,7 +1044,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-unknown-linux-gnu-
   sysroot: mipsel-unknown-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE2.0_s_u_p.tar.xz
   checksum: sha256:d9add89853a5382e3be113b0feacb15db83d4aa7ca50ce9828fb2c645e084e88
 
@@ -1148,7 +1053,6 @@ toolchains:
   arch: armv7
   prefix: armv7-oe20-linux-gnueabihf-
   sysroot: armv7-oe20-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_armv7.tar.xz
   checksum: sha256:dc7f00205a240a69c96d9bd69ab62598c1a31d27f2efd08accb8cc540c4d01f9
 
@@ -1158,7 +1062,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-oe20-linux-gnu-
   sysroot: mipsel-oe20-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_mipsel.tar.xz
   checksum: sha256:ee6ebbbdafd51b41d93c8746444b19572763052c2c81c893a293bd198ccd6b83
 
@@ -1168,7 +1071,6 @@ toolchains:
   arch: sh4
   prefix: sh4-oe20-linux-gnu-
   sysroot: sh4-oe20-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh4.tar.xz
   checksum: sha256:22c1b7c58b826e3ba5f3e4984ad423367e675be893a5c156043426157c407b4d
 
@@ -1177,7 +1079,6 @@ toolchains:
   category: legacy
   prefix: sh-oe20-linux-gnu-
   sysroot: sh-oe20-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-oe20_sh_multilib.tar.xz
   checksum: sha256:c9407c92f5b74cedfc7cdf46a8c1ac2f48046f9e443dc7286af86c4e79447e73
 
@@ -1187,7 +1088,6 @@ toolchains:
   arch: mipsel
   prefix: mipsel-openpli40-linux-gnu-
   sysroot: mipsel-openpli40-linux-gnu/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-OpenPLI_4.0.tar.xz
   checksum: sha256:3d65103a6a0e783c4b2ea86c37ee894120c8109434fa0cfe3fd181b6a85762c4
 
@@ -1197,7 +1097,6 @@ toolchains:
   arch: aarch64
   prefix: aarch64-osmio4k-linux-gnu-
   sysroot: aarch64-osmio4k-linux-gnu/sysroot/
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-osmio4k.tar.xz
   checksum: sha256:79ebec6f61abdca896681c09de623d753834514a122367522710434a5e0f4b7b
 
@@ -1206,7 +1105,6 @@ toolchains:
   category: legacy
   arch: powerpc
   prefix: powerpc-linux-
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-PPC-Tuxbox-old_s.tar.xz
   checksum: sha256:a9f1a0dc598d01348f726467f696a430da320825580101fad6c6aaabcbb9a7d0
 
@@ -1216,7 +1114,6 @@ toolchains:
   arch: arm
   prefix: arm-bcm2708hardfp-linux-gnueabi-
   sysroot: arm-bcm2708hardfp-linux-gnueabi/sysroot/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Raspberrypi_hard_s_u_p.tar.xz
   checksum: sha256:ce4182d3eebc2e69c3112773854a68d3cf6f36e58c40072d62013bece9dab24c
 
@@ -1226,7 +1123,6 @@ toolchains:
   arch: sh4
   prefix: sh4-linux-
   sysroot: sh4-linux/sys-root/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SH4_s_u_p.tar.xz
   checksum: sha256:db3602e495abbbb8ff88a52010bc6178a5d10c7c60bbc17cdb069c69997330f7
 
@@ -1236,7 +1132,6 @@ toolchains:
   arch: sh4
   prefix: sh4-streamboard-linux-gnu-
   sysroot: sh4-streamboard-linux-gnu/sysroot/usr
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-NEWSH4-Streamboard_s_u_p.tar.xz
   checksum: sha256:da9f4faba56c06ea482959313f07d6065cb61d06e87cf826ba849c38b036b6ce
 
@@ -1246,7 +1141,6 @@ toolchains:
   arch: arm
   prefix: arm-linux-gnueabihf-
   sysroot: arm-linux-gnueabihf
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-solo4k.tar.xz
   checksum: sha256:77bd785e3bc4feb725118996ec9b3c98fff3d483982459424a13b604e5ddc60f
 
@@ -1256,7 +1150,6 @@ toolchains:
   arch: arm
   prefix: arm-vuplus4k-linux-gnueabihf-
   sysroot: arm-vuplus4k-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_arm.tar.xz
   checksum: sha256:f0eb3d0b8ead9198cc57d842aab8b735d904fbe2ad9d1e626453620226c2558f
 
@@ -1266,7 +1159,6 @@ toolchains:
   arch: armv7
   prefix: armv7-vuplus4k-linux-gnueabihf-
   sysroot: armv7-vuplus4k-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7.tar.xz
   checksum: sha256:8970a65246c85f59a445b91ab1d0251a3143ec18a914c5bb711c11a040841862
 
@@ -1276,7 +1168,6 @@ toolchains:
   arch: armv7
   prefix: armv7a-vuplus4k-linux-gnueabihf-
   sysroot: armv7a-vuplus4k-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_armv7a.tar.xz
   checksum: sha256:55cdf003df595d3b6bbac2821d580f66ba85da96d8dd801f4f1c0385da91c0f1
 
@@ -1286,6 +1177,5 @@ toolchains:
   arch: armv7
   prefix: armv7-vusolo4k_atv-linux-gnueabihf-
   sysroot: armv7-vusolo4k_atv-linux-gnueabihf/sysroot
-  useflags: USE_LIBCRYPTO
   url: https://simplebuild.dedyn.io/toolchains/${pversion}/Toolchain-vuplus4k_arm.tar.xz
   checksum: sha256:f0eb3d0b8ead9198cc57d842aab8b735d904fbe2ad9d1e626453620226c2558f
