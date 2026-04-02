@@ -331,6 +331,7 @@ class ToolchainsScreen(Screen):
     def do_add(self) -> None:
         """F10 — execute library actions (install/update)."""
         if not self._is_libs_tab_active():
+            self.notify("Switch to Libraries tab first", severity="warning")
             return
 
         name = ToolchainsScreen._selected_tc

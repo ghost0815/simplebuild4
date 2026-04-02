@@ -21,7 +21,8 @@ SCREEN_MAP = {
 }
 
 # Screens where Add/Remove are available
-ADD_REMOVE_SCREENS = {"main", "repository", "toolchains"}
+ADD_REMOVE_SCREENS = {"main", "repository"}
+UPDATE_SCREENS = {"toolchains"}
 
 
 class FooterItem(Static):
@@ -118,11 +119,14 @@ class S4Footer(Horizontal):
         # Spacer
         yield FooterSpacer()
 
-        # Right: Add/Update / Remove
-        add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
-        add_label = "Update" if self._active_screen == "toolchains" else "Add"
-        yield FooterItem(key="F10", label=add_label, action="action_add", disabled=add_disabled)
-        yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=add_disabled)
+        # Right: F10 Add/Update, F11 Remove
+        if self._active_screen in UPDATE_SCREENS:
+            yield FooterItem(key="F10", label="Update", action="action_add", disabled=False)
+            yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=True)
+        else:
+            add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
+            yield FooterItem(key="F10", label="Add", action="action_add", disabled=add_disabled)
+            yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=add_disabled)
 
         # Right: Save
         save_screens = {"settings", "repository", "target_edit"}
