@@ -914,8 +914,8 @@ toolchains:
   arch: arm
   prefix: arm-cortex-linux-gnueabi-
   sysroot: arm-cortex-linux-gnueabi/sys-root/usr
-  url: https://files.streamboard.tv/toolchains/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
-  checksum: md5:636fd2655e931f23dc7136bbd3851101
+  url: https://files.streamboard.tv/toolchains/legacy/Toolchain-ARM_Cortex_A9_s_u_p1.tar.xz
+  checksum: sha256:3d8f62c70d5d181d8413cae378ec3c575ebb372351ca75d3da7bd8fc48a94ce9
 
 - name: dockstar
   description: Dockstar
