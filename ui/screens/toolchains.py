@@ -328,10 +328,26 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
+    def _update_f10_state(self) -> None:
+        """Enable/disable F10 Update button based on active tab."""
+        from ui.footer import FooterItem
+        try:
+            for item in self.query("FooterItem"):
+                if item._key == "F10":
+                    libs_active = self._is_libs_tab_active()
+                    item._disabled = not libs_active
+                    if libs_active:
+                        item.remove_class("disabled")
+                    else:
+                        item.add_class("disabled")
+                    item.refresh()
+                    break
+        except Exception:
+            pass
+
     def do_add(self) -> None:
         """F10 — execute library actions (install/update)."""
         if not self._is_libs_tab_active():
-            self.notify("Switch to Libraries tab first", severity="warning")
             return
 
         name = ToolchainsScreen._selected_tc
@@ -430,6 +446,9 @@ class ToolchainsScreen(Screen):
             tab_details.set_classes("tab-inactive")
             tab_libs.set_classes("tab-active")
             self._update_libraries()
+
+        # Update F10 button state in footer
+        self._update_f10_state()
 
     def _handle_install(self) -> None:
         name = ToolchainsScreen._selected_tc
