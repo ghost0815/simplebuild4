@@ -130,9 +130,23 @@ class ToolchainsScreen(Screen):
         if ToolchainsScreen._log_history:
             self._update_output()
 
-        # Restore selection
+        # Restore selection — move cursor to selected row in installed table
         if ToolchainsScreen._selected_tc:
             self._update_detail()
+            try:
+                tbl = self.query_one("#tbl-installed", DataTable)
+                for idx in range(tbl.row_count):
+                    row_key = tbl.get_row_at(idx)
+                    # get_row_at returns row data, we need the key
+                    pass
+                # Try to move cursor by finding the row
+                tbl.move_cursor(row=0)  # Focus the table
+                for i, key in enumerate(tbl.rows):
+                    if key.value == ToolchainsScreen._selected_tc:
+                        tbl.move_cursor(row=i)
+                        break
+            except Exception:
+                pass
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if event.row_key and event.row_key.value:
@@ -173,8 +187,7 @@ class ToolchainsScreen(Screen):
             if tc.stapi_lib:
                 lines.append(f"  STAPI:     {tc.stapi_lib}")
             if tc.url:
-                url = tc.url[:80] + "..." if len(tc.url) > 80 else tc.url
-                lines.append(f"  URL:       {url}")
+                lines.append(f"  URL:       [dim]{tc.url}[/dim]")
             self.query_one("#tc-detail", Static).update("\n".join(lines))
         except Exception:
             pass
