@@ -5,21 +5,20 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Header, Footer, Static, Select, Button, RichLog
-from textual.containers import Horizontal, Vertical
+from textual.widgets import Static, Select, Button
+from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.target import Target
 from core.repo import RepoState
+from ui.header import S4Header
+from ui.footer import S4Footer
 
 
 class MainScreen(Screen):
-    BINDINGS = [
-        Binding("q", "quit_app", "Quit"),
-        Binding("f5", "build", "Build"),
-    ]
+    BINDINGS = []
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield S4Header()
 
         with Vertical(id="content"):
             # Target selector
@@ -31,34 +30,34 @@ class MainScreen(Screen):
                     id="target-select",
                     prompt="select target",
                 )
-                yield Button("New", id="btn-new", variant="primary")
                 yield Button("Edit", id="btn-edit")
                 yield Button("Duplicate", id="btn-dup")
-                yield Button("Delete", id="btn-del", variant="error")
 
             # Info panel
-            yield Static(
+            info = Static(
                 "  [bold]No target selected[/bold]\n"
                 "  Create a new target to get started.",
                 id="info",
             )
-
-            # Action buttons
-            with Horizontal(id="action-bar"):
-                yield Button("BUILD", id="btn-build", variant="success")
-                yield Button("Upload", id="btn-upload")
-                yield Button("Log", id="btn-log")
+            info.border_title = "Settings"
+            yield info
 
             # Output log
-            yield RichLog(highlight=True, markup=True, id="output")
+            with VerticalScroll(id="output"):
+                yield Static("", id="output-text")
 
-        # Bottom tabs for sub-menus
-        with Horizontal(id="tab-bar"):
-            yield Button("s4-Settings", id="tab-settings")
-            yield Button("Repo", id="tab-repo")
-            yield Button("Toolchains", id="tab-toolchains")
+        yield S4Footer(active_screen="main")
 
-        yield Footer()
+    def on_mount(self) -> None:
+        self.query_one("#output", VerticalScroll).border_title = "Output"
+
+    def _log(self, msg: str) -> None:
+        """Append a line to the output panel."""
+        out = self.query_one("#output-text", Static)
+        current = str(out.renderable) if out.renderable else ""
+        new_text = f"{current}\n{msg}" if current else msg
+        out.update(new_text)
+        self.query_one("#output", VerticalScroll).scroll_end(animate=False)
 
     def _load_targets(self) -> list[tuple[str, str]]:
         """Load available targets from disk."""
@@ -73,48 +72,96 @@ class MainScreen(Screen):
         if len(target.build.modules) > 6:
             modules_short += f" +{len(target.build.modules) - 6}"
 
+        # Check if source repo still exists
+        from core.repos_config import load_repos
+        repos = load_repos(self.app.paths.repos_config)
+        repo_names = [r.name for r in repos]
+        if target.source in repo_names:
+            source_str = target.source
+        else:
+            source_str = f"[red]{target.source} (not found!)[/red]"
+
         info = self.query_one("#info", Static)
         info.update(
             f"  [bold]{target.name}[/bold] — {target.description}\n"
+            f"  Source:     {source_str}\n"
             f"  Toolchain:  {target.toolchain}\n"
             f"  Modules:    {modules_short}\n"
             f"  Upload:     {upload_str}\n"
         )
 
+    def on_screen_resume(self) -> None:
+        """Refresh target list when returning from another screen."""
+        sel = self.query_one("#target-select", Select)
+        previous = sel.value if isinstance(sel.value, str) else None
+        self._refresh_targets()
+        if previous:
+            try:
+                sel.value = previous
+            except Exception:
+                pass
+
     def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "target-select" and event.value is not None:
+        if event.select.id == "target-select" and event.value is not None and isinstance(event.value, str):
             from pathlib import Path
             target = Target.load(Path(event.value))
             self._update_info(target)
 
+    def _get_selected_target(self) -> tuple[Target, "Path"] | None:
+        """Get currently selected target and its path."""
+        from pathlib import Path as P
+        sel = self.query_one("#target-select", Select)
+        if sel.value is None or not isinstance(sel.value, str):
+            return None
+        path = P(sel.value)
+        return Target.load(path), path
+
+    def _refresh_targets(self) -> None:
+        """Reload the target dropdown after changes."""
+        sel = self.query_one("#target-select", Select)
+        targets = self._load_targets()
+        sel.set_options(targets if targets else [("(no targets)", None)])
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        from ui.screens.target_edit import TargetEditScreen
         btn = event.button.id
-        log = self.query_one("#output", RichLog)
 
-        if btn == "btn-build":
-            log.write("[bold yellow]BUILD:[/bold yellow] not yet implemented")
-        elif btn == "btn-upload":
-            log.write("[bold cyan]UPLOAD:[/bold cyan] not yet implemented")
-        elif btn == "btn-log":
-            log.write("[bold]LOG:[/bold] not yet implemented")
-        elif btn == "btn-new":
-            log.write("[bold green]NEW TARGET:[/bold green] wizard not yet implemented")
-        elif btn == "btn-edit":
-            log.write("[bold]EDIT:[/bold] not yet implemented")
+        if btn == "btn-edit":
+            result = self._get_selected_target()
+            if result:
+                target, path = result
+                self.app.push_screen(TargetEditScreen(target=target, save_path=path))
+            else:
+                self.notify("No target selected", severity="warning")
         elif btn == "btn-dup":
-            log.write("[bold]DUPLICATE:[/bold] not yet implemented")
-        elif btn == "btn-del":
-            log.write("[bold red]DELETE:[/bold red] not yet implemented")
-        elif btn == "tab-settings":
-            log.write("[bold]s4-Settings:[/bold] not yet implemented")
-        elif btn == "tab-repo":
-            log.write("[bold]Repo:[/bold] not yet implemented")
-        elif btn == "tab-toolchains":
-            log.write("[bold]Toolchains:[/bold] not yet implemented")
+            result = self._get_selected_target()
+            if result:
+                target, path = result
+                target.name = f"{target.name}_copy"
+                target.description = f"Copy of {target.description}"
+                self.app.push_screen(TargetEditScreen(target=target))
+            else:
+                self.notify("No target selected", severity="warning")
 
-    def action_quit_app(self) -> None:
-        self.app.exit()
+    def do_add(self) -> None:
+        """F10 Add — create new target."""
+        from ui.screens.target_edit import TargetEditScreen
+        self.app.push_screen(TargetEditScreen())
+
+    def do_remove(self) -> None:
+        """F11 Remove — delete selected target."""
+        result = self._get_selected_target()
+        if result:
+            target, path = result
+            path.unlink(missing_ok=True)
+            self._refresh_targets()
+            self.query_one("#info", Static).update(
+                "  [bold]No target selected[/bold]\n"
+                "  Create a new target to get started."
+            )
+            self.notify(f"Target '{target.name}' deleted")
+        else:
+            self.notify("No target selected", severity="warning")
 
     def action_build(self) -> None:
-        log = self.query_one("#output", RichLog)
-        log.write("[bold yellow]BUILD (F5):[/bold yellow] not yet implemented")
+        self._log("[bold yellow]BUILD:[/bold yellow] not yet implemented")
