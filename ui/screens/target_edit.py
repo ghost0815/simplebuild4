@@ -11,7 +11,7 @@ from textual.widgets import Static, Select, Switch, Input
 from textual.containers import Horizontal, VerticalScroll
 
 from core.target import Target, BuildSettings, UploadConfig
-from core.toolchain import list_toolchains
+from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
 from ui.header import S4Header
 from ui.footer import S4Footer
@@ -85,8 +85,13 @@ class TargetEditScreen(Screen):
             source_value = None
 
         # Toolchain options
-        tc_list = list_toolchains(self.app.paths.toolchains_cfg, self.app.paths.toolchains_dir)
-        tc_options = [("native", "native")] + [(tc.name, tc.name) for tc in tc_list if tc.installed or tc.self_build]
+        registry = ToolchainRegistry(
+            self.app.paths.toolchains_defaults,
+            self.app.paths.toolchains_local,
+            self.app.paths.toolchains_dir,
+        )
+        registry.load()
+        tc_options = registry.get_select_options(include_native=True)
         tc_names = [name for _, name in tc_options]
         tc_value = t.toolchain if t.toolchain in tc_names else "native"
 

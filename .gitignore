@@ -3,7 +3,7 @@ __pycache__/
 *.pyo
 .venv/
 data/toolchains/
-data/toolchains.cfg/
+data/toolchains.local.yaml
 data/binaries/
 data/downloads/
 data/logs/

@@ -16,7 +16,8 @@ class Paths:
     repos_config: Path  # repos.yaml config file
     backup_dir: Path    # repo backups
     toolchains_dir: Path  # installed toolchains
-    toolchains_cfg: Path  # toolchain config definitions
+    toolchains_defaults: Path  # shipped toolchain registry (defaults/toolchains.yaml)
+    toolchains_local: Path     # user toolchain additions (data/toolchains.local.yaml)
     logs_dir: Path
     patches_dir: Path
     binaries_dir: Path
@@ -35,7 +36,8 @@ class Paths:
             repos_config=data / "repos.yaml",
             backup_dir=data / "backups",
             toolchains_dir=data / "toolchains",
-            toolchains_cfg=data / "toolchains.cfg",
+            toolchains_defaults=root / "defaults" / "toolchains.yaml",
+            toolchains_local=data / "toolchains.local.yaml",
             logs_dir=data / "logs",
             patches_dir=data / "patches",
             binaries_dir=data / "binaries",
@@ -47,7 +49,7 @@ class Paths:
         """Create all data directories and seed defaults if needed."""
         for d in (
             self.targets_dir, self.repos_dir, self.backup_dir,
-            self.toolchains_dir, self.toolchains_cfg,
+            self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)

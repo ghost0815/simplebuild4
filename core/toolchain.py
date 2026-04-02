@@ -59,24 +59,47 @@ class Toolchain:
 
 
 class ToolchainRegistry:
-    """Manages the toolchain registry YAML and installed toolchains."""
+    """Manages the toolchain registry and installed toolchains.
 
-    def __init__(self, registry_path: Path, install_dir: Path):
-        self.registry_path = registry_path
+    Loads from two sources:
+    - defaults_path: shipped with s4, git-managed (defaults/toolchains.yaml)
+    - local_path: user additions, gitignored (data/toolchains.local.yaml)
+
+    Local entries override defaults with the same name.
+    """
+
+    def __init__(self, defaults_path: Path, local_path: Path, install_dir: Path):
+        self.defaults_path = defaults_path
+        self.local_path = local_path
         self.install_dir = install_dir
         self._toolchains: list[Toolchain] = []
 
     def load(self) -> None:
-        """Load toolchain registry from YAML."""
-        self._toolchains = []
+        """Load toolchain registry from both YAML files."""
+        by_name: dict[str, Toolchain] = {}
 
-        if not self.registry_path.exists():
-            return
+        # Load defaults first
+        for tc in self._load_file(self.defaults_path):
+            by_name[tc.name] = tc
 
-        data = yaml.safe_load(self.registry_path.read_text(encoding="utf-8"))
+        # Local overrides/additions
+        for tc in self._load_file(self.local_path):
+            by_name[tc.name] = tc
+
+        # Check installed state
+        for tc in by_name.values():
+            tc.installed = (self.install_dir / tc.name).is_dir()
+
+        self._toolchains = sorted(by_name.values(), key=lambda t: t.name)
+
+    def _load_file(self, path: Path) -> list[Toolchain]:
+        """Load toolchains from a single YAML file."""
+        if not path.exists():
+            return []
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
         if not data or "toolchains" not in data:
-            return
-
+            return []
+        result = []
         for entry in data["toolchains"]:
             tc = Toolchain(
                 name=entry.get("name", ""),
@@ -96,11 +119,16 @@ class ToolchainRegistry:
                 strip_components=entry.get("strip_components", 1),
             )
             if tc.name:
-                tc.installed = (self.install_dir / tc.name).is_dir()
-                self._toolchains.append(tc)
+                result.append(tc)
+        return result
 
-    def save(self) -> None:
-        """Save toolchain registry to YAML."""
+    def save_local(self, toolchains: list[Toolchain] | None = None) -> None:
+        """Save to the local (user) registry file."""
+        tcs = toolchains if toolchains is not None else self._get_local_only()
+        self._save_file(self.local_path, tcs)
+
+    def _save_file(self, path: Path, toolchains: list[Toolchain]) -> None:
+        """Save toolchains to a YAML file."""
         data = {
             "toolchains": [
                 {
@@ -120,14 +148,19 @@ class ToolchainRegistry:
                     "url": tc.url,
                     "strip_components": tc.strip_components,
                 }
-                for tc in self._toolchains
+                for tc in toolchains
             ]
         }
-        self.registry_path.parent.mkdir(parents=True, exist_ok=True)
-        self.registry_path.write_text(
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
             yaml.dump(data, default_flow_style=False, sort_keys=False),
             encoding="utf-8",
         )
+
+    def _get_local_only(self) -> list[Toolchain]:
+        """Get toolchains that are only in the local file (not in defaults)."""
+        default_names = {tc.name for tc in self._load_file(self.defaults_path)}
+        return [tc for tc in self._toolchains if tc.name not in default_names]
 
     @property
     def toolchains(self) -> list[Toolchain]:
