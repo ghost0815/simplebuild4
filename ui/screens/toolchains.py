@@ -15,7 +15,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
-from core.toolchain import Toolchain, ToolchainRegistry
+from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -91,10 +91,21 @@ class ToolchainsScreen(Screen):
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
 
-                # Details
+                # Detail/Libraries tab buttons
+                with Horizontal(id="tc-tab-bar"):
+                    yield Button("Details", id="btn-tab-details", variant="primary")
+                    yield Button("Libraries", id="btn-tab-libs")
+
+                # Details panel
                 detail = Static("", id="tc-detail")
                 detail.auto_links = False
                 yield detail
+
+                # Libraries panel (hidden by default)
+                libs = Static("", id="tc-libs")
+                libs.auto_links = False
+                libs.display = False
+                yield libs
 
                 # Output
                 with VerticalScroll(id="tc-output"):
@@ -202,6 +213,46 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
+    def _update_libraries(self) -> None:
+        """Scan and display libraries for selected toolchain."""
+        try:
+            name = ToolchainsScreen._selected_tc
+            if not name:
+                return
+            reg = self._get_registry()
+            tc = reg.get(name)
+            if not tc:
+                return
+            if not tc.installed:
+                self.query_one("#tc-libs", Static).update(
+                    f"  [bold]{tc.name}[/bold]\n  [dim]Not installed — install first to scan libraries[/dim]"
+                )
+                return
+
+            install_dir = self.app.paths.toolchains_dir / tc.name
+            libs = scan_libraries(install_dir, tc.sysroot)
+
+            lines = [f"  [bold]{tc.name}[/bold] — Libraries\n"]
+            lines.append(f"  {'Library':<15s} {'Version':<15s} {'Type':<10s}")
+            lines.append(f"  {'─' * 15} {'─' * 15} {'─' * 10}")
+
+            for lib in libs:
+                if lib.found:
+                    lib_type = []
+                    if lib.static_lib:
+                        lib_type.append("static")
+                    if lib.dynamic_lib:
+                        lib_type.append("shared")
+                    type_str = "+".join(lib_type) if lib_type else "pc only"
+                    version = lib.version or "?"
+                    lines.append(f"  [green]{lib.name:<15s}[/green] {version:<15s} {type_str}")
+                else:
+                    lines.append(f"  [dim]{lib.name:<15s} —               not found[/dim]")
+
+            self.query_one("#tc-libs", Static).update("\n".join(lines))
+        except Exception:
+            pass
+
     def _refresh(self) -> None:
         self._registry = None
         self.app.pop_screen()
@@ -239,6 +290,30 @@ class ToolchainsScreen(Screen):
             self._handle_check()
         elif btn == "btn-remove":
             self._handle_remove()
+        elif btn == "btn-tab-details":
+            self._show_tab("details")
+        elif btn == "btn-tab-libs":
+            self._show_tab("libs")
+
+    def _show_tab(self, tab: str) -> None:
+        """Switch between Details and Libraries views."""
+        detail = self.query_one("#tc-detail", Static)
+        libs = self.query_one("#tc-libs", Static)
+        btn_details = self.query_one("#btn-tab-details", Button)
+        btn_libs = self.query_one("#btn-tab-libs", Button)
+
+        if tab == "details":
+            detail.display = True
+            libs.display = False
+            btn_details.variant = "primary"
+            btn_libs.variant = "default"
+            self._update_detail()
+        else:
+            detail.display = False
+            libs.display = True
+            btn_details.variant = "default"
+            btn_libs.variant = "primary"
+            self._update_libraries()
 
     def _handle_install(self) -> None:
         name = ToolchainsScreen._selected_tc

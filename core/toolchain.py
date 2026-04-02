@@ -57,6 +57,103 @@ class Toolchain:
         }
 
 
+# ---------------------------------------------------------------------------
+# Library detection via pkg-config
+# ---------------------------------------------------------------------------
+
+# Libraries we care about: (display_name, pc_file, static_lib)
+KNOWN_LIBS = [
+    ("OpenSSL",    "openssl.pc",       "libcrypto.a"),
+    ("libcurl",    "libcurl.pc",       "libcurl.a"),
+    ("libusb",     "libusb-1.0.pc",    "libusb-1.0.a"),
+    ("libusb-0.1", "libusb.pc",        "libusb.a"),
+    ("pcsclite",   "libpcsclite.pc",   "libpcsclite.a"),
+    ("ccid",       "libccid.pc",       None),
+    ("libdvbcsa",  "libdvbcsa.pc",     "libdvbcsa.a"),
+    ("zlib",       "zlib.pc",          None),
+]
+
+
+@dataclass
+class LibraryInfo:
+    """Detected library in a toolchain sysroot."""
+
+    name: str = ""
+    version: str = ""
+    pc_file: str = ""        # path to .pc file
+    static_lib: str = ""     # path to .a file (empty = not found)
+    dynamic_lib: str = ""    # path to .so file (empty = not found)
+    found: bool = False
+
+
+def scan_libraries(install_dir: Path, sysroot: str) -> list[LibraryInfo]:
+    """Scan a toolchain's sysroot for known libraries via pkg-config files.
+
+    Args:
+        install_dir: Path to installed toolchain (e.g. data/toolchains/armv7_universal)
+        sysroot: Sysroot relative path from toolchain config
+
+    Returns:
+        List of LibraryInfo for each known library (found or not).
+    """
+    results = []
+
+    # Find pkgconfig directories in the sysroot
+    sysroot_path = install_dir / sysroot if sysroot else install_dir
+    pc_dirs = list(install_dir.glob("**/pkgconfig"))
+
+    # Build a map of available .pc files
+    pc_map: dict[str, Path] = {}
+    for pc_dir in pc_dirs:
+        for pc_file in pc_dir.glob("*.pc"):
+            pc_map[pc_file.name] = pc_file
+
+    for lib_name, pc_name, static_name in KNOWN_LIBS:
+        info = LibraryInfo(name=lib_name)
+
+        # Check .pc file
+        if pc_name in pc_map:
+            info.found = True
+            info.pc_file = str(pc_map[pc_name])
+            info.version = _read_pc_version(pc_map[pc_name])
+
+        # Check static library
+        if static_name:
+            static_files = list(install_dir.glob(f"**/{static_name}"))
+            if static_files:
+                info.static_lib = str(static_files[0])
+                if not info.found:
+                    info.found = True
+
+        # Check dynamic library (derive .so name from .a name or pc name)
+        so_name = ""
+        if static_name:
+            so_name = static_name.replace(".a", ".so")
+        elif pc_name:
+            so_name = "lib" + pc_name.replace(".pc", ".so")
+        if so_name:
+            so_files = list(install_dir.glob(f"**/{so_name}*"))
+            if so_files:
+                info.dynamic_lib = str(so_files[0])
+                if not info.found:
+                    info.found = True
+
+        results.append(info)
+
+    return results
+
+
+def _read_pc_version(pc_file: Path) -> str:
+    """Read Version: field from a .pc file."""
+    try:
+        for line in pc_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Version:"):
+                return line.split(":", 1)[1].strip()
+    except Exception:
+        pass
+    return ""
+
+
 class ToolchainRegistry:
     """Manages the toolchain registry and installed toolchains.
 
