@@ -65,6 +65,12 @@ libraries:
         label: "1.0.2 (very old)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+      - version: "1.0.2u"
+        label: "1.0.2 as 1.0.0 (Fritzbox)"
+        source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared"
+        install: "make install"
+        extra: {}
       - version: "1.0.0t"
         label: "1.0.0 (ancient)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_0t.tar.gz
