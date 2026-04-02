@@ -1,0 +1,211 @@
+# SimpleBuild4 (s4) Library Build Recipes
+#
+# Each library can have multiple variants (versions).
+# Placeholders replaced at build time:
+#   @VERSION@    — Library version
+#   @PREFIX@     — Install prefix (toolchain sysroot)
+#   @CROSS@      — Compiler prefix (e.g. arm-oe-linux-gnueabi-)
+#   @TARGET@     — Target triplet (e.g. arm-oe-linux-gnueabi)
+#   @CC@         — C compiler binary
+#   @RANLIB@     — Ranlib binary
+#   @CFLAGS@     — Architecture-specific C flags from toolchain
+#   @LDFLAGS@    — Linker flags from toolchain
+#   @CPUS@       — Number of CPU threads
+#
+# requires: optional field, e.g. "c11" — marks variants needing C11 compiler support
+
+libraries:
+
+  - name: OpenSSL
+    pc_file: openssl.pc
+    version_check: github:openssl/openssl
+    variants:
+
+      - version: "3.5.5"
+        label: "3.5.x (current)"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "3.4.1"
+        label: "3.4.x"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "3.3.3"
+        label: "3.3.x"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "3.2.4"
+        label: "3.2.x"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "3.1.8"
+        label: "3.1.x"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "3.0.16"
+        label: "3.0.x (LTS)"
+        requires: "c11"
+        source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "1.1.1w"
+        label: "1.1.1 (legacy LTS)"
+        source: https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_1w/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "1.1.0l"
+        label: "1.1.0 (old)"
+        source: https://github.com/openssl/openssl/releases/download/OpenSSL_1_1_0l/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "1.0.2u"
+        label: "1.0.2 (very old)"
+        source: https://github.com/openssl/openssl/releases/download/OpenSSL_1_0_2u/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+      - version: "0.9.8zh"
+        label: "0.9.8 (ancient)"
+        source: https://github.com/openssl/openssl/releases/download/OpenSSL_0_9_8zh/openssl-@VERSION@.tar.gz
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+        make: "make -j@CPUS@"
+        install: "make install_sw"
+
+  - name: libcurl
+    pc_file: libcurl.pc
+    version_check: github:curl/curl
+    variants:
+
+      - version: "8.12.1"
+        label: "current"
+        source: https://github.com/curl/curl/releases/download/curl-@VERSION@/curl-@VERSION@.tar.xz
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --with-openssl --without-libpsl --disable-manual --disable-docs"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+  - name: libusb
+    pc_file: libusb-1.0.pc
+    version_check: github:libusb/libusb
+    variants:
+
+      - version: "1.0.27"
+        label: "1.0.x (current)"
+        requires: "c11"
+        source: https://github.com/libusb/libusb/releases/download/v@VERSION@/libusb-@VERSION@.tar.bz2
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-udev"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+      - version: "1.0.23"
+        label: "1.0.23 (no C11 needed)"
+        source: https://github.com/libusb/libusb/releases/download/v@VERSION@/libusb-@VERSION@.tar.bz2
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-udev"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+      - version: "0.1.12"
+        label: "0.1.x (legacy API)"
+        pc_file: libusb.pc
+        source: https://sourceforge.net/projects/libusb/files/libusb-0.1%20%28LEGACY%29/@VERSION@/libusb-@VERSION@.tar.gz
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+  - name: pcsclite
+    pc_file: libpcsclite.pc
+    version_check: url:https://pcsclite.apdu.fr/files/
+    variants:
+
+      - version: "2.3.0"
+        label: "current"
+        requires: "c11"
+        source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-libsystemd --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+      - version: "1.9.9"
+        label: "1.9.x (no C11 needed)"
+        source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.bz2
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-libsystemd --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+  - name: ccid
+    pc_file: libccid.pc
+    version_check: url:https://ccid.apdu.fr/files/
+    variants:
+
+      - version: "1.6.1"
+        label: "current"
+        requires: "c11"
+        source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+      - version: "1.5.5"
+        label: "1.5.x (no C11 needed)"
+        source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.bz2
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+  - name: libdvbcsa
+    pc_file: libdvbcsa.pc
+    version_check: github:oe-mirrors/libdvbcsa
+    variants:
+
+      - version: "master"
+        label: "latest (git)"
+        source: https://github.com/oe-mirrors/libdvbcsa/archive/refs/heads/master.zip
+        pre_configure: "autoreconf -i"
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+      - version: "1.1.0"
+        label: "1.1.0 (stable)"
+        source: https://download.videolan.org/pub/videolan/libdvbcsa/@VERSION@/libdvbcsa-@VERSION@.tar.gz
+        pre_configure: "autoreconf -i"
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@"
+        make: "make -j@CPUS@"
+        install: "make install"
+
+  - name: zlib
+    pc_file: zlib.pc
+    version_check: github:madler/zlib
+    variants:
+
+      - version: "1.3.1"
+        label: "current"
+        source: https://github.com/madler/zlib/releases/download/v@VERSION@/zlib-@VERSION@.tar.gz
+        configure: "CROSS_PREFIX=@CROSS@ ./configure --prefix=@PREFIX@"
+        make: "make -j@CPUS@"
+        install: "make install"
