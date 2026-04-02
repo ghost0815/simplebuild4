@@ -23,6 +23,7 @@ def build_library(
     libraries_yaml: Path,
     downloads_dir: Path,
     logs_dir: Optional[Path] = None,
+    max_cpus: int = 0,
     log: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Build and install a library into the toolchain sysroot.
@@ -71,7 +72,7 @@ def build_library(
         result = _do_build(
             lib_name, version, toolchain_dir, toolchain_prefix,
             toolchain_sysroot, toolchain_cflags, toolchain_ldflags,
-            libraries_yaml, downloads_dir, log,
+            libraries_yaml, downloads_dir, max_cpus, log,
         )
         log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if log_file:
@@ -92,6 +93,7 @@ def _do_build(
     toolchain_ldflags: str,
     libraries_yaml: Path,
     downloads_dir: Path,
+    max_cpus: int,
     log: Callable[[str], None],
 ) -> bool:
     """Internal build logic."""
@@ -126,7 +128,7 @@ def _do_build(
     target = _get_target(toolchain_dir, toolchain_prefix)
     cc = f"{toolchain_prefix}gcc"
     ranlib = f"{toolchain_prefix}ranlib"
-    cpus = str(os.cpu_count() or 4)
+    cpus = str(max_cpus if max_cpus else os.cpu_count() or 4)
 
     # Replace placeholders
     replacements = {
