@@ -91,7 +91,9 @@ class ToolchainsScreen(Screen):
                     yield remove_btn
 
                 # Details
-                yield Static("", id="tc-detail")
+                detail = Static("", id="tc-detail")
+                detail.auto_links = False
+                yield detail
 
                 # Output
                 with VerticalScroll(id="tc-output"):
@@ -187,7 +189,7 @@ class ToolchainsScreen(Screen):
             if tc.stapi_lib:
                 lines.append(f"  STAPI:     {tc.stapi_lib}")
             if tc.url:
-                lines.append(f"  URL:       [dim]{tc.url}[/dim]")
+                lines.append(f"  URL:       [dim]...{tc.url.split('/')[-1]}[/dim]")
             self.query_one("#tc-detail", Static).update("\n".join(lines))
         except Exception:
             pass
