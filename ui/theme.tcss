@@ -223,15 +223,6 @@ Switch.-on .switch--slider {
     padding: 0 1;
 }
 
-#tc-info {
-    margin: 0 1;
-    padding: 1 1;
-    height: auto;
-    background: $boost;
-    border: solid $primary;
-    border-title-color: $text;
-    border-title-style: bold;
-}
 
 #tc-output {
     margin: 0 1;
@@ -260,18 +251,18 @@ Switch.-on .switch--slider {
     padding: 0 1;
 }
 
-#tc-browse-box {
-    margin: 1 1;
-    border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
+#tc-installed {
+    margin: 0 1;
     height: auto;
-    padding: 0 1;
+    max-height: 12;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
 }
 
-#tc-available {
-    padding: 0 1;
+#tc-available-table {
     height: auto;
+    max-height: 20;
 }
 
 #tc-detail {

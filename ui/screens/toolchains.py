@@ -11,7 +11,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Select
+from textual.widgets import Static, Input, Button, Select, DataTable
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry
@@ -61,33 +61,21 @@ class ToolchainsScreen(Screen):
         yield S4Header()
 
         with VerticalScroll(id="tc-scroll"):
-            # Status box — installed toolchains
+            # Installed toolchains table
             installed = reg.installed_toolchains()
-            if installed:
-                lines = []
-                for tc in installed:
-                    lines.append(f"  [bold]{tc.name}[/bold]  {tc.description}  [dim]{tc.arch}[/dim]")
-                status_text = "\n".join(lines)
-            else:
-                status_text = "  [dim]No toolchains installed[/dim]"
-            info = Static(status_text, id="tc-info")
-            info.border_title = f"Installed ({len(installed)})"
-            yield info
+            table = DataTable(id="tc-installed", cursor_type="row", zebra_stripes=True)
+            yield table
 
             # Output box
             with VerticalScroll(id="tc-output"):
                 yield Static("", id="tc-output-text")
 
-            # Toolchains actions
-            # Toolchain actions
+            # Actions
             with Vertical(id="tc-box"):
                 with Horizontal(classes="repo-actions-row"):
-                    cat = ToolchainsScreen._selected_category
-                    search = ToolchainsScreen._search_text
-                    tc_options = self._build_tc_options(reg, cat, search)
-                    saved = ToolchainsScreen._selected_tc
-                    tc_value = saved if saved and any(v == saved for _, v in tc_options) else (tc_options[0][1] if tc_options else Select.BLANK)
-                    yield Select(options=tc_options, value=tc_value, id="tc-select", prompt="select toolchain")
+                    cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
+                    yield Select(options=cat_options, value=ToolchainsScreen._selected_category, id="tc-category")
+                    yield Input(value=ToolchainsScreen._search_text, placeholder="Search...", id="tc-search")
                     yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
@@ -99,16 +87,9 @@ class ToolchainsScreen(Screen):
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
 
-            # Browse available
-            with Vertical(id="tc-browse-box"):
-                with Horizontal(classes="repo-actions-row"):
-                    cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
-                    yield Select(options=cat_options, value=ToolchainsScreen._selected_category, id="tc-category")
-                    yield Input(value=ToolchainsScreen._search_text, placeholder="Search...", id="tc-search")
-
-                available_text = self._build_available_text(reg, ToolchainsScreen._selected_category, ToolchainsScreen._search_text)
-                avail = Static(available_text, id="tc-available")
-                yield avail
+                # Available toolchains table
+                avail_table = DataTable(id="tc-available-table", cursor_type="row", zebra_stripes=True)
+                yield avail_table
 
             # Toolchain details
             with Vertical(id="tc-detail-box"):
@@ -119,54 +100,56 @@ class ToolchainsScreen(Screen):
     def on_mount(self) -> None:
         self.query_one("#tc-output", VerticalScroll).border_title = "Output"
         self.query_one("#tc-box", Vertical).border_title = "Toolchains"
-        self.query_one("#tc-browse-box", Vertical).border_title = "Browse"
         self.query_one("#tc-detail-box", Vertical).border_title = "Details"
+
+        # Populate installed table
+        reg = self._get_registry()
+        inst_table = self.query_one("#tc-installed", DataTable)
+        inst_table.add_columns("Name", "Description", "Category", "Arch")
+        for tc in reg.installed_toolchains():
+            inst_table.add_row(tc.name, tc.description, tc.category, tc.arch, key=tc.name)
+        inst_table.border_title = f"Installed ({inst_table.row_count})"
+
+        # Populate available table
+        self._populate_available_table()
+
         # Restore log
         if ToolchainsScreen._log_history:
             self._update_output()
-        # Show first toolchain details
-        self._update_detail()
 
-    def _build_tc_options(self, reg: ToolchainRegistry, category: str, search: str) -> list[tuple[str, str]]:
-        """Build Select options filtered by category and search."""
-        options = []
-        search_lower = search.lower()
+    def _populate_available_table(self) -> None:
+        """Fill the available toolchains table based on current filters."""
+        reg = self._get_registry()
+        try:
+            cat_sel = self.query_one("#tc-category", Select)
+            category = cat_sel.value if isinstance(cat_sel.value, str) else "all"
+        except Exception:
+            category = "all"
+        try:
+            search = self.query_one("#tc-search", Input).value.lower()
+        except Exception:
+            search = ""
+
+        table = self.query_one("#tc-available-table", DataTable)
+        table.clear(columns=True)
+        table.add_columns("Status", "Name", "Description", "Category", "Arch")
+
         for tc in reg.toolchains:
             if category != "all" and tc.category != category:
                 continue
-            if search_lower and search_lower not in tc.name.lower() and search_lower not in tc.description.lower() and search_lower not in tc.machines.lower():
+            if search and search not in tc.name.lower() and search not in tc.description.lower() and search not in tc.machines.lower():
                 continue
-            status = "[green]●[/green] " if tc.installed else "  "
-            options.append((f"{status}{tc.name}", tc.name))
-        return options
-
-    def _build_available_text(self, reg: ToolchainRegistry, category: str, search: str) -> str:
-        """Build available toolchains text grouped by category."""
-        search_lower = search.lower()
-        lines = []
-        for cat_key, cat_label in CATEGORIES:
-            if category != "all" and category != cat_key:
-                continue
-            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
-            if search_lower:
-                tcs = [tc for tc in tcs if search_lower in tc.name.lower() or search_lower in tc.description.lower() or search_lower in tc.machines.lower()]
-            if not tcs:
-                continue
-            lines.append(f"  [bold]{cat_label}[/bold]")
-            for tc in tcs:
-                status = "[green]●[/green]" if tc.installed else "[dim]○[/dim]"
-                lines.append(f"    {status} {tc.name:40s} {tc.description}")
-            lines.append("")
-        return "\n".join(lines) if lines else "  [dim]No toolchains match filter[/dim]"
+            status = "●" if tc.installed else "○"
+            table.add_row(status, tc.name, tc.description, tc.category, tc.arch, key=tc.name)
 
     def _update_detail(self) -> None:
         """Update detail panel for selected toolchain."""
         try:
-            sel = self.query_one("#tc-select", Select)
-            if sel.value is None or not isinstance(sel.value, str):
+            name = ToolchainsScreen._selected_tc
+            if not name:
                 return
             reg = self._get_registry()
-            tc = reg.get(sel.value)
+            tc = reg.get(name)
             if not tc:
                 return
             status = "[green]installed[/green]" if tc.installed else "[red]not installed[/red]"
@@ -241,34 +224,25 @@ class ToolchainsScreen(Screen):
         thread = threading.Thread(target=wrapper, daemon=True)
         thread.start()
 
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id == "tc-select":
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle row selection in either table."""
+        if event.row_key and event.row_key.value:
+            ToolchainsScreen._selected_tc = event.row_key.value
             self._update_detail()
-        elif event.select.id == "tc-category":
-            self._update_filter()
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        """Update detail when cursor moves."""
+        if event.row_key and event.row_key.value:
+            ToolchainsScreen._selected_tc = event.row_key.value
+            self._update_detail()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "tc-category":
+            self._populate_available_table()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "tc-search":
-            self._update_filter()
-
-    def _update_filter(self) -> None:
-        """Update available list and select when filter changes."""
-        try:
-            reg = self._get_registry()
-            cat_sel = self.query_one("#tc-category", Select)
-            category = cat_sel.value if isinstance(cat_sel.value, str) else "all"
-            search = self.query_one("#tc-search", Input).value
-
-            # Update available text
-            available_text = self._build_available_text(reg, category, search)
-            self.query_one("#tc-available", Static).update(available_text)
-
-            # Update toolchain select
-            tc_sel = self.query_one("#tc-select", Select)
-            options = self._build_tc_options(reg, category, search)
-            tc_sel.set_options(options if options else [("(none)", None)])
-        except Exception:
-            pass
+            self._populate_available_table()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id
@@ -282,13 +256,13 @@ class ToolchainsScreen(Screen):
 
     def _handle_install(self) -> None:
         """Download and install selected toolchain."""
-        sel = self.query_one("#tc-select", Select)
-        if sel.value is None or not isinstance(sel.value, str):
+        name = ToolchainsScreen._selected_tc
+        if not name:
             self.notify("No toolchain selected", severity="warning")
             return
 
         reg = self._get_registry()
-        tc = reg.get(sel.value)
+        tc = reg.get(name)
         if not tc:
             return
 
@@ -368,13 +342,13 @@ class ToolchainsScreen(Screen):
 
     def _handle_check(self) -> None:
         """Check if selected toolchain is working."""
-        sel = self.query_one("#tc-select", Select)
-        if sel.value is None or not isinstance(sel.value, str):
+        name = ToolchainsScreen._selected_tc
+        if not name:
             self.notify("No toolchain selected", severity="warning")
             return
 
         reg = self._get_registry()
-        tc = reg.get(sel.value)
+        tc = reg.get(name)
         if not tc:
             return
 
@@ -458,13 +432,13 @@ class ToolchainsScreen(Screen):
 
     def _handle_remove(self) -> None:
         """Remove selected installed toolchain."""
-        sel = self.query_one("#tc-select", Select)
-        if sel.value is None or not isinstance(sel.value, str):
+        name = ToolchainsScreen._selected_tc
+        if not name:
             self.notify("No toolchain selected", severity="warning")
             return
 
         reg = self._get_registry()
-        tc = reg.get(sel.value)
+        tc = reg.get(name)
         if not tc:
             return
 
