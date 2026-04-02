@@ -396,6 +396,7 @@ class ToolchainsScreen(Screen):
                     toolchain_ldflags=tc.ldflags,
                     libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
                     downloads_dir=self.app.paths.downloads_dir,
+                    logs_dir=self.app.paths.logs_dir,
                     log=self._log,
                 )
                 if not success:

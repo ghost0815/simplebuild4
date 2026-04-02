@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -21,6 +22,7 @@ def build_library(
     toolchain_ldflags: str,
     libraries_yaml: Path,
     downloads_dir: Path,
+    logs_dir: Optional[Path] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> bool:
     """Build and install a library into the toolchain sysroot.
@@ -40,6 +42,59 @@ def build_library(
     Returns:
         True on success.
     """
+    # Setup file logging
+    log_file = None
+    if logs_dir:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+        tc_name = toolchain_dir.name
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = logs_dir / f"{timestamp}.{tc_name}.{lib_name}-{version}.log"
+        log_file = open(log_path, "w", encoding="utf-8")
+
+    original_log = log
+
+    def _log(msg: str) -> None:
+        # Strip Rich markup for file log
+        import re
+        plain = re.sub(r'\[/?[a-z_ ]+\]', '', msg)
+        if log_file:
+            log_file.write(plain + "\n")
+            log_file.flush()
+        if original_log:
+            original_log(msg)
+
+    log = _log
+    log(f"Building {lib_name} {version} for {toolchain_dir.name}")
+    log(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+    try:
+        result = _do_build(
+            lib_name, version, toolchain_dir, toolchain_prefix,
+            toolchain_sysroot, toolchain_cflags, toolchain_ldflags,
+            libraries_yaml, downloads_dir, log,
+        )
+        log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        if log_file:
+            log(f"Log: {log_path}")
+        return result
+    finally:
+        if log_file:
+            log_file.close()
+
+
+def _do_build(
+    lib_name: str,
+    version: str,
+    toolchain_dir: Path,
+    toolchain_prefix: str,
+    toolchain_sysroot: str,
+    toolchain_cflags: str,
+    toolchain_ldflags: str,
+    libraries_yaml: Path,
+    downloads_dir: Path,
+    log: Callable[[str], None],
+) -> bool:
+    """Internal build logic."""
     # Load recipe
     recipe = _find_recipe(lib_name, version, libraries_yaml)
     if not recipe:
@@ -279,7 +334,9 @@ def _run_shell(cmd: str, cwd: Path, env: dict, log: Optional[Callable[[str], Non
         )
         for line in proc.stdout:
             if log:
-                log(f"  {line.rstrip()}")
+                # Escape Rich markup characters in build output
+                safe_line = line.rstrip().replace("[", "\\[")
+                log(f"  {safe_line}")
         proc.wait()
         if proc.returncode != 0:
             if log:
