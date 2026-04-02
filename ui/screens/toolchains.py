@@ -232,7 +232,8 @@ class ToolchainsScreen(Screen):
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot)
 
-            lines = [f"  [bold]{tc.name}[/bold] — Libraries\n"]
+            found_count = sum(1 for lib in libs if lib.found)
+            lines = [f"  [bold]{tc.name}[/bold] — Libraries ({found_count}/{len(libs)})\n"]
             lines.append(f"  {'Library':<15s} {'Version':<15s} {'Type':<10s}")
             lines.append(f"  {'─' * 15} {'─' * 15} {'─' * 10}")
 
@@ -247,7 +248,11 @@ class ToolchainsScreen(Screen):
                     version = lib.version or "?"
                     lines.append(f"  [green]{lib.name:<15s}[/green] {version:<15s} {type_str}")
                 else:
-                    lines.append(f"  [dim]{lib.name:<15s} —               not found[/dim]")
+                    lines.append(f"  [dim]{lib.name:<15s} —               —[/dim]")
+
+            if found_count == 0:
+                lines.append(f"\n  [dim]No libraries found in sysroot. For generic toolchains,")
+                lines.append(f"  libraries need to be built and installed separately.[/dim]")
 
             self.query_one("#tc-libs", Static).update("\n".join(lines))
         except Exception:
