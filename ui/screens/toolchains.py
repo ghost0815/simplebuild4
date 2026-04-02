@@ -193,7 +193,7 @@ class ToolchainsScreen(Screen):
             if tc.stapi_lib:
                 lines.append(f"  STAPI:     {tc.stapi_lib}")
             if tc.url:
-                lines.append(f"  URL:       [dim]...{tc.url.split('/')[-1]}[/dim]")
+                lines.append(f"  URL:       [dim]{tc.url}[/dim]")
             self.query_one("#tc-detail", Static).update("\n".join(lines))
         except Exception:
             pass
