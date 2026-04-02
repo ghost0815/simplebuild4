@@ -146,7 +146,6 @@ class ToolchainsScreen(Screen):
                 pass
 
         # Border titles
-        self.query_one("#tc-detail", Static).border_title = "Details"
         self.query_one("#tc-output", VerticalScroll).border_title = "Output"
 
         # Restore log
@@ -257,7 +256,7 @@ class ToolchainsScreen(Screen):
             header = self.query_one("#tc-libs-header", Static)
 
             if not tc.installed:
-                header.update(f"  [bold]{tc.name}[/bold]\n  [dim]Not installed — install first to scan libraries[/dim]")
+                header.update(f"  [dim]Not installed — install toolchain first[/dim]")
                 return
 
             install_dir = self.app.paths.toolchains_dir / tc.name
@@ -268,7 +267,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  [bold]{tc.name}[/bold] — Libraries")
+            header.update(f"  {'Library':<15s} {'Installed':<12s} Action")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")

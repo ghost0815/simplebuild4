@@ -288,8 +288,6 @@ Switch.-on .switch--slider {
     padding: 1 1;
     height: auto;
     border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
     overflow-x: hidden;
 }
 
