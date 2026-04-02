@@ -248,12 +248,29 @@ Switch.-on .switch--slider {
 }
 
 #tc-tab-bar {
-    height: 3;
+    height: 1;
+    margin: 0 0 0 0;
 }
 
-#tc-tab-bar Button {
-    margin: 0 1 0 0;
-    min-width: 14;
+.tab-active {
+    width: auto;
+    height: 1;
+    padding: 0 2;
+    text-style: bold;
+    color: $text;
+    background: #444444;
+}
+
+.tab-inactive {
+    width: auto;
+    height: 1;
+    padding: 0 2;
+    color: $text-disabled;
+}
+
+.tab-inactive:hover {
+    color: $text;
+    background: #333333;
 }
 
 #tc-libs {

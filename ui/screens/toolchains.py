@@ -93,8 +93,8 @@ class ToolchainsScreen(Screen):
 
                 # Detail/Libraries tab buttons
                 with Horizontal(id="tc-tab-bar"):
-                    yield Button("Details", id="btn-tab-details", variant="primary")
-                    yield Button("Libraries", id="btn-tab-libs")
+                    yield Static(" Details ", id="btn-tab-details", classes="tab-active")
+                    yield Static(" Libraries ", id="btn-tab-libs", classes="tab-inactive")
 
                 # Details panel
                 detail = Static("", id="tc-detail")
@@ -167,17 +167,38 @@ class ToolchainsScreen(Screen):
     def _enable_events(self) -> None:
         self._mounted = True
 
+    def on_click(self, event) -> None:
+        """Handle clicks on tab labels."""
+        widget = event.widget if hasattr(event, 'widget') else None
+        if widget:
+            if widget.id == "btn-tab-details":
+                self._show_tab("details")
+            elif widget.id == "btn-tab-libs":
+                self._show_tab("libs")
+
+    def _is_libs_tab_active(self) -> bool:
+        try:
+            return self.query_one("#tc-libs", Static).display
+        except Exception:
+            return False
+
+    def _update_active_tab(self) -> None:
+        if self._is_libs_tab_active():
+            self._update_libraries()
+        else:
+            self._update_detail()
+
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if not self._mounted:
             return
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
-            self._update_detail()
+            self._update_active_tab()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
-            self._update_detail()
+            self._update_active_tab()
 
     def _update_detail(self) -> None:
         try:
@@ -295,29 +316,26 @@ class ToolchainsScreen(Screen):
             self._handle_check()
         elif btn == "btn-remove":
             self._handle_remove()
-        elif btn == "btn-tab-details":
-            self._show_tab("details")
-        elif btn == "btn-tab-libs":
-            self._show_tab("libs")
+        pass
 
     def _show_tab(self, tab: str) -> None:
         """Switch between Details and Libraries views."""
         detail = self.query_one("#tc-detail", Static)
         libs = self.query_one("#tc-libs", Static)
-        btn_details = self.query_one("#btn-tab-details", Button)
-        btn_libs = self.query_one("#btn-tab-libs", Button)
+        tab_details = self.query_one("#btn-tab-details", Static)
+        tab_libs = self.query_one("#btn-tab-libs", Static)
 
         if tab == "details":
             detail.display = True
             libs.display = False
-            btn_details.variant = "primary"
-            btn_libs.variant = "default"
+            tab_details.set_classes("tab-active")
+            tab_libs.set_classes("tab-inactive")
             self._update_detail()
         else:
             detail.display = False
             libs.display = True
-            btn_details.variant = "default"
-            btn_libs.variant = "primary"
+            tab_details.set_classes("tab-inactive")
+            tab_libs.set_classes("tab-active")
             self._update_libraries()
 
     def _handle_install(self) -> None:
