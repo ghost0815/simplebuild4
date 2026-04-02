@@ -150,6 +150,10 @@ class ToolchainsScreen(Screen):
             ToolchainsScreen._selected_tc = first_key.value
 
         self._update_detail()
+        # Delay enabling event handling — tables fire RowHighlighted during render
+        self.set_timer(0.5, self._enable_events)
+
+    def _enable_events(self) -> None:
         self._mounted = True
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
