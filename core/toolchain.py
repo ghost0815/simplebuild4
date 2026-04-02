@@ -84,6 +84,10 @@ class LibraryInfo:
     static_lib: str = ""     # path to .a file (empty = not found)
     dynamic_lib: str = ""    # path to .so file (empty = not found)
     found: bool = False
+    # Update info (filled by check_library_updates)
+    update_version: str = ""     # recommended update within same branch
+    latest_version: str = ""     # newest available version overall
+    up_to_date: bool = False
 
 
 def scan_libraries(install_dir: Path, sysroot: str) -> list[LibraryInfo]:
@@ -152,6 +156,130 @@ def _read_pc_version(pc_file: Path) -> str:
     except Exception:
         pass
     return ""
+
+
+def _get_version_branch(version: str) -> str:
+    """Extract the version branch for update comparison.
+
+    OpenSSL has special branching:
+      3.5.5 → "3.5", 3.0.19 → "3.0"
+      1.1.1w → "1.1.1", 1.1.0l → "1.1.0"
+      1.0.2u → "1.0.2", 1.0.0t → "1.0.0"
+      0.9.8zh → "0.9.8"
+    Other libs use major.minor:
+      1.0.29 → "1.0", 8.19.0 → "8"
+    """
+    if not version:
+        return ""
+    parts = version.split(".")
+    if len(parts) >= 3:
+        # Check if 3rd part starts with a digit (e.g. "3.5.5") vs letter (e.g. "1.1.1w")
+        third = parts[2]
+        if third and third[0].isdigit():
+            # Normal versioning: branch = major.minor (e.g. 3.5, 1.0)
+            return f"{parts[0]}.{parts[1]}"
+        else:
+            # OpenSSL legacy: branch = major.minor.patch_prefix (e.g. 1.1.1, 1.0.2)
+            return f"{parts[0]}.{parts[1]}.{parts[2].rstrip('abcdefghijklmnopqrstuvwxyz')}"
+    elif len(parts) == 2:
+        return parts[0]
+    return version
+
+
+def _version_tuple(version: str) -> tuple:
+    """Convert version string to comparable tuple."""
+    import re
+    parts = re.split(r'[.\-]', version)
+    result = []
+    for p in parts:
+        m = re.match(r'^(\d+)(.*)', p)
+        if m:
+            result.append((int(m.group(1)), m.group(2)))
+        else:
+            result.append((0, p))
+    return tuple(result)
+
+
+def load_library_recipes(libraries_path: Path) -> list[dict]:
+    """Load library recipes from libraries.yaml."""
+    if not libraries_path.exists():
+        return []
+    data = yaml.safe_load(libraries_path.read_text(encoding="utf-8"))
+    if not data or "libraries" not in data:
+        return []
+    return data["libraries"]
+
+
+def check_library_updates(
+    libs: list[LibraryInfo],
+    recipes: list[dict],
+    has_c11: bool = True,
+) -> list[LibraryInfo]:
+    """Enrich LibraryInfo with update recommendations.
+
+    Args:
+        libs: Scanned libraries from scan_libraries()
+        recipes: Loaded from libraries.yaml
+        has_c11: Whether the toolchain supports C11
+
+    Returns:
+        Same list with update_version, latest_version, up_to_date filled in.
+    """
+    # Build recipe lookup by name
+    recipe_map: dict[str, dict] = {}
+    for r in recipes:
+        recipe_map[r["name"]] = r
+
+    for lib in libs:
+        recipe = recipe_map.get(lib.name)
+        if not recipe:
+            continue
+
+        variants = recipe.get("variants", [])
+        if not variants:
+            continue
+
+        # Filter variants by C11 capability
+        available = []
+        for v in variants:
+            if v.get("requires") == "c11" and not has_c11:
+                continue
+            available.append(v)
+
+        if not available:
+            continue
+
+        # Latest available version (first in list after filtering)
+        lib.latest_version = available[0].get("version", "")
+
+        if not lib.found or not lib.version:
+            # Not installed — recommend latest
+            lib.update_version = lib.latest_version
+            continue
+
+        # Find update within same branch
+        installed_branch = _get_version_branch(lib.version)
+
+        best_in_branch = ""
+        for v in available:
+            v_version = v.get("version", "")
+            if v_version in ("auto", "master"):
+                continue
+            v_branch = _get_version_branch(v_version)
+            if v_branch == installed_branch:
+                # First match in branch (sorted newest first) = best update
+                if not best_in_branch:
+                    best_in_branch = v_version
+
+        if best_in_branch:
+            lib.update_version = best_in_branch
+            lib.up_to_date = (lib.version == best_in_branch)
+        else:
+            # No match in same branch — suggest latest
+            lib.update_version = lib.latest_version
+            lib.up_to_date = (lib.version == lib.latest_version)
+
+    return libs
 
 
 class ToolchainRegistry:

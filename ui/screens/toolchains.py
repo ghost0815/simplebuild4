@@ -15,7 +15,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
-from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries
+from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -235,7 +235,7 @@ class ToolchainsScreen(Screen):
             pass
 
     def _update_libraries(self) -> None:
-        """Scan and display libraries for selected toolchain."""
+        """Scan and display libraries with update recommendations."""
         try:
             name = ToolchainsScreen._selected_tc
             if not name:
@@ -253,27 +253,40 @@ class ToolchainsScreen(Screen):
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot)
 
+            # Load recipes and check for updates
+            recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml")
+            # TODO: detect C11 capability properly
+            libs = check_library_updates(libs, recipes, has_c11=True)
+
             found_count = sum(1 for lib in libs if lib.found)
-            lines = [f"  [bold]{tc.name}[/bold] — Libraries ({found_count}/{len(libs)})\n"]
-            lines.append(f"  {'Library':<15s} {'Version':<15s} {'Type':<10s}")
-            lines.append(f"  {'─' * 15} {'─' * 15} {'─' * 10}")
+            lines = [f"  [bold]{tc.name}[/bold] — Libraries\n"]
+            lines.append(f"  {'Library':<15s} {'Installed':<15s} {'Update':<20s} {'Latest':<15s}")
+            lines.append(f"  {'─' * 15} {'─' * 15} {'─' * 20} {'─' * 15}")
 
             for lib in libs:
-                if lib.found:
-                    lib_type = []
-                    if lib.static_lib:
-                        lib_type.append("static")
-                    if lib.dynamic_lib:
-                        lib_type.append("shared")
-                    type_str = "+".join(lib_type) if lib_type else "pc only"
-                    version = lib.version or "?"
-                    lines.append(f"  [green]{lib.name:<15s}[/green] {version:<15s} {type_str}")
-                else:
-                    lines.append(f"  [dim]{lib.name:<15s} —               —[/dim]")
+                installed = lib.version if lib.found else "—"
 
-            if found_count == 0:
-                lines.append(f"\n  [dim]No libraries found in sysroot. For generic toolchains,")
-                lines.append(f"  libraries need to be built and installed separately.[/dim]")
+                if lib.found and lib.up_to_date:
+                    update = "[green]up to date[/green]"
+                    latest = ""
+                elif lib.found and lib.update_version:
+                    update = f"[yellow]→ {lib.update_version}[/yellow]"
+                    # Show latest if different from update
+                    if lib.latest_version and lib.latest_version != lib.update_version:
+                        latest = f"[dim]{lib.latest_version}[/dim]"
+                    else:
+                        latest = ""
+                elif not lib.found and lib.latest_version:
+                    update = f"[cyan]install {lib.update_version}[/cyan]"
+                    latest = ""
+                else:
+                    update = "—"
+                    latest = ""
+
+                if lib.found:
+                    lines.append(f"  [green]{lib.name:<15s}[/green] {installed:<15s} {update:<20s} {latest}")
+                else:
+                    lines.append(f"  [dim]{lib.name:<15s}[/dim] {'—':<15s} {update:<20s} {latest}")
 
             self.query_one("#tc-libs", Static).update("\n".join(lines))
         except Exception:
