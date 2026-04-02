@@ -32,31 +32,202 @@ Screen {
     height: auto;
     background: $boost;
     border: solid $primary;
-}
-
-#action-bar {
-    height: 3;
-    padding: 0 2;
-}
-
-#action-bar Button {
-    min-width: 14;
-    margin: 0 1 0 0;
+    border-title-color: $text;
+    border-title-style: bold;
 }
 
 #output {
     margin: 1 2;
     height: 1fr;
     border: solid $accent;
+    border-title-color: $text;
+    border-title-style: bold;
 }
 
-#tab-bar {
+/* Settings & shared form styles */
+#settings-content {
+    padding: 1 3;
+}
+
+.section-title {
+    height: 1;
+    margin: 1 0 0 0;
+    color: $accent;
+}
+
+.section-title-top {
+    height: 1;
+    margin: 0;
+    color: $accent;
+}
+
+.s-row {
     height: 3;
-    padding: 0 2;
-    dock: bottom;
+    margin: 0 0 0 2;
 }
 
-#tab-bar Button {
-    min-width: 16;
-    margin: 0 1 0 0;
+.s-row Input {
+    width: 1fr;
+}
+
+.s-row Select {
+    width: 40;
+}
+
+.s-row-tall {
+    height: 3;
+    margin: 0 0 0 2;
+}
+
+.s-label {
+    width: 40;
+    padding: 1 0;
+}
+
+.s-label-tall {
+    width: 40;
+    padding: 1 0;
+}
+
+.s-toggle {
+    height: 3;
+    margin: 0 0 0 2;
+}
+
+.s-toggle .s-label {
+    width: 40;
+    padding: 1 0;
+}
+
+/* Repository screen */
+#repo-scroll {
+    padding: 0 1;
+}
+
+#repo-info {
+    margin: 0 1;
+    padding: 1 1;
+    height: auto;
+    background: $boost;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
+}
+
+#repo-output {
+    margin: 0 1;
+    height: 10;
+    border: solid $accent;
+    border-title-color: $text;
+    border-title-style: bold;
+    padding: 0 1;
+}
+
+.repo-section {
+    height: 1;
+    margin: 1 1 0 2;
+    color: $accent;
+}
+
+#repo-box {
+    margin: 1 1;
+    border: solid #444444;
+    border-title-color: $accent;
+    border-title-style: bold;
+    height: auto;
+    padding: 0 1;
+}
+
+#edit-box {
+    margin: 1 1;
+    border: solid #444444;
+    border-title-color: $accent;
+    border-title-style: bold;
+    height: auto;
+    padding: 0 1;
+}
+
+.repo-actions-row {
+    height: 3;
+    align: right middle;
+}
+
+.repo-actions-row Button {
+    margin: 0 0 0 1;
+}
+
+.repo-actions-row Select {
+    width: 25;
+}
+
+Switch .switch--slider {
+    color: #666666;
+    background: #444444;
+}
+
+Switch.-on .switch--slider {
+    color: $success;
+}
+
+.spacer {
+    width: 1fr;
+}
+
+.repo-label-short {
+    width: 14;
+    padding: 1 0;
+}
+
+.input-fixed {
+    width: 30;
+}
+
+.patch-info {
+    margin: 0 2;
+    padding: 0 1;
+    height: auto;
+}
+
+#patch-grid {
+    grid-size: 2;
+    grid-gutter: 0 2;
+    margin: 1 1;
+    height: auto;
+    border: solid #444444;
+    border-title-color: $accent;
+    border-title-style: bold;
+    padding: 0 1;
+}
+
+.patch-item {
+    height: 1;
+    background: #252530;
+    margin: 0;
+}
+
+.patch-item Switch {
+    height: 1;
+    min-height: 1;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.patch-name {
+    width: 1fr;
+    height: 1;
+}
+
+.repo-row {
+    height: 3;
+    margin: 0 1;
+}
+
+.repo-label {
+    width: 25;
+    padding: 1 0;
+}
+
+.repo-row Input {
+    width: 1fr;
 }
