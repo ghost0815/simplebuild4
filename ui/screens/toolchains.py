@@ -42,6 +42,7 @@ class ToolchainsScreen(Screen):
     def __init__(self) -> None:
         super().__init__()
         self._registry: ToolchainRegistry | None = None
+        self._mounted = False
 
     def _get_registry(self) -> ToolchainRegistry:
         if self._registry is None:
@@ -149,8 +150,11 @@ class ToolchainsScreen(Screen):
             ToolchainsScreen._selected_tc = first_key.value
 
         self._update_detail()
+        self._mounted = True
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        if not self._mounted:
+            return
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
             self._update_detail()
