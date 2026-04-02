@@ -12,7 +12,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Collapsible, DataTable
+from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates
@@ -102,10 +102,9 @@ class ToolchainsScreen(Screen):
                 yield detail
 
                 # Libraries panel (hidden by default)
-                libs = Static("", id="tc-libs")
-                libs.auto_links = False
-                libs.display = False
-                yield libs
+                with VerticalScroll(id="tc-libs"):
+                    yield Static("", id="tc-libs-header")
+                    yield Vertical(id="tc-libs-rows")
 
                 # Output
                 with VerticalScroll(id="tc-output"):
@@ -178,7 +177,7 @@ class ToolchainsScreen(Screen):
 
     def _is_libs_tab_active(self) -> bool:
         try:
-            return self.query_one("#tc-libs", Static).display
+            return self.query_one("#tc-libs", VerticalScroll).display
         except Exception:
             return False
 
@@ -235,7 +234,7 @@ class ToolchainsScreen(Screen):
             pass
 
     def _update_libraries(self) -> None:
-        """Scan and display libraries with update recommendations."""
+        """Scan and display libraries with action dropdowns."""
         try:
             name = ToolchainsScreen._selected_tc
             if not name:
@@ -244,53 +243,138 @@ class ToolchainsScreen(Screen):
             tc = reg.get(name)
             if not tc:
                 return
+
+            header = self.query_one("#tc-libs-header", Static)
+            rows_container = self.query_one("#tc-libs-rows", Vertical)
+
             if not tc.installed:
-                self.query_one("#tc-libs", Static).update(
-                    f"  [bold]{tc.name}[/bold]\n  [dim]Not installed — install first to scan libraries[/dim]"
-                )
+                header.update(f"  [bold]{tc.name}[/bold]\n  [dim]Not installed — install first to scan libraries[/dim]")
+                # Clear old rows
+                for child in list(rows_container.children):
+                    child.remove()
                 return
 
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot)
 
-            # Load recipes and check for updates
             recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml")
-            # TODO: detect C11 capability properly
             libs = check_library_updates(libs, recipes, has_c11=True)
 
-            found_count = sum(1 for lib in libs if lib.found)
-            lines = [f"  [bold]{tc.name}[/bold] — Libraries\n"]
-            lines.append(f"  {'Library':<15s} {'Installed':<15s} {'Update':<20s} {'Latest':<15s}")
-            lines.append(f"  {'─' * 15} {'─' * 15} {'─' * 20} {'─' * 15}")
+            # Build recipe map for version options
+            recipe_map = {r["name"]: r for r in recipes}
+
+            header.update(f"  [bold]{tc.name}[/bold] — Libraries    [dim]Select actions, then press F10 to execute[/dim]")
+
+            # Clear old rows
+            for child in list(rows_container.children):
+                child.remove()
+
+            # Header row
+            rows_container.mount(Static(
+                f"  {'Library':<15s} {'Installed':<12s} Action",
+                classes="lib-header-row",
+            ))
 
             for lib in libs:
                 installed = lib.version if lib.found else "—"
 
+                # Build dropdown options for this library
+                recipe = recipe_map.get(lib.name, {})
+                variants = recipe.get("variants", [])
+
+                options = [("skip", "skip")]
+
                 if lib.found and lib.up_to_date:
-                    update = "[green]up to date[/green]"
-                    latest = ""
+                    # Already latest — only offer skip or reinstall
+                    options.append((f"reinstall {lib.version}", f"reinstall:{lib.version}"))
                 elif lib.found and lib.update_version:
-                    update = f"[yellow]→ {lib.update_version}[/yellow]"
-                    # Show latest if different from update
-                    if lib.latest_version and lib.latest_version != lib.update_version:
-                        latest = f"[dim]{lib.latest_version}[/dim]"
-                    else:
-                        latest = ""
-                elif not lib.found and lib.latest_version:
-                    update = f"[cyan]install {lib.update_version}[/cyan]"
-                    latest = ""
-                else:
-                    update = "—"
-                    latest = ""
+                    # Update available — recommend it
+                    options.append((f"→ {lib.update_version} (recommended)", f"update:{lib.update_version}"))
+                elif not lib.found and lib.update_version:
+                    # Not installed — recommend install
+                    options.append((f"install {lib.update_version} (recommended)", f"install:{lib.update_version}"))
 
-                if lib.found:
-                    lines.append(f"  [green]{lib.name:<15s}[/green] {installed:<15s} {update:<20s} {latest}")
-                else:
-                    lines.append(f"  [dim]{lib.name:<15s}[/dim] {'—':<15s} {update:<20s} {latest}")
+                # Add all other versions
+                for v in variants:
+                    ver = v.get("version", "")
+                    label = v.get("label", ver)
+                    req = " [c11]" if v.get("requires") == "c11" else ""
+                    action = "install" if not lib.found else "update"
+                    opt_label = f"{action} {ver} — {label}{req}"
+                    opt_value = f"{action}:{ver}"
+                    # Don't duplicate the recommended one
+                    if opt_value not in [o[1] for o in options]:
+                        options.append((opt_label, opt_value))
 
-            self.query_one("#tc-libs", Static).update("\n".join(lines))
+                # Default selection
+                if lib.found and lib.up_to_date:
+                    default = "skip"
+                elif lib.update_version:
+                    action = "install" if not lib.found else "update"
+                    default = f"{action}:{lib.update_version}"
+                else:
+                    default = "skip"
+
+                # Status indicator
+                if lib.found and lib.up_to_date:
+                    status = f"[green]{lib.name:<15s}[/green] {installed:<12s}"
+                elif lib.found:
+                    status = f"[yellow]{lib.name:<15s}[/yellow] {installed:<12s}"
+                else:
+                    status = f"[dim]{lib.name:<15s}[/dim] {'—':<12s}"
+
+                row = Horizontal(classes="lib-action-row")
+                rows_container.mount(row)
+                row.mount(Static(f"  {status}", classes="lib-status"))
+                row.mount(Select(
+                    options=options,
+                    value=default,
+                    id=f"lib-action-{lib.name}",
+                    classes="lib-select",
+                ))
+
         except Exception:
             pass
+
+    def do_add(self) -> None:
+        """F10 — execute library actions (install/update)."""
+        if not self._is_libs_tab_active():
+            return
+
+        name = ToolchainsScreen._selected_tc
+        if not name:
+            self.notify("No toolchain selected", severity="warning")
+            return
+
+        reg = self._get_registry()
+        tc = reg.get(name)
+        if not tc or not tc.installed:
+            self.notify("Toolchain not installed", severity="warning")
+            return
+
+        # Collect actions from dropdowns
+        actions = []
+        rows_container = self.query_one("#tc-libs-rows", Vertical)
+        for select in rows_container.query(Select):
+            if select.value and isinstance(select.value, str) and select.value != "skip":
+                lib_name = select.id.replace("lib-action-", "")
+                actions.append((lib_name, select.value))
+
+        if not actions:
+            self.notify("No library actions selected", severity="warning")
+            return
+
+        self._log_sync(f"[bold]Building {len(actions)} library action(s) for {tc.name}...[/bold]")
+
+        for lib_name, action_str in actions:
+            parts = action_str.split(":", 1)
+            if len(parts) == 2:
+                action_type, version = parts
+                self._log_sync(f"  {action_type}: {lib_name} {version}")
+            else:
+                self._log_sync(f"  {action_str}: {lib_name}")
+
+        self._log_sync("[dim]Library building not yet implemented — recipes ready in libraries.yaml[/dim]")
 
     def _refresh(self) -> None:
         self._registry = None
@@ -334,7 +418,7 @@ class ToolchainsScreen(Screen):
     def _show_tab(self, tab: str) -> None:
         """Switch between Details and Libraries views."""
         detail = self.query_one("#tc-detail", Static)
-        libs = self.query_one("#tc-libs", Static)
+        libs = self.query_one("#tc-libs", VerticalScroll)
         tab_details = self.query_one("#btn-tab-details", Static)
         tab_libs = self.query_one("#btn-tab-libs", Static)
 

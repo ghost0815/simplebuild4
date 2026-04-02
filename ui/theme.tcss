@@ -293,6 +293,30 @@ Switch.-on .switch--slider {
     overflow-x: hidden;
 }
 
+#tc-libs {
+    display: none;
+    padding: 0 1;
+}
+
+.lib-header-row {
+    height: 1;
+    margin: 0 0 1 0;
+    text-style: bold;
+}
+
+.lib-action-row {
+    height: 3;
+}
+
+.lib-status {
+    width: 35;
+    padding: 1 0;
+}
+
+.lib-select {
+    width: 1fr;
+}
+
 #tc-output {
     margin: 1 0;
     height: 1fr;
