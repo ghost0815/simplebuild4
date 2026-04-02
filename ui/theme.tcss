@@ -305,16 +305,18 @@ Switch.-on .switch--slider {
 }
 
 .lib-action-row {
-    height: 3;
+    height: 1;
 }
 
 .lib-status {
     width: 35;
-    padding: 1 0;
+    height: 1;
 }
 
 .lib-select {
     width: 1fr;
+    height: 1;
+    border: none;
 }
 
 #tc-output {

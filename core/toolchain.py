@@ -66,7 +66,6 @@ KNOWN_LIBS = [
     ("OpenSSL",    "openssl.pc",       "libcrypto.a"),
     ("libcurl",    "libcurl.pc",       "libcurl.a"),
     ("libusb",     "libusb-1.0.pc",    "libusb-1.0.a"),
-    ("libusb-0.1", "libusb.pc",        "libusb.a"),
     ("pcsclite",   "libpcsclite.pc",   "libpcsclite.a"),
     ("ccid",       "libccid.pc",       None),
     ("libdvbcsa",  "libdvbcsa.pc",     "libdvbcsa.a"),
@@ -115,11 +114,16 @@ def scan_libraries(install_dir: Path, sysroot: str) -> list[LibraryInfo]:
     for lib_name, pc_name, static_name in KNOWN_LIBS:
         info = LibraryInfo(name=lib_name)
 
-        # Check .pc file
+        # Check .pc file (also check legacy alternatives like libusb.pc)
         if pc_name in pc_map:
             info.found = True
             info.pc_file = str(pc_map[pc_name])
             info.version = _read_pc_version(pc_map[pc_name])
+        elif lib_name == "libusb" and "libusb.pc" in pc_map:
+            # Fallback: libusb 0.1 installed
+            info.found = True
+            info.pc_file = str(pc_map["libusb.pc"])
+            info.version = _read_pc_version(pc_map["libusb.pc"])
 
         # Check static library
         if static_name:

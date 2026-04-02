@@ -268,7 +268,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  [bold]{tc.name}[/bold] — Libraries    [dim]Select actions, then press F10[/dim]")
+            header.update(f"  [bold]{tc.name}[/bold] — Libraries")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")
