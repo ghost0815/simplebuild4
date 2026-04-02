@@ -37,6 +37,9 @@ class ToolchainsScreen(Screen):
     BINDINGS = []
 
     _log_history: list[str] = []
+    _selected_tc: str = ""
+    _selected_category: str = "all"
+    _search_text: str = ""
 
     def __init__(self) -> None:
         super().__init__()
@@ -79,8 +82,12 @@ class ToolchainsScreen(Screen):
             # Toolchain actions
             with Vertical(id="tc-box"):
                 with Horizontal(classes="repo-actions-row"):
-                    tc_options = self._build_tc_options(reg, "all", "")
-                    yield Select(options=tc_options, value=tc_options[0][1] if tc_options else Select.BLANK, id="tc-select", prompt="select toolchain")
+                    cat = ToolchainsScreen._selected_category
+                    search = ToolchainsScreen._search_text
+                    tc_options = self._build_tc_options(reg, cat, search)
+                    saved = ToolchainsScreen._selected_tc
+                    tc_value = saved if saved and any(v == saved for _, v in tc_options) else (tc_options[0][1] if tc_options else Select.BLANK)
+                    yield Select(options=tc_options, value=tc_value, id="tc-select", prompt="select toolchain")
                     yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
@@ -96,10 +103,10 @@ class ToolchainsScreen(Screen):
             with Vertical(id="tc-browse-box"):
                 with Horizontal(classes="repo-actions-row"):
                     cat_options = [("All", "all")] + [(label, key) for key, label in CATEGORIES]
-                    yield Select(options=cat_options, value="all", id="tc-category")
-                    yield Input(placeholder="Search...", id="tc-search")
+                    yield Select(options=cat_options, value=ToolchainsScreen._selected_category, id="tc-category")
+                    yield Input(value=ToolchainsScreen._search_text, placeholder="Search...", id="tc-search")
 
-                available_text = self._build_available_text(reg, "all", "")
+                available_text = self._build_available_text(reg, ToolchainsScreen._selected_category, ToolchainsScreen._search_text)
                 avail = Static(available_text, id="tc-available")
                 yield avail
 
@@ -190,10 +197,23 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
+    def _save_state(self) -> None:
+        """Save current UI state before refresh."""
+        try:
+            sel = self.query_one("#tc-select", Select)
+            if isinstance(sel.value, str):
+                ToolchainsScreen._selected_tc = sel.value
+            cat = self.query_one("#tc-category", Select)
+            if isinstance(cat.value, str):
+                ToolchainsScreen._selected_category = cat.value
+            ToolchainsScreen._search_text = self.query_one("#tc-search", Input).value
+        except Exception:
+            pass
+
     def _refresh(self) -> None:
         """Reload the screen."""
+        self._save_state()
         self._registry = None
-        ToolchainsScreen._log_history = list(ToolchainsScreen._log_history)
         self.app.pop_screen()
         self.app.push_screen(ToolchainsScreen())
 
@@ -549,4 +569,7 @@ class ToolchainsScreen(Screen):
 
     def action_go_back(self) -> None:
         ToolchainsScreen._log_history.clear()
+        ToolchainsScreen._selected_tc = ""
+        ToolchainsScreen._selected_category = "all"
+        ToolchainsScreen._search_text = ""
         self.app.pop_screen()
