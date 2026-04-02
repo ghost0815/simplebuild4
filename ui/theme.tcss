@@ -294,7 +294,6 @@ Switch.-on .switch--slider {
 #tc-libs {
     display: none;
     padding: 0 1;
-    max-height: 50%;
 }
 
 .lib-header-row {
