@@ -12,7 +12,13 @@
 #   @LDFLAGS@    — Linker flags from toolchain
 #   @CPUS@       — Number of CPU threads
 #
-# requires: optional field, e.g. "c11" — marks variants needing C11 compiler support
+# requires: optional, e.g. "c11" — marks variants needing C11 compiler support
+# extra: optional, shell commands run before configure, keyed by toolchain trait:
+#   musl/uclibc/android — matched against compiler prefix or toolchain type
+#   Example:
+#     extra:
+#       musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+#       android: 'export CC=gcc; export RANLIB=ranlib'
 
 libraries:
 
@@ -28,6 +34,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "3.4.1"
         label: "3.4.x"
@@ -36,6 +46,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "3.3.3"
         label: "3.3.x"
@@ -44,6 +58,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "3.2.4"
         label: "3.2.x"
@@ -52,6 +70,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "3.1.8"
         label: "3.1.x"
@@ -60,6 +82,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "3.0.16"
         label: "3.0.x (LTS)"
@@ -68,6 +94,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "1.1.1w"
         label: "1.1.1 (legacy LTS)"
@@ -75,6 +105,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "1.1.0l"
         label: "1.1.0 (old)"
@@ -82,6 +116,10 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "1.0.2u"
         label: "1.0.2 (very old)"
@@ -89,6 +127,8 @@ libraries:
         configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
         make: "make -j@CPUS@"
         install: "make install_sw"
+        extra:
+          android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
 
       - version: "0.9.8zh"
         label: "0.9.8 (ancient)"
@@ -160,6 +200,7 @@ libraries:
   - name: ccid
     pc_file: libccid.pc
     version_check: url:https://ccid.apdu.fr/files/
+    depends: [pcsclite, libusb]
     variants:
 
       - version: "1.6.1"
