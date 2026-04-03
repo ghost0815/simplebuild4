@@ -16,7 +16,7 @@ from textual.widgets import Static, Input, Button, Collapsible, DataTable, Selec
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
-from core.lib_builder import build_library
+from core.lib_builder import build_library, sort_by_dependencies
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -392,10 +392,15 @@ class ToolchainsScreen(Screen):
             self.notify("No library actions selected", severity="warning")
             return
 
+        # Sort by dependencies
+        libraries_yaml = self.app.paths.defaults_dir / "libraries.yaml"
+        actions = sort_by_dependencies(actions, libraries_yaml)
+
         self._building = True
         self._cancel_requested = False
         self._update_f10_state()
-        self._log_sync(f"[bold]Building {len(actions)} library action(s) for {tc.name}...[/bold]")
+        order = ", ".join(name for name, _ in actions)
+        self._log_sync(f"[bold]Building {len(actions)} libraries for {tc.name}:[/bold] {order}")
 
         def cancel_check() -> bool:
             return self._cancel_requested

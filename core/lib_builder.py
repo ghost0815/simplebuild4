@@ -12,6 +12,62 @@ from typing import Callable, Optional
 import yaml
 
 
+def sort_by_dependencies(
+    actions: list[tuple[str, str]],
+    libraries_yaml: Path,
+) -> list[tuple[str, str]]:
+    """Sort build actions respecting library dependencies (topological sort).
+
+    Args:
+        actions: List of (lib_name, action_str) tuples
+        libraries_yaml: Path to libraries.yaml
+
+    Returns:
+        Same list reordered so dependencies are built first.
+    """
+    # Load dependency graph
+    dep_graph: dict[str, list[str]] = {}
+    if libraries_yaml.exists():
+        data = yaml.safe_load(libraries_yaml.read_text(encoding="utf-8"))
+        if data and "libraries" in data:
+            for lib in data["libraries"]:
+                dep_graph[lib["name"]] = lib.get("depends", [])
+
+    # Build set of libs we're building
+    action_libs = {name for name, _ in actions}
+    action_map = {name: action for name, action in actions}
+
+    # Topological sort (Kahn's algorithm)
+    # Only consider dependencies that are also in our action list
+    in_degree: dict[str, int] = {name: 0 for name in action_libs}
+    for name in action_libs:
+        for dep in dep_graph.get(name, []):
+            if dep in action_libs:
+                in_degree[name] = in_degree.get(name, 0) + 1
+
+    queue = [name for name in action_libs if in_degree.get(name, 0) == 0]
+    sorted_names = []
+
+    while queue:
+        # Pick alphabetically for deterministic order
+        queue.sort()
+        node = queue.pop(0)
+        sorted_names.append(node)
+        # For each lib that depends on node, reduce in_degree
+        for name in action_libs:
+            if node in dep_graph.get(name, []) and name not in sorted_names:
+                in_degree[name] -= 1
+                if in_degree[name] == 0:
+                    queue.append(name)
+
+    # Add any remaining (circular deps or missing)
+    for name in action_libs:
+        if name not in sorted_names:
+            sorted_names.append(name)
+
+    return [(name, action_map[name]) for name in sorted_names if name in action_map]
+
+
 def build_library(
     lib_name: str,
     version: str,
