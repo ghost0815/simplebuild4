@@ -244,8 +244,9 @@ def _do_build(
 
     # Export PKG_CONFIG vars inside script so $(pkg-config ...) works in configure
     if pkg_dirs:
-        script_parts.append(f'export PKG_CONFIG_PATH="{":".join(pkg_dirs)}"')
-        script_parts.append(f'export PKG_CONFIG_LIBDIR="{":".join(pkg_dirs)}"')
+        pkg_path = ":".join(pkg_dirs)
+        script_parts.append(f'export PKG_CONFIG_PATH="{pkg_path}"')
+        script_parts.append(f'export PKG_CONFIG_LIBDIR="{pkg_path}"')
 
     # Apply extra commands based on toolchain traits
     if extra and isinstance(extra, dict):
