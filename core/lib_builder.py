@@ -281,13 +281,35 @@ def _do_build(
     # Prepare environment — put /usr/bin BEFORE toolchain bin so host pkg-config is found first
     env = os.environ.copy()
     original_path = env.get('PATH', '')
-    env["PATH"] = f"/usr/bin:{toolchain_dir}/bin:{toolchain_dir}/sysroots/x86_64-oesdk-linux/usr/bin:{original_path}"
+    # OE-SDK: add the cross-compiler bin path (inside sysroots)
+    oesdk_bin = toolchain_dir / "sysroots" / "x86_64-oesdk-linux" / "usr" / "bin"
+    oesdk_cross_bins = list(oesdk_bin.glob(f"{target}*")) if oesdk_bin.is_dir() else []
+    oesdk_cross_path = str(oesdk_cross_bins[0]) if oesdk_cross_bins else ""
+    env["PATH"] = f"/usr/bin:{toolchain_dir}/bin:{oesdk_cross_path}:{oesdk_bin}:{original_path}"
     if toolchain_cflags:
         env["CFLAGS"] = toolchain_cflags
     if toolchain_ldflags:
         env["LDFLAGS"] = toolchain_ldflags
     env["CC"] = cc
     env["RANLIB"] = ranlib
+
+    # Auto-inject --sysroot if compiler's built-in sysroot is invalid (same as s3)
+    sysroot_inject = ""
+    try:
+        gcc_path = shutil.which(cc, path=env["PATH"])
+        if gcc_path:
+            gcc_sysroot = subprocess.check_output(
+                [gcc_path, "-print-sysroot"], text=True, stderr=subprocess.DEVNULL,
+            ).strip()
+            if gcc_sysroot and not Path(gcc_sysroot).is_dir():
+                sysroot_inject = f"--sysroot={sysroot_path}"
+                if toolchain_cflags and "--sysroot" not in toolchain_cflags:
+                    env["CFLAGS"] = f"{env.get('CFLAGS', '')} {sysroot_inject}".strip()
+                elif not toolchain_cflags:
+                    env["CFLAGS"] = sysroot_inject
+                log(f"Auto-injected: {sysroot_inject}")
+    except Exception:
+        pass
 
     # Set PKG_CONFIG_PATH so libraries can find each other (e.g. ccid needs pcsclite)
     pkg_dirs = []
