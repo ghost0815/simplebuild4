@@ -154,7 +154,7 @@ libraries:
     pre_configure: "autoreconf -i"
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ $OPTIMIZATION"
     make: "make -j@CPUS@"
-    install: "make install"
+    install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e 'prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nincludedir=@PREFIX@/include\n\nName: libdvbcsa\nDescription: DVB Common Scrambling algorithm\nVersion: 1.1.0\nCflags: -I@PREFIX@/include\nLibs: -L@PREFIX@/lib -ldvbcsa' > @PREFIX@/lib/pkgconfig/libdvbcsa.pc"
     extra:
       auto_bitslice: |
         OPT=""; BATCHSIZE="32"; BITSLICE="uint32"
