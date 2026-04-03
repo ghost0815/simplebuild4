@@ -318,10 +318,7 @@ Switch.-on .switch--slider {
 #tc-output {
     margin: 1 0;
     height: 1fr;
-    border: solid $accent;
-    border-title-color: $text;
-    border-title-style: bold;
-    padding: 0 1;
+    border: tall $accent;
 }
 
 .repo-row {

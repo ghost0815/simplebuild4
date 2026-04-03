@@ -12,7 +12,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select
+from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
@@ -120,8 +120,7 @@ class ToolchainsScreen(Screen):
                             )
 
                 # Output
-                with VerticalScroll(id="tc-output"):
-                    yield Static("", id="tc-output-text")
+                yield RichLog(highlight=False, markup=True, id="tc-output", wrap=True)
 
         yield S4Footer(active_screen="toolchains")
 
@@ -149,11 +148,13 @@ class ToolchainsScreen(Screen):
                 pass
 
         # Border titles
-        self.query_one("#tc-output", VerticalScroll).border_title = "Output"
+        self.query_one("#tc-output", RichLog).border_title = "Output"
 
         # Restore log
         if ToolchainsScreen._log_history:
-            self._update_output()
+            log = self.query_one("#tc-output", RichLog)
+            for msg in ToolchainsScreen._log_history:
+                log.write(msg)
 
         # Set selection — either restore previous or pick first installed
         tbl = self.query_one("#tbl-installed", DataTable)
@@ -467,18 +468,15 @@ class ToolchainsScreen(Screen):
 
     def _log(self, msg: str) -> None:
         ToolchainsScreen._log_history.append(msg)
-        self.app.call_from_thread(self._update_output)
+        try:
+            self.app.call_from_thread(self.query_one("#tc-output", RichLog).write, msg)
+        except Exception:
+            pass
 
     def _log_sync(self, msg: str) -> None:
         ToolchainsScreen._log_history.append(msg)
-        self._update_output()
-
-    def _update_output(self) -> None:
         try:
-            text = "\n".join(ToolchainsScreen._log_history)
-            self.query_one("#tc-output-text", Static).update(text)
-            scroll = self.query_one("#tc-output", VerticalScroll)
-            scroll.scroll_end(animate=False)
+            self.query_one("#tc-output", RichLog).write(msg)
         except Exception:
             pass
 

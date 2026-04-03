@@ -391,10 +391,7 @@ def _run_shell(
             cwd=cwd, env=env,
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
         )
-        import time
         from rich.markup import escape as rich_escape
-        batch = []
-        last_flush = time.time()
         for line in proc.stdout:
             if cancel_check and cancel_check():
                 proc.kill()
@@ -402,17 +399,8 @@ def _run_shell(
                 if log:
                     log("[yellow]Process killed — cancelled[/yellow]")
                 return False
-            batch.append(f"  {rich_escape(line.rstrip())}")
-            # Flush batch every 0.5 seconds or every 50 lines
-            now = time.time()
-            if now - last_flush > 0.5 or len(batch) >= 50:
-                if log:
-                    log("\n".join(batch))
-                batch = []
-                last_flush = now
-        # Flush remaining
-        if batch and log:
-            log("\n".join(batch))
+            if log:
+                log(f"  {rich_escape(line.rstrip())}")
         proc.wait()
         if proc.returncode != 0:
             if log:
