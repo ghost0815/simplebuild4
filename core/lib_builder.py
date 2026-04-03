@@ -227,62 +227,42 @@ def _do_build(
     env["CC"] = cc
     env["RANLIB"] = ranlib
 
+    # Build a combined shell script so environment variables persist between steps
+    script_parts = ["set -e"]
+
     # Apply extra commands based on toolchain traits
     if extra and isinstance(extra, dict):
         for trait, cmd in extra.items():
             if _matches_trait(trait, toolchain_prefix, toolchain_dir):
-                if log:
-                    log(f"Applying extra for {trait}...")
                 cmd = _replace(cmd, replacements)
-                _run_shell(cmd, build_dir, env, log, cancel_check)
+                script_parts.append(f"# extra: {trait}")
+                script_parts.append(cmd)
+                if log:
+                    log(f"Extra ({trait}): applied")
 
-    if _cancelled():
-        log("[yellow]Cancelled[/yellow]")
-        shutil.rmtree(build_dir, ignore_errors=True)
-        return False
-
-    # Pre-configure
     if pre_configure:
-        if log:
-            log(f"Pre-configure: {pre_configure}")
-        if not _run_shell(pre_configure, build_dir, env, log, cancel_check):
-            return False
+        script_parts.append(f"# pre_configure")
+        script_parts.append(pre_configure)
 
-    if _cancelled():
-        log("[yellow]Cancelled[/yellow]")
-        shutil.rmtree(build_dir, ignore_errors=True)
-        return False
-
-    # Configure
     if configure:
-        if log:
-            log(f"Configure...")
-        if not _run_shell(configure, build_dir, env, log, cancel_check):
-            return False
+        script_parts.append(f"# configure")
+        script_parts.append(configure)
 
-    if _cancelled():
-        log("[yellow]Cancelled[/yellow]")
-        shutil.rmtree(build_dir, ignore_errors=True)
-        return False
-
-    # Make
     if make_cmd:
-        if log:
-            log(f"Building...")
-        if not _run_shell(make_cmd, build_dir, env, log, cancel_check):
-            return False
+        script_parts.append(f"# make")
+        script_parts.append(make_cmd)
 
-    if _cancelled():
-        log("[yellow]Cancelled[/yellow]")
+    if install_cmd:
+        script_parts.append(f"# install")
+        script_parts.append(install_cmd)
+
+    full_script = "\n".join(script_parts)
+
+    if log:
+        log("Running build script...")
+    if not _run_shell(full_script, build_dir, env, log, cancel_check):
         shutil.rmtree(build_dir, ignore_errors=True)
         return False
-
-    # Install
-    if install_cmd:
-        if log:
-            log(f"Installing...")
-        if not _run_shell(install_cmd, build_dir, env, log, cancel_check):
-            return False
 
     if log:
         log(f"[green]{lib_name} {actual_version} built successfully[/green]")

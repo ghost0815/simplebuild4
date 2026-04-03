@@ -116,13 +116,14 @@ libraries:
   - name: pcsclite
     pc_file: libpcsclite.pc
     version_check: url:https://pcsclite.apdu.fr/files/
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-libsystemd --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    pre_configure: "./bootstrap"
+    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
     install: "make install"
     depends: [libusb]
     variants:
       - version: "2.4.1"
-        label: "current"
+        label: "2.4.x (current)"
         requires: "c11"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
       - version: "1.9.5"
@@ -132,15 +133,16 @@ libraries:
   - name: ccid
     pc_file: libccid.pc
     version_check: url:https://ccid.apdu.fr/files/
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
+    pre_configure: "./bootstrap"
+    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
     install: "make install"
     depends: [pcsclite, libusb]
     variants:
       - version: "1.7.1"
-        label: "current"
+        label: "1.7.x (current)"
         requires: "c11"
-        source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
       - version: "1.5.5"
         label: "1.5.x (no C11 needed)"
         source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.bz2
@@ -150,7 +152,7 @@ libraries:
     version_check: github:oe-mirrors/libdvbcsa
     source: https://github.com/oe-mirrors/libdvbcsa/archive/refs/heads/master.zip
     pre_configure: "autoreconf -i"
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ @OPTIMIZATION@"
+    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ $OPTIMIZATION"
     make: "make -j@CPUS@"
     install: "make install"
     extra:
