@@ -261,18 +261,30 @@ def check_library_updates(
             lib.update_version = lib.latest_version
             continue
 
-        # Check if installed version exactly matches a variant
+        # Check if installed version matches a variant
         exact_match = False
+        has_auto = any(v.get("version") == "auto" for v in available)
         for v in available:
-            if v.get("version") == lib.version:
+            v_version = v.get("version", "")
+            if v_version == lib.version:
                 exact_match = True
                 break
 
+        # For "auto" variants: installed "1.1.0-128" matches if any fixed variant
+        # shares the same base (e.g. "1.1.0-64" → base "1.1.0")
+        if not exact_match and has_auto and "-" in lib.version:
+            installed_base = lib.version.rsplit("-", 1)[0]  # "1.1.0-128" → "1.1.0"
+            for v in available:
+                v_version = v.get("version", "")
+                if v_version not in ("auto", "master") and "-" in v_version:
+                    variant_base = v_version.rsplit("-", 1)[0]  # "1.1.0-64" → "1.1.0"
+                    if installed_base == variant_base:
+                        exact_match = True
+                        break
+
         if exact_match:
-            # Exact match — up to date for this variant
             lib.update_version = lib.version
             lib.up_to_date = True
-            # Still show latest as alternative
             continue
 
         # Find update within same branch
