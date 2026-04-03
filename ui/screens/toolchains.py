@@ -322,7 +322,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  [bold]{'Library':<15s} {'Installed':<12s}[/bold]")
+            header.update(f"  [dim]{'Library':<15s} {'Installed':<12s}           Action[/dim]")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")
