@@ -227,15 +227,47 @@ Switch.-on .switch--slider {
     width: 1fr;
 }
 
-#tc-browser {
-    height: 1fr;
-    margin: 0 2;
+#tc-installed-label {
+    height: 1;
+    margin: 1 1 0 1;
 }
 
-#tc-browser DataTable {
+#tbl-installed {
+    height: auto;
+    max-height: 12;
+    margin: 0 1;
+    border-left: solid #444444;
+    border-right: solid #444444;
+}
+
+#tc-left-tab-bar {
+    height: 1;
+    margin: 1 1 0 2;
+}
+
+#tc-browser {
+    height: 1fr;
+    margin: 0 1;
+}
+
+#tc-selfbuild {
+    display: none;
+    height: 1fr;
+    margin: 0 1;
+}
+
+#tc-browser S4DataTable, #tc-selfbuild S4DataTable {
     height: auto;
     max-height: 15;
+    border-left: solid #444444;
+    border-right: solid #444444;
 }
+
+#tc-browser Collapsible, #tc-selfbuild Collapsible {
+    padding: 0;
+    margin: 0;
+}
+
 
 #tc-right {
     width: 1fr;
@@ -244,20 +276,23 @@ Switch.-on .switch--slider {
 
 #tc-actions {
     height: 3;
-    align: right middle;
+    margin: 0 1;
 }
 
 #tc-actions Button {
     margin: 0 0 0 1;
+    min-width: 12;
+    max-width: 12;
 }
 
 #tc-tab-bar {
     height: 1;
-    margin: 1 0 0 0;
+    padding: 0 0 0 1;
 }
 
 #tc-filter {
-    width: 25;
+    width: 20;
+    border: solid #444444;
 }
 
 #tc-libs-header {
@@ -335,6 +370,21 @@ Switch.-on .switch--slider {
 
 .lib-select {
     width: 1fr;
+}
+
+.lib-action-label {
+    width: auto;
+    padding: 1 0;
+}
+
+.lib-skip-all {
+    width: auto;
+    padding: 1 2;
+    color: $text-muted;
+}
+
+.lib-skip-all:hover {
+    color: $text;
 }
 
 #tc-output {

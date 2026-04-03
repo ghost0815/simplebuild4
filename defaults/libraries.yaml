@@ -64,22 +64,29 @@ libraries:
       - version: "1.0.2u"
         label: "1.0.2 (very old)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
-        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+        configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
+        make: "make -j@CPUS@ || make"
+        install: "make install"
       - version: "1.0.2u"
         label: "1.0.2 as 1.0.0 (Fritzbox)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
-        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared"
+        configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
+        make: "make -j@CPUS@ || make"
         install: "make install"
         extra: {}
       - version: "1.0.0t"
         label: "1.0.0 (ancient)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_0t.tar.gz
-        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+        configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
+        make: "make -j@CPUS@ || make"
+        install: "make install"
         extra: {}
       - version: "0.9.8zh"
         label: "0.9.8 (ancient)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_0_9_8zh.tar.gz
-        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-asm"
+        configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
+        make: "make -j@CPUS@ || make"
+        install: "make install"
         extra: {}
 
   - name: libcurl
@@ -91,8 +98,13 @@ libraries:
     depends: [OpenSSL, zlib]
     variants:
       - version: "8.19.0"
-        label: "current"
+        label: "8.x (current, needs OpenSSL 3)"
+        requires: "c11"
         source: https://github.com/curl/curl/releases/download/curl-8_19_0/curl-@VERSION@.tar.gz
+      - version: "7.88.1"
+        label: "7.88 (works with OpenSSL 1.x/0.9.8)"
+        source: https://github.com/curl/curl/releases/download/curl-7_88_1/curl-@VERSION@.tar.gz
+        configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --with-openssl --without-libpsl --disable-manual"
 
   - name: libusb
     pc_file: libusb-1.0.pc
@@ -141,7 +153,7 @@ libraries:
     pre_configure: "./bootstrap"
     extra:
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --sysconfdir=@PREFIX@/etc --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"
     depends: [pcsclite, libusb, zlib]
@@ -149,8 +161,8 @@ libraries:
       - version: "1.7.1"
         label: "1.7.x (current)"
         requires: "c11"
-      - version: "1.5.5"
-        label: "1.5.x (no C11 needed)"
+      - version: "1.4.36"
+        label: "1.4.x (no C11 needed)"
         source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.bz2
 
   - name: libdvbcsa

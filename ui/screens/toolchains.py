@@ -10,17 +10,69 @@ import tarfile
 import threading
 from pathlib import Path
 
+from rich.text import Text
 from textual.app import ComposeResult
-from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog
+from textual.screen import Screen, ModalScreen
+from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
 from core.lib_builder import build_library, sort_by_dependencies
 from ui.header import S4Header
+
+
+class S4DataTable(DataTable):
+    """DataTable with custom cursor colors."""
+
+    DEFAULT_CSS = """
+    S4DataTable {
+        background: $surface;
+        color: $foreground;
+        height: auto;
+        max-height: 100%;
+
+        &:focus {
+            background-tint: $foreground 5%;
+            & > .datatable--cursor {
+                background: $primary;
+                color: $text;
+                text-style: bold;
+            }
+            & > .datatable--header {
+                background-tint: $foreground 5%;
+            }
+        }
+
+        &:dark {
+            & > .datatable--even-row {
+                background: $surface-darken-1 40%;
+            }
+        }
+
+        & > .datatable--header {
+            text-style: bold;
+            background: #444444;
+            color: $text;
+        }
+
+        & > .datatable--cursor {
+            background: $primary;
+            color: $text;
+        }
+
+        & > .datatable--even-row {
+            background: $surface-lighten-1 50%;
+        }
+
+        & > .datatable--hover {
+            background: $block-hover-background;
+        }
+    }
+    """
 from ui.footer import S4Footer
 
 CATEGORIES = [
+    ("custom", "Custom"),
     ("common", "Common"),
     ("stb", "STB"),
     ("android", "Android"),
@@ -30,8 +82,131 @@ CATEGORIES = [
     ("minipc", "Mini PC"),
     ("tv", "TV"),
     ("legacy", "Legacy"),
-    ("custom", "Custom"),
 ]
+
+
+class FilePickerScreen(ModalScreen[tuple]):
+    """Modal file picker for selecting .tar.xz files."""
+
+    BINDINGS = [("escape", "cancel", "Cancel")]
+
+    DEFAULT_CSS = """
+    FilePickerScreen {
+        align: center middle;
+    }
+    #file-picker-box {
+        width: 80;
+        height: 30;
+        border: solid $accent;
+        background: $surface;
+        padding: 1;
+    }
+    #file-picker-box #fp-title-row {
+        height: 3;
+    }
+    #file-picker-box #fp-title {
+        width: auto;
+        padding: 1 0;
+        text-style: bold;
+    }
+    #file-picker-box .fp-nav-btn {
+        min-width: 10;
+        margin: 0 0 0 1;
+    }
+    #file-picker-box DirectoryTree {
+        height: 1fr;
+        border: solid #444444;
+    }
+    #file-picker-box #fp-path {
+        height: 3;
+        margin: 1 0 0 0;
+    }
+    #file-picker-box #fp-name-row {
+        height: 3;
+        margin: 0;
+    }
+    #file-picker-box #fp-name-label {
+        width: 8;
+        padding: 1 0;
+    }
+    #file-picker-box #fp-name {
+        width: 1fr;
+    }
+    #file-picker-box #fp-buttons {
+        height: 3;
+        align: right middle;
+    }
+    #file-picker-box #fp-buttons Button {
+        margin: 0 0 0 1;
+    }
+    """
+
+    def __init__(self, start_path: str = "/") -> None:
+        super().__init__()
+        self._start_path = start_path
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="file-picker-box"):
+            with Horizontal(id="fp-title-row"):
+                yield Static("Select toolchain archive", id="fp-title")
+                yield Static("", classes="spacer")
+                yield Button("⌂ Home", id="fp-home", classes="fp-nav-btn")
+                yield Button("/ Root", id="fp-root", classes="fp-nav-btn")
+            yield DirectoryTree(self._start_path, id="fp-tree")
+            yield Input(placeholder="Or enter path directly...", id="fp-path")
+            with Horizontal(id="fp-name-row"):
+                yield Static(" Name: ", id="fp-name-label")
+                yield Input(placeholder="toolchain name", id="fp-name")
+            with Horizontal(id="fp-buttons"):
+                yield Button("Cancel", id="fp-cancel")
+                yield Button("Import", id="fp-select", variant="primary")
+
+    @staticmethod
+    def _name_from_filename(filename: str) -> str:
+        """Derive toolchain name from archive filename."""
+        name = filename
+        for ext in (".tar.xz", ".tar.bz2", ".tar.gz"):
+            if name.endswith(ext):
+                name = name[:-len(ext)]
+                break
+        if name.startswith("Toolchain-"):
+            name = name[len("Toolchain-"):]
+        return name
+
+    def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
+        """When a file is clicked in the tree."""
+        self.query_one("#fp-path", Input).value = str(event.path)
+        self.query_one("#fp-name", Input).value = self._name_from_filename(event.path.name)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "fp-path":
+            path = event.value.strip()
+            if path:
+                self.query_one("#fp-name", Input).value = self._name_from_filename(Path(path).name)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "fp-cancel":
+            self.dismiss(("", ""))
+        elif event.button.id == "fp-select":
+            path = self.query_one("#fp-path", Input).value.strip()
+            name = self.query_one("#fp-name", Input).value.strip()
+            if path and name:
+                self.dismiss((path, name))
+            elif path:
+                self.notify("Enter a toolchain name", severity="warning")
+        elif event.button.id == "fp-home":
+            self._change_root(Path.home())
+        elif event.button.id == "fp-root":
+            self._change_root(Path("/"))
+
+    def _change_root(self, new_path: Path) -> None:
+        """Replace the directory tree with a new root."""
+        tree = self.query_one("#fp-tree", DirectoryTree)
+        tree.path = new_path
+        tree.reload()
+
+    def action_cancel(self) -> None:
+        self.dismiss(("", ""))
 
 
 class ToolchainsScreen(Screen):
@@ -65,31 +240,16 @@ class ToolchainsScreen(Screen):
         with Horizontal(id="tc-main"):
             # Left: Toolchain browser (half screen)
             with Vertical(id="tc-browser-wrap"):
-                with VerticalScroll(id="tc-browser"):
-                    # Installed (virtual category, always expanded)
-                    installed = reg.installed_toolchains()
-                    with Collapsible(title=f"Installed ({len(installed)})", collapsed=False, id="cat-installed"):
-                        table = DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
-                        yield table
-
-                    # Registry categories
-                    for cat_key, cat_label in CATEGORIES:
-                        tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
-                        if not tcs:
-                            continue
-                        with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
-                            table = DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
-                            yield table
-
-            # Right: Details + Output
-            with Vertical(id="tc-right"):
-                # Actions
+                # Filter + Actions
                 with Horizontal(id="tc-actions"):
                     yield Input(placeholder="Filter...", id="tc-filter")
                     yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
                     yield install_btn
+                    import_btn = Button("Import", id="btn-import")
+                    import_btn.tooltip = "Import a toolchain from a local .tar.xz backup"
+                    yield import_btn
                     check_btn = Button("Check", id="btn-check")
                     check_btn.tooltip = "Verify the selected toolchain is working"
                     yield check_btn
@@ -97,10 +257,43 @@ class ToolchainsScreen(Screen):
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
 
-                # Detail/Libraries tab buttons
+                # Installed toolchains (always visible)
+                yield Static(" [bold]Installed[/bold]", id="tc-installed-label")
+                yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
+
+                # PreBuild / SelfBuild tabs
+                with Horizontal(id="tc-left-tab-bar"):
+                    yield Static(" PreBuild ", id="btn-ltab-prebuild", classes="tab-active")
+                    yield Static(" SelfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
+
+                # PreBuild panel — registry categories only
+                with VerticalScroll(id="tc-browser"):
+                    for cat_key, cat_label in CATEGORIES:
+                        tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+                        if not tcs:
+                            continue
+                        with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
+                            table = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+                            yield table
+
+                # SelfBuild panel (hidden by default)
+                with VerticalScroll(id="tc-selfbuild"):
+                    with Collapsible(title="OE-SDK (0)", collapsed=True, id="cat-sb-oesdk"):
+                        yield S4DataTable(id="tbl-sb-oesdk", cursor_type="row", zebra_stripes=True)
+                    with Collapsible(title="CrosstoolNG (0)", collapsed=True, id="cat-sb-ctng"):
+                        yield S4DataTable(id="tbl-sb-ctng", cursor_type="row", zebra_stripes=True)
+                    with Collapsible(title="FreetzNG (0)", collapsed=True, id="cat-sb-freetz"):
+                        yield S4DataTable(id="tbl-sb-freetz", cursor_type="row", zebra_stripes=True)
+                    with Collapsible(title="Android-SDK (0)", collapsed=True, id="cat-sb-android"):
+                        yield S4DataTable(id="tbl-sb-android", cursor_type="row", zebra_stripes=True)
+
+            # Right: Details + Output
+            with Vertical(id="tc-right"):
+                # Detail/Libraries/Log tab buttons
                 with Horizontal(id="tc-tab-bar"):
                     yield Static(" Details ", id="btn-tab-details", classes="tab-active")
                     yield Static(" Libraries ", id="btn-tab-libs", classes="tab-inactive")
+                    yield Static(" Log ", id="btn-tab-log", classes="tab-inactive")
 
                 # Details panel
                 detail = Static("", id="tc-detail")
@@ -112,7 +305,7 @@ class ToolchainsScreen(Screen):
                     yield Static("", id="tc-libs-header")
                     with Horizontal(classes="lib-action-row", id="lib-header-row"):
                         yield Static(f"  [dim]{'Library':<15s} {'Installed':<12s}[/dim]", classes="lib-status")
-                        yield Static(" [dim]Action[/dim]", classes="lib-select")
+                        yield Static(" [dim]Action[/dim] ([dim]skip all[/dim])", id="btn-skip-all", classes="lib-skip-all")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
@@ -136,8 +329,17 @@ class ToolchainsScreen(Screen):
         # Populate installed table
         tbl = self.query_one("#tbl-installed", DataTable)
         tbl.add_columns("Name", "Arch", "Description")
+        local_names = {t.name for t in reg._load_file(reg.local_path)}
         for tc in reg.installed_toolchains():
-            tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+            if tc.name in local_names:
+                tbl.add_row(
+                    Text(tc.name, style="bold"),
+                    Text(tc.arch, style="bold"),
+                    Text(tc.description, style="bold"),
+                    key=tc.name,
+                )
+            else:
+                tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
 
         # Populate category tables
         for cat_key, _ in CATEGORIES:
@@ -150,6 +352,14 @@ class ToolchainsScreen(Screen):
                 for tc in tcs:
                     status = "●" if tc.installed else ""
                     tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+            except Exception:
+                pass
+
+        # SelfBuild tables (empty placeholders)
+        for sb_id in ("tbl-sb-oesdk", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-android"):
+            try:
+                tbl_sb = self.query_one(f"#{sb_id}", DataTable)
+                tbl_sb.add_columns("Name", "Arch", "Description")
             except Exception:
                 pass
 
@@ -179,6 +389,8 @@ class ToolchainsScreen(Screen):
             ToolchainsScreen._selected_tc = first_key.value
 
         self._update_detail()
+        # Focus the installed table, not the filter field
+        tbl.focus()
         # Delay enabling event handling — tables fire RowHighlighted during render
         self.set_timer(0.5, self._enable_events)
 
@@ -207,26 +419,42 @@ class ToolchainsScreen(Screen):
         try:
             tbl = self.query_one("#tbl-installed", DataTable)
             tbl.clear()
+            count = 0
+            local_names = {t.name for t in reg._load_file(reg.local_path)}
             for tc in reg.installed_toolchains():
                 if not self._tc_matches(tc, term_lower):
                     continue
-                tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+                if tc.name in local_names:
+                    tbl.add_row(
+                        Text(tc.name, style="bold"),
+                        Text(tc.arch, style="bold"),
+                        Text(tc.description, style="bold"),
+                        key=tc.name,
+                    )
+                else:
+                    tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+                count += 1
+            self.query_one("#tc-installed-label", Static).update(f" [bold]Installed ({count})[/bold]")
         except Exception:
             pass
 
         # Rebuild category tables
-        for cat_key, _ in CATEGORIES:
+        for cat_key, cat_label in CATEGORIES:
             tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
             if not tcs:
                 continue
             try:
                 tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
                 tbl.clear()
+                count = 0
                 for tc in tcs:
                     if not self._tc_matches(tc, term_lower):
                         continue
                     status = "●" if tc.installed else ""
                     tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+                    count += 1
+                col = self.query_one(f"#cat-{cat_key}", Collapsible)
+                col.title = f"{cat_label} ({count})"
             except Exception:
                 pass
 
@@ -238,6 +466,115 @@ class ToolchainsScreen(Screen):
                 self._show_tab("details")
             elif widget.id == "btn-tab-libs":
                 self._show_tab("libs")
+            elif widget.id == "btn-tab-log":
+                self._show_tab("log")
+            elif widget.id == "btn-skip-all":
+                self._skip_all_libs()
+            elif widget.id == "btn-ltab-prebuild":
+                self._show_left_tab("prebuild")
+            elif widget.id == "btn-ltab-selfbuild":
+                self._show_left_tab("selfbuild")
+
+    def _show_left_tab(self, tab: str) -> None:
+        """Switch between PreBuild and SelfBuild views."""
+        browser = self.query_one("#tc-browser", VerticalScroll)
+        selfbuild = self.query_one("#tc-selfbuild", VerticalScroll)
+        tab_pre = self.query_one("#btn-ltab-prebuild", Static)
+        tab_self = self.query_one("#btn-ltab-selfbuild", Static)
+
+        tab_pre.set_classes("tab-inactive")
+        tab_self.set_classes("tab-inactive")
+
+        if tab == "prebuild":
+            browser.display = True
+            selfbuild.display = False
+            tab_pre.set_classes("tab-active")
+        elif tab == "selfbuild":
+            browser.display = False
+            selfbuild.display = True
+            tab_self.set_classes("tab-active")
+
+    def _set_tc_status(self, tc_name: str, status: str) -> None:
+        """Update the status and row color of a toolchain in its category DataTable."""
+        from rich.text import Text
+        reg = self._get_registry()
+        tc = reg.get(tc_name)
+        if not tc:
+            return
+        for cat_key, _ in CATEGORIES:
+            try:
+                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
+                row_keys = {k.value: k for k in tbl.rows}
+                if tc_name not in row_keys:
+                    continue
+                rk = row_keys[tc_name]
+                cols = list(tbl.columns.keys())
+                if "installing" in status:
+                    tbl.update_cell(rk, cols[0], Text("⟳", style="yellow"))
+                    tbl.update_cell(rk, cols[1], Text(tc.name, style="yellow"))
+                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="yellow"))
+                    tbl.update_cell(rk, cols[3], Text(tc.description, style="yellow"))
+                elif "done" in status:
+                    tbl.update_cell(rk, cols[0], Text("●", style="green"))
+                    tbl.update_cell(rk, cols[1], Text(tc.name, style="green"))
+                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="green"))
+                    tbl.update_cell(rk, cols[3], Text(tc.description, style="green"))
+                elif "failed" in status:
+                    tbl.update_cell(rk, cols[0], Text("✗", style="red"))
+                    tbl.update_cell(rk, cols[1], Text(tc.name, style="red"))
+                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="red"))
+                    tbl.update_cell(rk, cols[3], Text(tc.description, style="red"))
+                else:
+                    tbl.update_cell(rk, cols[0], "●" if tc.installed else "")
+                    tbl.update_cell(rk, cols[1], tc.name)
+                    tbl.update_cell(rk, cols[2], tc.arch)
+                    tbl.update_cell(rk, cols[3], tc.description)
+                return
+            except Exception:
+                continue
+
+    def _set_installed_status(self, tc, status: str) -> None:
+        """Show install progress as a temporary row in the installed table."""
+        from rich.text import Text
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            temp_key = f"_inst_{tc.name}"
+            # Remove previous temp row if exists
+            try:
+                tbl.remove_row(temp_key)
+            except Exception:
+                pass
+            if status == "installing":
+                tbl.add_row(
+                    Text(tc.name, style="yellow"),
+                    Text(tc.arch, style="yellow"),
+                    Text("installing...", style="yellow"),
+                    key=temp_key,
+                )
+            elif status == "done":
+                # Remove temp row, add permanent row
+                tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+                # Update ● in category table
+                self._set_tc_status(tc.name, "done")
+            elif status == "failed":
+                tbl.add_row(
+                    Text(tc.name, style="red"),
+                    Text(tc.arch, style="red"),
+                    Text("failed", style="red"),
+                    key=temp_key,
+                )
+        except Exception:
+            pass
+
+    def _skip_all_libs(self) -> None:
+        """Set all library action dropdowns to skip."""
+        for lib_name, _, _ in KNOWN_LIBS:
+            safe_id = lib_name.replace(".", "-").replace(" ", "-")
+            try:
+                sel = self.query_one(f"#lib-action-{safe_id}", Select)
+                sel.value = "skip"
+            except Exception:
+                pass
 
     def _is_libs_tab_active(self) -> bool:
         try:
@@ -318,10 +655,11 @@ class ToolchainsScreen(Screen):
                 return
 
             install_dir = self.app.paths.toolchains_dir / tc.name
-            libs = scan_libraries(install_dir, tc.sysroot)
+            libs = scan_libraries(install_dir, tc.sysroot, native=tc.native)
 
             recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml")
-            libs = check_library_updates(libs, recipes, has_c11=True)
+            has_c11 = self._check_c11(install_dir, tc.prefix)
+            libs = check_library_updates(libs, recipes, has_c11=has_c11)
 
             recipe_map = {r["name"]: r for r in recipes}
 
@@ -330,15 +668,19 @@ class ToolchainsScreen(Screen):
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")
-                installed = lib.version if lib.found else "—"
+                if lib.found:
+                    source = "[dim](sys)[/dim]" if lib.pc_file == "system" else "[dim](local)[/dim]" if tc.native else ""
+                    installed = f"{lib.version} {source}" if source else lib.version
+                else:
+                    installed = "—"
 
                 # Update status label
                 try:
                     status_widget = self.query_one(f"#lib-status-{safe_id}", Static)
                     if lib.found and lib.up_to_date:
-                        status_widget.update(f"  [green]{lib.name:<15s}[/green] {installed:<12s}")
+                        status_widget.update(f"  [green]{lib.name:<15s}[/green] {installed}")
                     elif lib.found:
-                        status_widget.update(f"  [yellow]{lib.name:<15s}[/yellow] {installed:<12s}")
+                        status_widget.update(f"  [yellow]{lib.name:<15s}[/yellow] {installed}")
                     else:
                         status_widget.update(f"  [dim]{lib.name:<15s}[/dim] {'—':<12s}")
                 except Exception:
@@ -365,7 +707,13 @@ class ToolchainsScreen(Screen):
                 for v in variants:
                     ver = v.get("version", "")
                     label = v.get("label", ver)
-                    req = " [c11]" if v.get("requires") == "c11" else ""
+                    needs_c11 = v.get("requires") == "c11"
+                    if needs_c11 and not has_c11:
+                        req = " (needs c11)"
+                    elif needs_c11:
+                        req = " [c11]"
+                    else:
+                        req = ""
                     action = "install" if not lib.found else "update"
                     opt_value = f"{action}:{ver}"
                     if opt_value not in [o[1] for o in options]:
@@ -501,6 +849,7 @@ class ToolchainsScreen(Screen):
                         downloads_dir=self.app.paths.downloads_dir,
                         logs_dir=self.app.paths.logs_dir,
                         max_cpus=self.app.settings.max_cpus,
+                        native=tc.native,
                         cancel_check=cancel_check,
                         log=self._log,
                     )
@@ -554,34 +903,66 @@ class ToolchainsScreen(Screen):
         btn = event.button.id
         if btn == "btn-install":
             self._handle_install()
+        elif btn == "btn-import":
+            self._handle_import()
         elif btn == "btn-check":
             self._handle_check()
         elif btn == "btn-remove":
             self._handle_remove()
-        pass
 
     def _show_tab(self, tab: str) -> None:
-        """Switch between Details and Libraries views."""
+        """Switch between Details, Libraries and Log views."""
         detail = self.query_one("#tc-detail", Static)
         libs = self.query_one("#tc-libs", VerticalScroll)
+        output = self.query_one("#tc-output", RichLog)
         tab_details = self.query_one("#btn-tab-details", Static)
         tab_libs = self.query_one("#btn-tab-libs", Static)
+        tab_log = self.query_one("#btn-tab-log", Static)
+
+        # Reset all tabs to inactive
+        tab_details.set_classes("tab-inactive")
+        tab_libs.set_classes("tab-inactive")
+        tab_log.set_classes("tab-inactive")
+
+        # Hide all panels
+        detail.display = False
+        libs.display = False
 
         if tab == "details":
             detail.display = True
-            libs.display = False
             tab_details.set_classes("tab-active")
-            tab_libs.set_classes("tab-inactive")
+            output.styles.height = "1fr"
             self._update_detail()
-        else:
-            detail.display = False
+        elif tab == "libs":
             libs.display = True
-            tab_details.set_classes("tab-inactive")
             tab_libs.set_classes("tab-active")
+            output.styles.height = "1fr"
             self._update_libraries()
+        elif tab == "log":
+            tab_log.set_classes("tab-active")
+            output.styles.height = "1fr"
 
         # Update F10 button state in footer
         self._update_f10_state()
+
+    def _check_c11(self, install_dir: Path, prefix: str) -> bool:
+        """Check if toolchain's gcc supports C11 (>= GCC 4.9)."""
+        gcc = install_dir / "bin" / f"{prefix}gcc"
+        if not gcc.exists():
+            found = list(install_dir.glob(f"**/bin/{prefix}gcc"))
+            gcc = found[0] if found else gcc
+        if not gcc.exists():
+            return True  # assume modern if we can't check
+        try:
+            version_out = subprocess.check_output(
+                [str(gcc), "-dumpversion"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+            parts = version_out.split(".")
+            major = int(parts[0])
+            minor = int(parts[1]) if len(parts) > 1 else 0
+            return (major, minor) >= (4, 9)
+        except Exception:
+            return True
 
     def _handle_install(self) -> None:
         name = ToolchainsScreen._selected_tc
@@ -600,6 +981,9 @@ class ToolchainsScreen(Screen):
             return
 
         self._log_sync(f"[bold]Installing {tc.name}...[/bold]")
+
+        # Show installing status in installed table (unfocused = colors visible)
+        self._set_installed_status(tc, "installing")
 
         def do_install():
             install_dir = self.app.paths.toolchains_dir / tc.name
@@ -623,9 +1007,11 @@ class ToolchainsScreen(Screen):
                     )
                 if result.returncode != 0:
                     self._log("[red]Download failed[/red]")
+                    self.app.call_from_thread(self._set_installed_status, tc, "failed")
                     return
             except Exception as e:
                 self._log(f"[red]Download failed: {e}[/red]")
+                self.app.call_from_thread(self._set_installed_status, tc, "failed")
                 return
 
             if tc.checksum:
@@ -633,6 +1019,7 @@ class ToolchainsScreen(Screen):
                 if not self._verify_checksum(filepath, tc.checksum):
                     self._log("[red]Checksum mismatch![/red]")
                     filepath.unlink(missing_ok=True)
+                    self.app.call_from_thread(self._set_installed_status, tc, "failed")
                     return
                 self._log("[green]Checksum OK[/green]")
 
@@ -646,16 +1033,219 @@ class ToolchainsScreen(Screen):
                 if result.returncode != 0:
                     self._log(f"[red]Extract failed: {result.stderr.strip()}[/red]")
                     shutil.rmtree(install_dir, ignore_errors=True)
+                    self.app.call_from_thread(self._set_installed_status, tc, "failed")
                     return
             except Exception as e:
                 self._log(f"[red]Extract failed: {e}[/red]")
                 shutil.rmtree(install_dir, ignore_errors=True)
+                self.app.call_from_thread(self._set_installed_status, tc, "failed")
                 return
 
             self._relocate_toolchain(install_dir, tc)
+            # Write source marker
+            (install_dir / ".source").write_text(tc.source or "defaults")
             self._log(f"[green]{tc.name} installed successfully[/green]")
+            self.app.call_from_thread(self._set_installed_status, tc, "done")
 
         self._run_in_thread(do_install)
+
+    def _handle_import(self) -> None:
+        """Import a toolchain from a local .tar.xz backup file."""
+        start = str(self.app.paths.downloads_dir) if self.app.paths.downloads_dir.exists() else "/"
+        self.app.push_screen(FilePickerScreen(start), callback=self._do_import)
+
+    def _do_import(self, result: tuple) -> None:
+        """Process the selected file from the file picker."""
+        filepath, name = result if result else ("", "")
+        if not filepath or not name:
+            return
+
+        path = Path(filepath)
+        if not path.exists():
+            self.notify(f"File not found: {filepath}", severity="error")
+            return
+        if not path.name.endswith((".tar.xz", ".tar.bz2", ".tar.gz")):
+            self.notify("Only .tar.xz, .tar.bz2 or .tar.gz files supported", severity="error")
+            return
+
+        install_dir = self.app.paths.toolchains_dir / name
+        if install_dir.exists():
+            self.notify(f"'{name}' already installed — remove first or choose a different name", severity="warning")
+            return
+
+        self._log_sync(f"[bold]Importing {name}...[/bold]")
+        temp_tc = Toolchain(name=name, arch="...", description="importing...")
+        self._set_installed_status(temp_tc, "installing")
+
+        def do_import():
+            # Extract
+            self._log(f"Extracting {path.name}...")
+            try:
+                install_dir.mkdir(parents=True, exist_ok=True)
+                result = subprocess.run(
+                    ["tar", "-xf", str(path), "-C", str(install_dir)],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    self._log(f"[red]Extract failed: {result.stderr.strip()}[/red]")
+                    shutil.rmtree(install_dir, ignore_errors=True)
+                    self.app.call_from_thread(self._set_installed_status, temp_tc, "failed")
+                    return
+            except Exception as e:
+                self._log(f"[red]Extract failed: {e}[/red]")
+                shutil.rmtree(install_dir, ignore_errors=True)
+                self.app.call_from_thread(self._set_installed_status, temp_tc, "failed")
+                return
+
+            # Flatten if extracted into single subdirectory
+            subdirs = [d for d in install_dir.iterdir() if d.is_dir()]
+            if len(subdirs) == 1 and not (install_dir / "bin").exists():
+                subdir = subdirs[0]
+                for item in subdir.iterdir():
+                    item.rename(install_dir / item.name)
+                subdir.rmdir()
+
+            # Auto-detect toolchain properties
+            self._log("Detecting toolchain properties...")
+            tc = self._detect_toolchain(name, install_dir)
+            if not tc:
+                self._log("[red]Could not detect compiler in imported toolchain[/red]")
+                shutil.rmtree(install_dir, ignore_errors=True)
+                self.app.call_from_thread(self._set_installed_status, temp_tc, "failed")
+                return
+
+            # Save to local yaml (replace existing local entry with same name)
+            reg = self._get_registry()
+            local_tcs = [t for t in reg._load_file(reg.local_path) if t.name != tc.name]
+            local_tcs.append(tc)
+            reg.save_local(local_tcs)
+
+            # Fix .pc files with wrong prefix paths from backup
+            self._fix_pc_files(install_dir)
+
+            # Write source marker
+            (install_dir / ".source").write_text("local")
+            self._log(f"  Name:    {tc.name}")
+            self._log(f"  Prefix:  {tc.prefix}")
+            self._log(f"  Arch:    {tc.arch}")
+            self._log(f"  Sysroot: {tc.sysroot or '(none)'}")
+            self._log(f"[green]{name} imported successfully[/green]")
+
+        self._run_in_thread(do_import)
+
+    def _fix_pc_files(self, install_dir: Path) -> None:
+        """Fix prefix= paths in .pc files after import from a backup."""
+        for pc_file in install_dir.glob("**/pkgconfig/*.pc"):
+            try:
+                content = pc_file.read_text(encoding="utf-8", errors="replace")
+                # Find the current prefix= line
+                new_lines = []
+                for line in content.splitlines():
+                    if line.startswith("prefix="):
+                        old_prefix = line.split("=", 1)[1].strip()
+                        # Derive correct prefix from .pc file location:
+                        # .../lib/pkgconfig/foo.pc → prefix = .../lib/.. = ...
+                        new_prefix = str(pc_file.parent.parent.parent)
+                        if old_prefix != new_prefix:
+                            new_lines.append(f"prefix={new_prefix}")
+                            # Also replace any hardcoded old prefix in other lines
+                            content = content.replace(old_prefix, new_prefix)
+                            pc_file.write_text(content, encoding="utf-8")
+                            self._log(f"  Fixed {pc_file.name}: {old_prefix} → {new_prefix}")
+                        break
+            except Exception:
+                pass
+
+    def _detect_toolchain(self, name: str, install_dir: Path) -> "Toolchain | None":
+        """Auto-detect toolchain properties from an extracted directory."""
+        from core.toolchain import Toolchain
+
+        # Find *-gcc in bin/
+        gcc_bins = list(install_dir.glob("bin/*-gcc"))
+        if not gcc_bins:
+            # Try deeper paths (OE-SDK style)
+            gcc_bins = list(install_dir.glob("**/bin/*-gcc"))
+            gcc_bins = [g for g in gcc_bins if "++" not in g.name and g.name.endswith("-gcc")]
+        if not gcc_bins:
+            return None
+
+        gcc = gcc_bins[0]
+        gcc_name = gcc.name  # e.g. "arm-linux-gnueabihf-gcc"
+        prefix = gcc_name[:-3]  # strip "gcc" → "arm-linux-gnueabihf-"
+
+        # Get arch from dumpmachine
+        arch = ""
+        try:
+            dumpmachine = subprocess.check_output(
+                [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+            # Derive arch: arm-linux-gnueabihf → armv7, aarch64-... → aarch64, mipsel-... → mipsel
+            if dumpmachine.startswith("aarch64"):
+                arch = "aarch64"
+            elif dumpmachine.startswith("arm"):
+                arch = "armv7"
+            elif dumpmachine.startswith("mipsel"):
+                arch = "mipsel"
+            elif dumpmachine.startswith("mips"):
+                arch = "mips"
+            elif dumpmachine.startswith("sh4"):
+                arch = "sh4"
+            elif dumpmachine.startswith("x86_64"):
+                arch = "x86_64"
+            elif dumpmachine.startswith("i686") or dumpmachine.startswith("i386"):
+                arch = "x86"
+            elif dumpmachine.startswith("powerpc"):
+                arch = "ppc"
+            else:
+                arch = dumpmachine.split("-")[0]
+        except Exception:
+            arch = "unknown"
+
+        # Detect sysroot
+        sysroot = ""
+        # Check common sysroot patterns relative to install_dir
+        for pattern in ("sysroots/*/", f"{prefix.rstrip('-')}/sysroot", f"{prefix.rstrip('-')}/sys-root",
+                        "sysroot", "sys-root"):
+            matches = list(install_dir.glob(pattern))
+            if matches:
+                sr = matches[0]
+                # If sysroot contains usr/, include it (needed for _find_prefix)
+                if (sr / "usr").is_dir():
+                    sr = sr / "usr"
+                sysroot = str(sr.relative_to(install_dir))
+                break
+        # Try gcc -print-sysroot
+        if not sysroot:
+            try:
+                gs = subprocess.check_output(
+                    [str(gcc), "-print-sysroot"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+                ).strip()
+                if gs and Path(gs).is_dir():
+                    try:
+                        sysroot = str(Path(gs).relative_to(install_dir))
+                    except ValueError:
+                        pass
+            except Exception:
+                pass
+
+        # Get description from gcc version
+        description = name
+        try:
+            ver_out = subprocess.check_output(
+                [str(gcc), "--version"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).splitlines()[0]
+            description = f"{name} ({ver_out.split(')')[-1].strip() if ')' in ver_out else ver_out})"
+        except Exception:
+            pass
+
+        return Toolchain(
+            name=name,
+            description=description,
+            category="custom",
+            arch=arch,
+            prefix=prefix,
+            sysroot=sysroot,
+        )
 
     def _handle_check(self) -> None:
         name = ToolchainsScreen._selected_tc
@@ -743,6 +1333,18 @@ class ToolchainsScreen(Screen):
         tc = reg.get(name)
         if not tc:
             return
+        if tc.native:
+            # Remove and regenerate native toolchain
+            install_dir = self.app.paths.toolchains_dir / tc.name
+            if install_dir.exists():
+                shutil.rmtree(install_dir)
+            # Remove from local yaml so _ensure_native recreates it
+            reg = self._get_registry()
+            local_tcs = [t for t in reg._load_file(reg.local_path) if not t.native]
+            reg.save_local(local_tcs)
+            self._log_sync("[yellow]Native toolchain regenerated[/yellow]")
+            self._refresh()
+            return
         if not tc.installed:
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
@@ -750,6 +1352,11 @@ class ToolchainsScreen(Screen):
         install_dir = self.app.paths.toolchains_dir / tc.name
         if install_dir.exists():
             shutil.rmtree(install_dir)
+        # Remove from local yaml if it's a local/custom toolchain
+        local_tcs = reg._load_file(reg.local_path)
+        if any(t.name == tc.name for t in local_tcs):
+            local_tcs = [t for t in local_tcs if t.name != tc.name]
+            reg.save_local(local_tcs)
         self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
         self._refresh()
 

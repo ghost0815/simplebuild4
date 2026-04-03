@@ -970,6 +970,7 @@ toolchains:
   sysroot: mipsel-newnigma2-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dreambox-HW_s_u_p.tar.xz
   checksum: sha256:342a0a59b5ef728f42f52a49d84142291cde0ec26097af94c996b44a420a6a22
+  strip_components: 0
 
 - name: hd51
   description: AX/Mutant HD51
@@ -1011,6 +1012,7 @@ toolchains:
   sysroot: mipsel-unknown-linux-gnu/sys-root/usr
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE1.6_s_u_p.tar.xz
   checksum: sha256:7e554e152e172f735c17483bcb659b80154d8a429dadf8689472375e725c4e7e
+  strip_components: 0
 
 - name: mipsel_s3_ssl098
   description: generic mipsel ssl 0.9.8
@@ -1020,6 +1022,7 @@ toolchains:
   sysroot: /
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
   checksum: sha256:dce6ceda5bc829ae8d462b21c62b58f533cf57d3aa654bcb84d036ceb5a7066c
+  strip_components: 0
 
 - name: mipsel_s3_ssl100
   description: generic mipsel ssl 1.0.0
@@ -1029,6 +1032,7 @@ toolchains:
   sysroot: /
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
   checksum: sha256:23c0c0938e5012cfffd369ef0d970453cdfcd442b1cfd924ef25c87080247691
+  strip_components: 0
 
 - name: mipsel_s3_ssl102
   description: generic mipsel ssl 1.0.2
@@ -1038,6 +1042,7 @@ toolchains:
   sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
   checksum: sha256:110607cc3395002360f826303cb30b9dde1c561a6f58b64369314b1edc881b60
+  strip_components: 0
 
 - name: mipsoe20
   category: legacy
@@ -1046,6 +1051,7 @@ toolchains:
   sysroot: mipsel-unknown-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE2.0_s_u_p.tar.xz
   checksum: sha256:d9add89853a5382e3be113b0feacb15db83d4aa7ca50ce9828fb2c645e084e88
+  strip_components: 0
 
 - name: oe20_armv7
   description: OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices
@@ -1125,6 +1131,7 @@ toolchains:
   sysroot: sh4-linux/sys-root/usr
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SH4_s_u_p.tar.xz
   checksum: sha256:db3602e495abbbb8ff88a52010bc6178a5d10c7c60bbc17cdb069c69997330f7
+  strip_components: 0
 
 - name: sh_4
   description: SH4

@@ -6,6 +6,11 @@ Installed toolchains live in data/toolchains/<name>/.
 
 from __future__ import annotations
 
+import os
+import platform
+import shutil
+import socket
+import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -42,9 +47,11 @@ class Toolchain:
     checksum: str = ""             # Format: "md5:hash" or "sha256:hash"
     strip_components: int = 1      # tar --strip-components
     selfbuild: bool = False        # True if toolchain was built locally (not downloaded)
+    native: bool = False           # True if this is the host system compiler
 
-    # Runtime state (not persisted)
+    # Runtime state (not persisted, set at load time)
     installed: bool = False
+    source: str = ""               # "defaults" or "local" — origin yaml
 
     def build_defaults(self) -> dict[str, str]:
         """Return the build defaults that get copied into a target."""
@@ -89,17 +96,55 @@ class LibraryInfo:
     up_to_date: bool = False
 
 
-def scan_libraries(install_dir: Path, sysroot: str) -> list[LibraryInfo]:
+def scan_libraries(install_dir: Path, sysroot: str, native: bool = False) -> list[LibraryInfo]:
     """Scan a toolchain's sysroot for known libraries via pkg-config files.
 
     Args:
         install_dir: Path to installed toolchain (e.g. data/toolchains/armv7_universal)
         sysroot: Sysroot relative path from toolchain config
+        native: If True, use system pkg-config to detect libraries
 
     Returns:
         List of LibraryInfo for each known library (found or not).
     """
     results = []
+
+    if native:
+        # Native: first scan system libs, then overlay with toolchain-local builds
+        sys_map: dict[str, LibraryInfo] = {}
+        for lib_name, pc_name, static_name in KNOWN_LIBS:
+            info = LibraryInfo(name=lib_name)
+            mod_name = pc_name.replace(".pc", "")
+            try:
+                version = subprocess.check_output(
+                    ["pkg-config", "--modversion", mod_name],
+                    text=True, stderr=subprocess.DEVNULL, timeout=5,
+                ).strip()
+                if version:
+                    info.found = True
+                    info.version = version
+                    info.pc_file = "system"  # marker: from system
+            except Exception:
+                pass
+            sys_map[lib_name] = info
+
+        # Now scan toolchain-local builds (data/toolchains/native/**/pkgconfig)
+        local_pc_dirs = list(install_dir.glob("**/pkgconfig"))
+        local_pc_map: dict[str, Path] = {}
+        for pc_dir in local_pc_dirs:
+            for pc_file in pc_dir.glob("*.pc"):
+                local_pc_map[pc_file.name] = pc_file
+
+        for lib_name, pc_name, static_name in KNOWN_LIBS:
+            if pc_name in local_pc_map:
+                local_ver = _read_pc_version(local_pc_map[pc_name])
+                if local_ver:
+                    info = sys_map[lib_name]
+                    info.found = True
+                    info.version = local_ver
+                    info.pc_file = str(local_pc_map[pc_name])
+
+        return list(sys_map.values())
 
     # Find pkgconfig directories in the sysroot
     sysroot_path = install_dir / sysroot if sysroot else install_dir
@@ -331,7 +376,8 @@ class ToolchainRegistry:
     - defaults_path: shipped with s4, git-managed (defaults/toolchains.yaml)
     - local_path: user additions, gitignored (data/toolchains.local.yaml)
 
-    Local entries override defaults with the same name.
+    Both lists coexist independently. Toolchains with the same name can exist
+    in both files, but only one can be installed at a time (shared install dir).
     """
 
     def __init__(self, defaults_path: Path, local_path: Path, install_dir: Path):
@@ -342,21 +388,101 @@ class ToolchainRegistry:
 
     def load(self) -> None:
         """Load toolchain registry from both YAML files."""
-        by_name: dict[str, Toolchain] = {}
+        all_tcs: list[Toolchain] = []
 
-        # Load defaults first
+        # Load defaults
         for tc in self._load_file(self.defaults_path):
-            by_name[tc.name] = tc
+            tc.source = "defaults"
+            all_tcs.append(tc)
 
-        # Local overrides/additions
+        # Ensure native toolchain exists in local file
+        self._ensure_native()
+
+        # Load local (independent, no overrides)
         for tc in self._load_file(self.local_path):
-            by_name[tc.name] = tc
+            tc.source = "local"
+            all_tcs.append(tc)
 
-        # Check installed state
-        for tc in by_name.values():
-            tc.installed = (self.install_dir / tc.name).is_dir()
+        # Check installed state — for duplicate names, only the one whose
+        # config matches the installed toolchain is marked as installed
+        for tc in all_tcs:
+            if tc.native:
+                tc.installed = shutil.which("gcc") is not None
+            else:
+                install_path = self.install_dir / tc.name
+                if install_path.is_dir():
+                    # Check source marker to match correct entry
+                    marker = install_path / ".source"
+                    if marker.exists():
+                        tc.installed = marker.read_text().strip() == tc.source
+                    else:
+                        # No marker (legacy install) — mark defaults as installed
+                        tc.installed = (tc.source == "defaults")
+                else:
+                    tc.installed = False
 
-        self._toolchains = sorted(by_name.values(), key=lambda t: t.name)
+        self._toolchains = sorted(all_tcs, key=lambda t: (t.name, t.source))
+
+    def _ensure_native(self) -> None:
+        """Auto-detect and register the native (host) toolchain in local yaml."""
+        # Check if native already exists in local file
+        local_tcs = self._load_file(self.local_path)
+        if any(tc.native for tc in local_tcs):
+            return
+
+        # Detect system gcc
+        gcc = shutil.which("gcc")
+        if not gcc:
+            return
+
+        try:
+            dumpmachine = subprocess.check_output(
+                [gcc, "-dumpmachine"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+        except Exception:
+            return
+
+        try:
+            machine = platform.machine()  # e.g. x86_64, aarch64
+        except Exception:
+            machine = "unknown"
+
+        try:
+            hostname = socket.gethostname().split(".")[0]
+        except Exception:
+            hostname = "host"
+
+        prefix = f"{dumpmachine}-" if dumpmachine else ""
+
+        native_tc = Toolchain(
+            name="native",
+            description=f"Native ({hostname}-{machine})",
+            category="native",
+            arch=machine,
+            prefix=prefix,
+            sysroot="",
+            native=True,
+        )
+
+        # Setup native toolchain directory with symlinks
+        native_dir = self.install_dir / "native" / "bin"
+        native_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create symlinks: prefix-gcc → system gcc, etc.
+        for tool in ("gcc", "g++", "strip", "ar", "ranlib", "objcopy", "objdump", "nm", "ld"):
+            sys_tool = shutil.which(tool)
+            if sys_tool:
+                for name in (f"{prefix}{tool}", tool):
+                    dest = native_dir / name
+                    if not dest.exists():
+                        try:
+                            dest.symlink_to(sys_tool)
+                        except Exception:
+                            pass
+
+        # Save to local yaml
+        local_tcs.append(native_tc)
+        self.save_local(local_tcs)
 
     def _load_file(self, path: Path) -> list[Toolchain]:
         """Load toolchains from a single YAML file."""
@@ -384,6 +510,7 @@ class ToolchainRegistry:
                 checksum=entry.get("checksum", ""),
                 strip_components=entry.get("strip_components", 1),
                 selfbuild=entry.get("selfbuild", False),
+                native=entry.get("native", False),
             )
             if tc.name:
                 result.append(tc)
@@ -395,10 +522,11 @@ class ToolchainRegistry:
         self._save_file(self.local_path, tcs)
 
     def _save_file(self, path: Path, toolchains: list[Toolchain]) -> None:
-        """Save toolchains to a YAML file."""
+        """Save toolchains to a YAML file. Omits empty/default fields."""
+        defaults = Toolchain()
         data = {
             "toolchains": [
-                {
+                {k: v for k, v in {
                     "name": tc.name,
                     "description": tc.description,
                     "category": tc.category,
@@ -415,7 +543,8 @@ class ToolchainRegistry:
                     "checksum": tc.checksum,
                     "strip_components": tc.strip_components,
                     "selfbuild": tc.selfbuild,
-                }
+                    "native": tc.native,
+                }.items() if v != getattr(defaults, k)}
                 for tc in toolchains
             ]
         }
@@ -434,12 +563,26 @@ class ToolchainRegistry:
     def toolchains(self) -> list[Toolchain]:
         return list(self._toolchains)
 
-    def get(self, name: str) -> Optional[Toolchain]:
-        """Get a toolchain by name."""
+    def get(self, name: str, source: str = "") -> Optional[Toolchain]:
+        """Get a toolchain by name and optionally source.
+
+        If source is not specified and multiple entries exist with the same name,
+        the installed one is preferred.
+        """
+        if source:
+            for tc in self._toolchains:
+                if tc.name == name and tc.source == source:
+                    return tc
+            return None
+        # No source specified — prefer installed
+        match = None
         for tc in self._toolchains:
             if tc.name == name:
-                return tc
-        return None
+                if tc.installed:
+                    return tc
+                if match is None:
+                    match = tc
+        return match
 
     def installed_toolchains(self) -> list[Toolchain]:
         """Return only installed toolchains."""

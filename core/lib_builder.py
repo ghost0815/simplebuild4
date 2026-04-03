@@ -80,6 +80,7 @@ def build_library(
     downloads_dir: Path,
     logs_dir: Optional[Path] = None,
     max_cpus: int = 0,
+    native: bool = False,
     cancel_check: Optional[Callable[[], bool]] = None,
     log: Optional[Callable[[str], None]] = None,
 ) -> bool:
@@ -129,7 +130,7 @@ def build_library(
         result = _do_build(
             lib_name, version, toolchain_dir, toolchain_prefix,
             toolchain_sysroot, toolchain_cflags, toolchain_ldflags,
-            libraries_yaml, downloads_dir, max_cpus, cancel_check, log,
+            libraries_yaml, downloads_dir, max_cpus, native, cancel_check, log,
         )
         log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if log_file:
@@ -156,6 +157,7 @@ def _do_build(
     libraries_yaml: Path,
     downloads_dir: Path,
     max_cpus: int,
+    native: bool,
     cancel_check: Optional[Callable[[], bool]],
     log: Callable[[str], None],
 ) -> bool:
@@ -191,6 +193,13 @@ def _do_build(
     sysroot_path = toolchain_dir / toolchain_sysroot if toolchain_sysroot else toolchain_dir
     # PREFIX: where libraries get installed (sysroot/usr or sysroot itself)
     prefix = _find_prefix(sysroot_path)
+
+    # Safety: never install outside the toolchain directory
+    try:
+        prefix.resolve().relative_to(toolchain_dir.resolve())
+    except ValueError:
+        log(f"[red]Refusing to install to {prefix} — outside toolchain directory[/red]")
+        return False
     target = _get_target(toolchain_dir, toolchain_prefix)
     cc = f"{toolchain_prefix}gcc"
     ranlib = f"{toolchain_prefix}ranlib"
@@ -285,7 +294,7 @@ def _do_build(
     oesdk_bin = toolchain_dir / "sysroots" / "x86_64-oesdk-linux" / "usr" / "bin"
     oesdk_cross_bins = list(oesdk_bin.glob(f"{target}*")) if oesdk_bin.is_dir() else []
     oesdk_cross_path = str(oesdk_cross_bins[0]) if oesdk_cross_bins else ""
-    env["PATH"] = f"/usr/bin:{toolchain_dir}/bin:{oesdk_cross_path}:{oesdk_bin}:{original_path}"
+    env["PATH"] = f"/usr/bin:{toolchain_dir}/bin:{toolchain_dir}:{oesdk_cross_path}:{oesdk_bin}:{original_path}"
     if toolchain_cflags:
         env["CFLAGS"] = toolchain_cflags
     if toolchain_ldflags:
@@ -293,16 +302,20 @@ def _do_build(
     env["CC"] = cc
     env["RANLIB"] = ranlib
 
-    # Auto-inject --sysroot if compiler's built-in sysroot is invalid (same as s3)
+    # Auto-inject --sysroot if compiler cannot find headers (same as s3 for OE-SDK)
     sysroot_inject = ""
     try:
         gcc_path = shutil.which(cc, path=env["PATH"])
         if gcc_path:
-            gcc_sysroot = subprocess.check_output(
-                [gcc_path, "-print-sysroot"], text=True, stderr=subprocess.DEVNULL,
-            ).strip()
-            if gcc_sysroot and not Path(gcc_sysroot).is_dir():
+            # Test if gcc can actually compile — if not, it needs --sysroot
+            test_result = subprocess.run(
+                [gcc_path, "-c", "-x", "c", "-o", "/dev/null", "-"],
+                input="int main(){return 0;}\n", text=True,
+                capture_output=True, timeout=10, env=env,
+            )
+            if test_result.returncode != 0:
                 sysroot_inject = f"--sysroot={sysroot_path}"
+                env["CC"] = f"{cc} {sysroot_inject}"
                 if toolchain_cflags and "--sysroot" not in toolchain_cflags:
                     env["CFLAGS"] = f"{env.get('CFLAGS', '')} {sysroot_inject}".strip()
                 elif not toolchain_cflags:
@@ -317,7 +330,8 @@ def _do_build(
         pkg_dirs.append(str(pc_dir))
     if pkg_dirs:
         env["PKG_CONFIG_PATH"] = ":".join(pkg_dirs)
-        env["PKG_CONFIG_LIBDIR"] = ":".join(pkg_dirs)
+        if not native:
+            env["PKG_CONFIG_LIBDIR"] = ":".join(pkg_dirs)
     # Build a combined shell script so environment variables persist between steps
     script_parts = ["set -e"]
 
@@ -325,7 +339,9 @@ def _do_build(
     if pkg_dirs:
         pkg_path = ":".join(pkg_dirs)
         script_parts.append(f'export PKG_CONFIG_PATH="{pkg_path}"')
-        script_parts.append(f'export PKG_CONFIG_LIBDIR="{pkg_path}"')
+        if not native:
+            script_parts.append(f'export PKG_CONFIG_LIBDIR="{pkg_path}"')
+    if not native:
         # Use host pkg-config to avoid double sysroot from toolchain's pkg-config
         script_parts.append('export PKG_CONFIG_SYSROOT_DIR=""')
         script_parts.append('export PKG_CONFIG="/usr/bin/pkg-config"')
