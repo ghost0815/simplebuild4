@@ -234,7 +234,7 @@ def _do_build(
 
     # Set PKG_CONFIG_PATH so libraries can find each other (e.g. ccid needs pcsclite)
     pkg_dirs = []
-    for pc_dir in install_dir.glob("**/pkgconfig"):
+    for pc_dir in toolchain_dir.glob("**/pkgconfig"):
         pkg_dirs.append(str(pc_dir))
     if pkg_dirs:
         env["PKG_CONFIG_PATH"] = ":".join(pkg_dirs)
