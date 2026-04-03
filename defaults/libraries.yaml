@@ -142,7 +142,7 @@ libraries:
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
-    install: "make install"
+    install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"
     depends: [pcsclite, libusb]
     variants:
       - version: "1.7.1"
