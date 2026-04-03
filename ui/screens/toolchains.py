@@ -189,9 +189,18 @@ class ToolchainsScreen(Screen):
         if event.input.id == "tc-filter":
             self._apply_filter(event.value)
 
+    def _tc_matches(self, tc, term_lower: str) -> bool:
+        """Check if toolchain matches filter term."""
+        if not term_lower:
+            return True
+        return (term_lower in tc.name.lower()
+                or term_lower in tc.description.lower()
+                or term_lower in tc.arch.lower()
+                or term_lower in tc.machines.lower())
+
     def _apply_filter(self, term: str) -> None:
         """Filter toolchain tables by search term."""
-        term_lower = term.lower()
+        term_lower = term.lower().strip()
         reg = self._get_registry()
 
         # Rebuild installed table
@@ -199,7 +208,7 @@ class ToolchainsScreen(Screen):
             tbl = self.query_one("#tbl-installed", DataTable)
             tbl.clear()
             for tc in reg.installed_toolchains():
-                if term_lower and term_lower not in tc.name.lower() and term_lower not in tc.description.lower() and term_lower not in tc.arch.lower():
+                if not self._tc_matches(tc, term_lower):
                     continue
                 tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
         except Exception:
@@ -214,7 +223,7 @@ class ToolchainsScreen(Screen):
                 tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
                 tbl.clear()
                 for tc in tcs:
-                    if term_lower and term_lower not in tc.name.lower() and term_lower not in tc.description.lower() and term_lower not in tc.arch.lower():
+                    if not self._tc_matches(tc, term_lower):
                         continue
                     status = "●" if tc.installed else ""
                     tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
