@@ -349,8 +349,8 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
         return False  # Android check needs more logic
     if trait == "android" and "android" in prefix_lower:
         return True
-    if trait == "auto_bitslice":
-        return True  # Always run bitslice detection
+    if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps"):
+        return True  # Always run these
     return False
 
 
