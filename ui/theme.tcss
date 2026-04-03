@@ -316,9 +316,9 @@ Switch.-on .switch--slider {
 }
 
 #tc-output {
-    margin: 1 0;
+    margin: 0;
     height: 1fr;
-    border: tall $accent;
+    border: solid $accent;
     padding: 0 1;
 }
 
