@@ -110,9 +110,6 @@ class ToolchainsScreen(Screen):
                 # Libraries panel (hidden by default)
                 with VerticalScroll(id="tc-libs"):
                     yield Static("", id="tc-libs-header")
-                    with Horizontal(classes="lib-action-row"):
-                        yield Static(f"  {'Library':<15s} {'Installed':<12s}", classes="lib-status lib-header-text")
-                        yield Static("Action", classes="lib-select lib-header-text")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
@@ -315,6 +312,7 @@ class ToolchainsScreen(Screen):
             if not tc.installed:
                 header.update(f"  [dim]Not installed — install toolchain first[/dim]")
                 return
+                return
 
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot)
@@ -324,7 +322,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update("")
+            header.update(f"  [bold]{'Library':<15s} {'Installed':<12s}[/bold]")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")

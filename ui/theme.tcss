@@ -225,11 +225,12 @@ Switch.-on .switch--slider {
 
 #tc-browser-wrap {
     width: 1fr;
-    padding: 0 2;
+    margin: 0 1;
 }
 
 #tc-browser {
     height: 1fr;
+    padding: 0 1;
 }
 
 #tc-browser DataTable {
@@ -260,9 +261,9 @@ Switch.-on .switch--slider {
     width: 25;
 }
 
-.lib-header-text {
-    text-style: bold;
+#tc-libs-header {
     height: 1;
+    margin: 0;
 }
 
 .tab-active {
