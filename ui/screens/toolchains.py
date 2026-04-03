@@ -110,6 +110,9 @@ class ToolchainsScreen(Screen):
                 # Libraries panel (hidden by default)
                 with VerticalScroll(id="tc-libs"):
                     yield Static("", id="tc-libs-header")
+                    with Horizontal(classes="lib-action-row", id="lib-header-row"):
+                        yield Static(f"  [dim]{'Library':<15s} {'Installed':<12s}[/dim]", classes="lib-status")
+                        yield Static("[dim]Action[/dim]", classes="lib-select")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
@@ -322,7 +325,8 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  [dim]{'Library':<15s} {'Installed':<12s}           Action[/dim]")
+            # Header just shows Library + Installed, Action aligns with dropdowns
+            header.update("")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")
