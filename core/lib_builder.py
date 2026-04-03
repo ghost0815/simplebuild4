@@ -222,9 +222,10 @@ def _do_build(
             log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
         return False
 
-    # Prepare environment
+    # Prepare environment — put /usr/bin BEFORE toolchain bin so host pkg-config is found first
     env = os.environ.copy()
-    env["PATH"] = f"{toolchain_dir}/bin:{toolchain_dir}/sysroots/x86_64-oesdk-linux/usr/bin:{env.get('PATH', '')}"
+    original_path = env.get('PATH', '')
+    env["PATH"] = f"/usr/bin:{toolchain_dir}/bin:{toolchain_dir}/sysroots/x86_64-oesdk-linux/usr/bin:{original_path}"
     if toolchain_cflags:
         env["CFLAGS"] = toolchain_cflags
     if toolchain_ldflags:
@@ -250,7 +251,6 @@ def _do_build(
         # Use host pkg-config to avoid double sysroot from toolchain's pkg-config
         script_parts.append('export PKG_CONFIG_SYSROOT_DIR=""')
         script_parts.append('export PKG_CONFIG="/usr/bin/pkg-config"')
-        script_parts.append('pkg-config() { /usr/bin/pkg-config "$@"; }')
 
     # Apply extra commands based on toolchain traits
     if extra and isinstance(extra, dict):
