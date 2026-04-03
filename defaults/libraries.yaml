@@ -117,7 +117,7 @@ libraries:
     pc_file: libpcsclite.pc
     version_check: url:https://pcsclite.apdu.fr/files/
     pre_configure: "./bootstrap"
-    configure: './configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)" LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
+    configure: "LIBUSB_CFLAGS=$(pkg-config --cflags libusb-1.0) LIBUSB_LIBS=$(pkg-config --libs libusb-1.0) ./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
     install: "make install"
     depends: [libusb]
@@ -135,7 +135,7 @@ libraries:
     version_check: url:https://ccid.apdu.fr/files/
     source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
     pre_configure: "./bootstrap"
-    configure: './configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)" PCSC_LIBS="$(pkg-config --libs libpcsclite)" LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)" LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
+    configure: "PCSC_CFLAGS=$(pkg-config --cflags libpcsclite) PCSC_LIBS=$(pkg-config --libs libpcsclite) LIBUSB_CFLAGS=$(pkg-config --cflags libusb-1.0) LIBUSB_LIBS=$(pkg-config --libs libusb-1.0) ./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
     install: "make install"
     depends: [pcsclite, libusb]
@@ -154,7 +154,7 @@ libraries:
     pre_configure: "autoreconf -i"
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ $OPTIMIZATION"
     make: "make -j@CPUS@"
-    install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nincludedir=@PREFIX@/include\n\nName: libdvbcsa\nDescription: DVB Common Scrambling algorithm (${BITSLICE:-unknown} ${BATCHSIZE:-0}bit)\nVersion: 1.1.0\nCflags: -I@PREFIX@/include\nLibs: -L@PREFIX@/lib -ldvbcsa\" > @PREFIX@/lib/pkgconfig/libdvbcsa.pc"
+    install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nincludedir=@PREFIX@/include\n\nName: libdvbcsa\nDescription: DVB Common Scrambling algorithm (${BITSLICE:-unknown})\nVersion: 1.1.0-${BATCHSIZE:-0}\nCflags: -I@PREFIX@/include\nLibs: -L@PREFIX@/lib -ldvbcsa\" > @PREFIX@/lib/pkgconfig/libdvbcsa.pc"
     extra:
       auto_bitslice: |
         OPT=""; BATCHSIZE="32"; BITSLICE="uint32"
