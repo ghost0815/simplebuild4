@@ -112,7 +112,7 @@ class ToolchainsScreen(Screen):
                     yield Static("", id="tc-libs-header")
                     with Horizontal(classes="lib-action-row", id="lib-header-row"):
                         yield Static(f"  [dim]{'Library':<15s} {'Installed':<12s}[/dim]", classes="lib-status")
-                        yield Static("[dim]Action[/dim]", classes="lib-select")
+                        yield Static(" [dim]Action[/dim]", classes="lib-select")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
