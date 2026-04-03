@@ -119,6 +119,7 @@ libraries:
     pre_configure: "./bootstrap"
     extra:
       resolve_libusb: 'export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
+      fix_wirecheck: 'find . -name "pcsc-wirecheck-main.c" -type f -exec sed -i "s/pcsc_assert_wire_constants ()/0/g" {} \;'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
     make: "make -j@CPUS@"
     install: "make install"
