@@ -247,8 +247,10 @@ def _do_build(
         pkg_path = ":".join(pkg_dirs)
         script_parts.append(f'export PKG_CONFIG_PATH="{pkg_path}"')
         script_parts.append(f'export PKG_CONFIG_LIBDIR="{pkg_path}"')
-        # Prevent double sysroot prefix when cross-compiler has built-in sysroot
+        # Use host pkg-config to avoid double sysroot from toolchain's pkg-config
         script_parts.append('export PKG_CONFIG_SYSROOT_DIR=""')
+        script_parts.append('export PKG_CONFIG="/usr/bin/pkg-config"')
+        script_parts.append('pkg-config() { /usr/bin/pkg-config "$@"; }')
 
     # Apply extra commands based on toolchain traits
     if extra and isinstance(extra, dict):
