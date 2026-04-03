@@ -399,8 +399,8 @@ def _run_shell(
                     log("[yellow]Process killed — cancelled[/yellow]")
                 return False
             if log:
-                safe_line = line.rstrip().replace("[", "\\[")
-                log(f"  {safe_line}")
+                from rich.markup import escape as rich_escape
+                log(f"  {rich_escape(line.rstrip())}")
         proc.wait()
         if proc.returncode != 0:
             if log:
