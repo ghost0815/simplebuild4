@@ -239,9 +239,13 @@ def _do_build(
     if pkg_dirs:
         env["PKG_CONFIG_PATH"] = ":".join(pkg_dirs)
         env["PKG_CONFIG_LIBDIR"] = ":".join(pkg_dirs)
-
     # Build a combined shell script so environment variables persist between steps
     script_parts = ["set -e"]
+
+    # Export PKG_CONFIG vars inside script so $(pkg-config ...) works in configure
+    if pkg_dirs:
+        script_parts.append(f'export PKG_CONFIG_PATH="{":".join(pkg_dirs)}"')
+        script_parts.append(f'export PKG_CONFIG_LIBDIR="{":".join(pkg_dirs)}"')
 
     # Apply extra commands based on toolchain traits
     if extra and isinstance(extra, dict):
