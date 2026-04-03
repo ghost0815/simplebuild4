@@ -225,8 +225,7 @@ Switch.-on .switch--slider {
 
 #tc-browser-wrap {
     width: 1fr;
-    border: solid #444444;
-    padding: 0 1;
+    padding: 0 2;
 }
 
 #tc-browser {
