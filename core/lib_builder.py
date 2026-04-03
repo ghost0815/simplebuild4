@@ -227,6 +227,14 @@ def _do_build(
     env["CC"] = cc
     env["RANLIB"] = ranlib
 
+    # Set PKG_CONFIG_PATH so libraries can find each other (e.g. ccid needs pcsclite)
+    pkg_dirs = []
+    for pc_dir in install_dir.glob("**/pkgconfig"):
+        pkg_dirs.append(str(pc_dir))
+    if pkg_dirs:
+        env["PKG_CONFIG_PATH"] = ":".join(pkg_dirs)
+        env["PKG_CONFIG_LIBDIR"] = ":".join(pkg_dirs)
+
     # Build a combined shell script so environment variables persist between steps
     script_parts = ["set -e"]
 
