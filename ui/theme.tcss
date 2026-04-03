@@ -249,7 +249,11 @@ Switch.-on .switch--slider {
 
 #tc-tab-bar {
     height: 1;
-    margin: 0 0 0 0;
+    margin: 1 0 0 0;
+}
+
+#tc-filter {
+    width: 30;
 }
 
 .tab-active {

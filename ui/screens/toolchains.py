@@ -84,6 +84,8 @@ class ToolchainsScreen(Screen):
             with Vertical(id="tc-right"):
                 # Actions
                 with Horizontal(id="tc-actions"):
+                    yield Input(placeholder="Filter...", id="tc-filter")
+                    yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
                     yield install_btn
@@ -179,6 +181,42 @@ class ToolchainsScreen(Screen):
     def _enable_events(self) -> None:
         self._mounted = True
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "tc-filter":
+            self._apply_filter(event.value)
+
+    def _apply_filter(self, term: str) -> None:
+        """Filter toolchain tables by search term."""
+        term_lower = term.lower()
+        reg = self._get_registry()
+
+        # Rebuild installed table
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            tbl.clear()
+            for tc in reg.installed_toolchains():
+                if term_lower and term_lower not in tc.name.lower() and term_lower not in tc.description.lower() and term_lower not in tc.arch.lower():
+                    continue
+                tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+        except Exception:
+            pass
+
+        # Rebuild category tables
+        for cat_key, _ in CATEGORIES:
+            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+            if not tcs:
+                continue
+            try:
+                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
+                tbl.clear()
+                for tc in tcs:
+                    if term_lower and term_lower not in tc.name.lower() and term_lower not in tc.description.lower() and term_lower not in tc.arch.lower():
+                        continue
+                    status = "●" if tc.installed else ""
+                    tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+            except Exception:
+                pass
+
     def on_click(self, event) -> None:
         """Handle clicks on tab labels."""
         widget = event.widget if hasattr(event, 'widget') else None
@@ -273,7 +311,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  {'Library':<15s} {'Installed':<12s} Action")
+            header.update(f"  {'Library':<15s} {'Installed':<12s}  Action")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")
@@ -295,14 +333,19 @@ class ToolchainsScreen(Screen):
                 recipe = recipe_map.get(lib.name, {})
                 variants = recipe.get("variants", [])
 
-                options: list[tuple[str, str]] = [("skip", "skip")]
+                options: list[tuple[str, str]] = []
 
                 if lib.found and lib.up_to_date:
+                    options.append(("skip (up-to-date)", "skip"))
                     options.append((f"reinstall {lib.version}", f"reinstall:{lib.version}"))
                 elif lib.found and lib.update_version:
+                    options.append(("skip", "skip"))
                     options.append((f"→ {lib.update_version} (recommended)", f"update:{lib.update_version}"))
                 elif not lib.found and lib.update_version:
+                    options.append(("skip", "skip"))
                     options.append((f"install {lib.update_version} (recommended)", f"install:{lib.update_version}"))
+                else:
+                    options.append(("skip", "skip"))
 
                 for v in variants:
                     ver = v.get("version", "")
