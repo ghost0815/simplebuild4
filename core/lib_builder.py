@@ -280,12 +280,6 @@ def _do_build(
 
     full_script = "\n".join(script_parts)
 
-    # Log the full script for debugging
-    log("--- Build Script ---")
-    for i, line in enumerate(script_parts):
-        log(f"  {i}: {line[:200]}")
-    log("--- End Script ---")
-
     if log:
         log("Running build script...")
     if not _run_shell(full_script, build_dir, env, log, cancel_check):
