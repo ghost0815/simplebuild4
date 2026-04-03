@@ -79,6 +79,11 @@ def build_library(
         if log_file:
             log(f"Log: {log_path}")
         return result
+    except Exception as e:
+        log(f"[red]Build crashed: {e}[/red]")
+        import traceback
+        log(traceback.format_exc())
+        return False
     finally:
         if log_file:
             log_file.close()
