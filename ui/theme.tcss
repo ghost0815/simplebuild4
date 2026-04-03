@@ -319,6 +319,7 @@ Switch.-on .switch--slider {
     margin: 1 0;
     height: 1fr;
     border: tall $accent;
+    padding: 0 1;
 }
 
 .repo-row {
