@@ -353,7 +353,7 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
         return False  # Android check needs more logic
     if trait == "android" and "android" in prefix_lower:
         return True
-    if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps", "fix_wirecheck"):
+    if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps", "fix_wirecheck", "fix_version"):
         return True  # Always run these
     return False
 
