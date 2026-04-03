@@ -64,27 +64,28 @@ class ToolchainsScreen(Screen):
 
         with Horizontal(id="tc-main"):
             # Left: Toolchain browser (half screen)
-            with VerticalScroll(id="tc-browser"):
-                # Installed (virtual category, always expanded)
-                installed = reg.installed_toolchains()
-                with Collapsible(title=f"Installed ({len(installed)})", collapsed=False, id="cat-installed"):
-                    table = DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
-                    yield table
-
-                # Registry categories
-                for cat_key, cat_label in CATEGORIES:
-                    tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
-                    if not tcs:
-                        continue
-                    with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
-                        table = DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+            with Vertical(id="tc-browser-wrap"):
+                yield Input(placeholder="Filter toolchains...", id="tc-filter")
+                with VerticalScroll(id="tc-browser"):
+                    # Installed (virtual category, always expanded)
+                    installed = reg.installed_toolchains()
+                    with Collapsible(title=f"Installed ({len(installed)})", collapsed=False, id="cat-installed"):
+                        table = DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
                         yield table
+
+                    # Registry categories
+                    for cat_key, cat_label in CATEGORIES:
+                        tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+                        if not tcs:
+                            continue
+                        with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
+                            table = DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+                            yield table
 
             # Right: Details + Output
             with Vertical(id="tc-right"):
                 # Actions
                 with Horizontal(id="tc-actions"):
-                    yield Input(placeholder="Filter...", id="tc-filter")
                     yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
@@ -109,6 +110,9 @@ class ToolchainsScreen(Screen):
                 # Libraries panel (hidden by default)
                 with VerticalScroll(id="tc-libs"):
                     yield Static("", id="tc-libs-header")
+                    with Horizontal(classes="lib-action-row"):
+                        yield Static(f"  {'Library':<15s} {'Installed':<12s}", classes="lib-status lib-header-text")
+                        yield Static("Action", classes="lib-select lib-header-text")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
@@ -311,7 +315,7 @@ class ToolchainsScreen(Screen):
 
             recipe_map = {r["name"]: r for r in recipes}
 
-            header.update(f"  {'Library':<15s} {'Installed':<12s}  Action")
+            header.update("")
 
             for lib in libs:
                 safe_id = lib.name.replace(".", "-").replace(" ", "-")

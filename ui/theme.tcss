@@ -223,9 +223,14 @@ Switch.-on .switch--slider {
     height: 1fr;
 }
 
-#tc-browser {
+#tc-browser-wrap {
     width: 1fr;
+    border: solid #444444;
     padding: 0 1;
+}
+
+#tc-browser {
+    height: 1fr;
 }
 
 #tc-browser DataTable {
@@ -253,7 +258,13 @@ Switch.-on .switch--slider {
 }
 
 #tc-filter {
-    width: 30;
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
+.lib-header-text {
+    text-style: bold;
+    height: 1;
 }
 
 .tab-active {
