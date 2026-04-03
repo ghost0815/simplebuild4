@@ -117,7 +117,7 @@ libraries:
     pc_file: libpcsclite.pc
     version_check: url:https://pcsclite.apdu.fr/files/
     pre_configure: "./bootstrap"
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    configure: './configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)" LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
     make: "make -j@CPUS@"
     install: "make install"
     depends: [libusb]
@@ -135,7 +135,7 @@ libraries:
     version_check: url:https://ccid.apdu.fr/files/
     source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
     pre_configure: "./bootstrap"
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    configure: './configure --host=@TARGET@ --prefix=@PREFIX@ --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)" PCSC_LIBS="$(pkg-config --libs libpcsclite)" LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)" LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
     make: "make -j@CPUS@"
     install: "make install"
     depends: [pcsclite, libusb]
