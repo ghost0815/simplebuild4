@@ -258,8 +258,7 @@ Switch.-on .switch--slider {
 }
 
 #tc-filter {
-    width: 100%;
-    margin: 0 0 1 0;
+    width: 25;
 }
 
 .lib-header-text {

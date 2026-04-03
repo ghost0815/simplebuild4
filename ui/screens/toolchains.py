@@ -65,7 +65,6 @@ class ToolchainsScreen(Screen):
         with Horizontal(id="tc-main"):
             # Left: Toolchain browser (half screen)
             with Vertical(id="tc-browser-wrap"):
-                yield Input(placeholder="Filter toolchains...", id="tc-filter")
                 with VerticalScroll(id="tc-browser"):
                     # Installed (virtual category, always expanded)
                     installed = reg.installed_toolchains()
@@ -86,6 +85,7 @@ class ToolchainsScreen(Screen):
             with Vertical(id="tc-right"):
                 # Actions
                 with Horizontal(id="tc-actions"):
+                    yield Input(placeholder="Filter...", id="tc-filter")
                     yield Static("", classes="spacer")
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
