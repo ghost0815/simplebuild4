@@ -399,6 +399,17 @@ class ToolchainsScreen(Screen):
         def cancel_check() -> bool:
             return self._cancel_requested
 
+        def _set_lib_status(lib_name: str, status: str) -> None:
+            """Update the status label of a library during build."""
+            safe_id = lib_name.replace(".", "-").replace(" ", "-")
+            try:
+                self.app.call_from_thread(
+                    self.query_one(f"#lib-status-{safe_id}", Static).update,
+                    f"  {status}"
+                )
+            except Exception:
+                pass
+
         def do_build():
             try:
                 for lib_name, action_str in actions:
@@ -409,6 +420,9 @@ class ToolchainsScreen(Screen):
                     if len(parts) != 2:
                         continue
                     action_type, version = parts
+
+                    # Show building indicator
+                    _set_lib_status(lib_name, f"[bold yellow]{lib_name:<15s}[/bold yellow] [yellow]building...[/yellow]")
                     self._log(f"\n[bold]{action_type}: {lib_name} {version}[/bold]")
 
                     success = build_library(
@@ -426,18 +440,25 @@ class ToolchainsScreen(Screen):
                         cancel_check=cancel_check,
                         log=self._log,
                     )
-                    if not success:
-                        self._log(f"[red]{lib_name} {version} FAILED[/red]")
+                    if success:
+                        _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]done[/green]")
+                    else:
                         if self._cancel_requested:
+                            _set_lib_status(lib_name, f"[bold yellow]{lib_name:<15s}[/bold yellow] [yellow]cancelled[/yellow]")
                             break
+                        else:
+                            _set_lib_status(lib_name, f"[bold red]{lib_name:<15s}[/bold red] [red]failed[/red]")
 
                 self._log(f"\n[bold]Done[/bold]")
             finally:
                 self._building = False
                 self._cancel_requested = False
                 self.app.call_from_thread(self._update_f10_state)
+                # Refresh library info (stay on Libraries tab)
+                self.app.call_from_thread(self._update_libraries)
 
-        self._run_in_thread(do_build)
+        thread = threading.Thread(target=do_build, daemon=True)
+        thread.start()
 
     def _refresh(self) -> None:
         self._registry = None
