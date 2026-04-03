@@ -475,7 +475,9 @@ class ToolchainsScreen(Screen):
 
     def _update_output(self) -> None:
         try:
-            text = "\n".join(ToolchainsScreen._log_history)
+            # Limit UI to last 200 lines to prevent rendering slowdown
+            history = ToolchainsScreen._log_history[-200:]
+            text = "\n".join(history)
             self.query_one("#tc-output-text", Static).update(text)
             scroll = self.query_one("#tc-output", VerticalScroll)
             scroll.scroll_end(animate=False)
