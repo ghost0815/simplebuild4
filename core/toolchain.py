@@ -282,6 +282,19 @@ def check_library_updates(
                         exact_match = True
                         break
 
+        # For "auto" variants: plain version like "1.1.0" (no batchsize) should
+        # recommend "auto" to get proper bitslice optimization
+        if not exact_match and has_auto and "-" not in lib.version:
+            for v in available:
+                v_version = v.get("version", "")
+                if v_version not in ("auto", "master") and v_version.startswith(lib.version + "-"):
+                    # Installed "1.1.0" matches base of "1.1.0-64" → recommend auto
+                    lib.update_version = "auto"
+                    lib.latest_version = "auto"
+                    lib.up_to_date = False
+                    break
+            continue
+
         if exact_match:
             lib.update_version = lib.version
             lib.up_to_date = True
