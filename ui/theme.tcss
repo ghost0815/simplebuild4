@@ -225,12 +225,11 @@ Switch.-on .switch--slider {
 
 #tc-browser-wrap {
     width: 1fr;
-    margin: 0 1;
 }
 
 #tc-browser {
     height: 1fr;
-    padding: 0 1;
+    margin: 0 2;
 }
 
 #tc-browser DataTable {
