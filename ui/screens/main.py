@@ -78,12 +78,13 @@ class MainScreen(Screen):
         repo_names = [r.name for r in repos]
         source_parts = []
         for s in target.sources:
-            if s in repo_names:
-                source_parts.append(s)
+            name = s.name if hasattr(s, 'name') else s
+            if name in repo_names:
+                source_parts.append(name)
             else:
-                source_parts.append(f"[red]{s} (not found!)[/red]")
+                source_parts.append(f"[red]{name} (not found!)[/red]")
         source_str = ", ".join(source_parts) or "none"
-        tc_str = ", ".join(target.toolchains) or "none"
+        tc_str = ", ".join(tc.name if hasattr(tc, 'name') else tc for tc in target.toolchains) or "none"
 
         info = self.query_one("#info", Static)
         info.update(

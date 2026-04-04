@@ -50,7 +50,7 @@ Screen {
     padding: 0 0 0 1;
 }
 
-#te-panel-general, #te-panel-source, #te-panel-oscam, #te-panel-build, #te-panel-upload {
+#te-panel-general, #te-panel-source, #te-panel-oscam, #te-panel-upload {
     padding: 1 3;
 }
 
@@ -78,6 +78,65 @@ Screen {
 .sc-label {
     width: 1fr;
     height: 1;
+    padding: 0;
+}
+
+.src-row {
+    height: 3;
+    padding: 0 1;
+}
+
+.src-row Switch {
+    width: auto;
+}
+
+.src-name {
+    width: 50;
+    padding: 1 0;
+}
+
+.src-opt-label {
+    width: auto;
+    padding: 1 1;
+}
+
+.flag-row {
+    height: 3;
+}
+
+.flag-label {
+    width: 20;
+    padding: 1 0;
+}
+
+.patch-grid {
+    margin: 0 0 0 2;
+}
+
+.tc-fields-row {
+    height: 3;
+    padding: 0 2 0 4;
+}
+
+.tc-field-label {
+    width: 15;
+    padding: 1 0;
+    text-align: right;
+}
+
+.tc-fields-row Input {
+    width: 1fr;
+}
+
+.tc-default {
+    color: $text-muted;
+}
+
+.tc-reset-btn {
+    min-width: 4;
+    max-width: 4;
+    height: 3;
+    margin: 0;
     padding: 0;
 }
 

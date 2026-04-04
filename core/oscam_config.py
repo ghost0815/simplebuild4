@@ -117,6 +117,40 @@ def apply_config(repo_dir: Path, enabled: dict[str, list[str]], all_options: Osc
     return True
 
 
+def merge_options(repo_dirs: list[Path]) -> OscamOptions:
+    """Read options from multiple repos and merge them (union, unique).
+
+    Args:
+        repo_dirs: List of cloned oscam repo paths
+
+    Returns:
+        Merged OscamOptions with union of all options.
+        Default enabled = union of all defaults.
+    """
+    merged = OscamOptions()
+
+    for repo_dir in repo_dirs:
+        opts = read_options(repo_dir)
+        if not opts:
+            continue
+        for attr in ("addons", "protocols", "readers", "card_readers"):
+            existing = set(getattr(merged, attr))
+            for opt in getattr(opts, attr):
+                if opt not in existing:
+                    getattr(merged, attr).append(opt)
+                    existing.add(opt)
+        for cat, defaults in opts.default_enabled.items():
+            if cat not in merged.default_enabled:
+                merged.default_enabled[cat] = []
+            existing_defaults = set(merged.default_enabled[cat])
+            for opt in defaults:
+                if opt not in existing_defaults:
+                    merged.default_enabled[cat].append(opt)
+                    existing_defaults.add(opt)
+
+    return merged
+
+
 def get_version(repo_dir: Path) -> str:
     """Get oscam version string from the repo."""
     config_sh = repo_dir / "config.sh"

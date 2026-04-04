@@ -28,6 +28,26 @@ class UploadConfig:
 
 
 @dataclass
+class SourceConfig:
+    """Source repository configuration for a target."""
+    name: str = ""
+    update_before_build: bool = False
+    patch_before_build: bool = False
+    patches: list[str] = field(default_factory=list)  # selected patch filenames
+
+
+@dataclass
+class ToolchainConfig:
+    """Per-toolchain build settings override for a target."""
+    name: str = ""
+    cc_opts: str = ""              # Override CC_OPTS (empty = use toolchain default)
+    cflags: str = ""               # Override EXTRA_CFLAGS
+    ldflags: str = ""              # Override EXTRA_LDFLAGS
+    make_vars: str = ""            # Override make variables
+    stapi_lib: str = ""            # Override STAPI library
+
+
+@dataclass
 class BuildSettings:
     """Oscam build configuration."""
 
@@ -66,7 +86,43 @@ class BuildSettings:
 
     # Build options
     confdir: str = "/etc/tuxbox/config"
+    cert_file: str = ""            # Certificate file for WITH_SIGNING
+    key_file: str = ""             # Private key file for WITH_SIGNING
     make_vars: str = ""            # Raw make variable assignments
+
+
+def _load_sources(raw: list) -> list[SourceConfig]:
+    """Load sources from YAML data, handling both old (string) and new (dict) format."""
+    result = []
+    for item in raw:
+        if isinstance(item, str):
+            result.append(SourceConfig(name=item))
+        elif isinstance(item, dict):
+            result.append(SourceConfig(
+                name=item.get("name", ""),
+                update_before_build=item.get("update_before_build", False),
+                patch_before_build=item.get("patch_before_build", False),
+                patches=item.get("patches", []),
+            ))
+    return result if result else [SourceConfig(name="default")]
+
+
+def _load_toolchains(raw: list) -> list[ToolchainConfig]:
+    """Load toolchains from YAML data, handling both old (string) and new (dict) format."""
+    result = []
+    for item in raw:
+        if isinstance(item, str):
+            result.append(ToolchainConfig(name=item))
+        elif isinstance(item, dict):
+            result.append(ToolchainConfig(
+                name=item.get("name", ""),
+                cc_opts=item.get("cc_opts", ""),
+                cflags=item.get("cflags", ""),
+                ldflags=item.get("ldflags", ""),
+                make_vars=item.get("make_vars", ""),
+                stapi_lib=item.get("stapi_lib", ""),
+            ))
+    return result
 
 
 @dataclass
@@ -75,8 +131,8 @@ class Target:
 
     name: str = ""
     description: str = ""
-    sources: list[str] = field(default_factory=lambda: ["default"])
-    toolchains: list[str] = field(default_factory=list)
+    sources: list[SourceConfig] = field(default_factory=lambda: [SourceConfig(name="default")])
+    toolchains: list[ToolchainConfig] = field(default_factory=list)
     build: BuildSettings = field(default_factory=BuildSettings)
     upload: list[UploadConfig] = field(default_factory=list)
 
@@ -85,8 +141,26 @@ class Target:
         data = {
             "name": self.name,
             "description": self.description,
-            "sources": self.sources,
-            "toolchains": self.toolchains,
+            "sources": [
+                {k: v for k, v in {
+                    "name": s.name,
+                    "update_before_build": s.update_before_build,
+                    "patch_before_build": s.patch_before_build,
+                    "patches": s.patches if s.patches else None,
+                }.items() if v is not None and v != False and v != ""}
+                for s in self.sources
+            ],
+            "toolchains": [
+                {k: v for k, v in {
+                    "name": tc.name,
+                    "cc_opts": tc.cc_opts,
+                    "cflags": tc.cflags,
+                    "ldflags": tc.ldflags,
+                    "make_vars": tc.make_vars,
+                    "stapi_lib": tc.stapi_lib,
+                }.items() if v}  # omit empty
+                for tc in self.toolchains
+            ],
             "build": {
                 "modules": self.build.modules,
                 "protocols": self.build.protocols,
@@ -112,6 +186,8 @@ class Target:
                 "use_compress": self.build.use_compress,
                 "use_oscamname": self.build.use_oscamname,
                 "confdir": self.build.confdir,
+                "cert_file": self.build.cert_file,
+                "key_file": self.build.key_file,
                 "make_vars": self.build.make_vars,
             },
             "upload": [
@@ -128,6 +204,11 @@ class Target:
             ],
         }
         path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")
+
+    @staticmethod
+    def _source_names(sources: list["SourceConfig"]) -> list[str]:
+        """Get just the names from source configs."""
+        return [s.name for s in sources]
 
     @classmethod
     def load(cls, path: Path) -> "Target":
@@ -162,6 +243,8 @@ class Target:
             use_compress=build_data.get("use_compress", False),
             use_oscamname=build_data.get("use_oscamname", ""),
             confdir=build_data.get("confdir", "/etc/tuxbox/config"),
+            cert_file=build_data.get("cert_file", ""),
+            key_file=build_data.get("key_file", ""),
             make_vars=build_data.get("make_vars", ""),
         )
 
@@ -180,8 +263,8 @@ class Target:
         return cls(
             name=data.get("name", ""),
             description=data.get("description", ""),
-            sources=data.get("sources", ["default"]),
-            toolchains=data.get("toolchains", []),
+            sources=_load_sources(data.get("sources", [{"name": "default"}])),
+            toolchains=_load_toolchains(data.get("toolchains", [])),
             build=build,
             upload=uploads,
         )

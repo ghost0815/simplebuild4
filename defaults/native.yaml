@@ -2,9 +2,11 @@
 name: native
 description: Build for local system
 sources:
-  - default
+  - name: default
+    update_before_build: true
+    patch_before_build: false
 toolchains:
-  - native
+  - name: native
 
 build:
   modules:
