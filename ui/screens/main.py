@@ -232,6 +232,7 @@ class MainScreen(Screen):
                     sign_key=self.app.settings.sign_key,
                     delete_debug=self.app.settings.delete_debug,
                     save_smargo=self.app.settings.save_smargo,
+                    patch_webif=self.app.settings.patch_webif,
                     log=log,
                     cancel_check=cancel_check,
                 )

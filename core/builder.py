@@ -40,6 +40,7 @@ class BuildEngine:
         sign_key: str = "",
         delete_debug: bool = True,
         save_smargo: bool = True,
+        patch_webif: bool = True,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -57,6 +58,7 @@ class BuildEngine:
         self.sign_key = sign_key
         self.delete_debug = delete_debug
         self.save_smargo = save_smargo
+        self.patch_webif = patch_webif
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
 
@@ -380,7 +382,68 @@ class BuildEngine:
                 self._log(f"  [red]FAILED: {patch_name}[/red]")
 
         self._log(f"  Patches: {applied} applied, {failed} failed")
+
+        # Patch WebIF with build/patch info (if setting enabled and patches applied)
+        if applied > 0 and self.patch_webif:
+            self._patch_webif(repo_dir, src.patches)
+
         return failed == 0
+
+    def _patch_webif(self, repo_dir: Path, patches: list[str]) -> None:
+        """Inject patch info into oscam source so WebIF shows which patches are applied."""
+        config_h = repo_dir / "config.h"
+        oscam_c = repo_dir / "oscam.c"
+
+        if not config_h.exists() or not oscam_c.exists():
+            return
+
+        try:
+            # Build patch info string
+            patch_names = "\\n\\t\\t".join(patches)
+            patch_str = f"yes\\n\\t\\t{patch_names}"
+
+            # Modify config.h: add #define S4PATCHED before #endif
+            content = config_h.read_text(encoding="utf-8", errors="replace")
+            # Remove previous S4PATCHED if exists
+            content = "\n".join(line for line in content.splitlines() if "S4PATCHED" not in line)
+            # Add before final #endif
+            content = content.replace(
+                "#endif //OSCAM_CONFIG_H_",
+                f'#define S4PATCHED "{patch_str}"\n#endif //OSCAM_CONFIG_H_',
+            )
+            config_h.write_text(content, encoding="utf-8")
+
+            # Modify oscam.c: add fprintf for patch info after WebifPort line
+            content = oscam_c.read_text(encoding="utf-8", errors="replace")
+            # Remove previous S4PATCHED block if exists
+            lines = content.splitlines()
+            filtered = []
+            skip = False
+            for line in lines:
+                if "#ifdef S4PATCHED" in line:
+                    skip = True
+                    continue
+                if skip and "#endif" in line:
+                    skip = False
+                    continue
+                if skip:
+                    continue
+                filtered.append(line)
+            content = "\n".join(filtered)
+
+            # Insert after WebifPort fprintf
+            content = content.replace(
+                'fprintf(fp, "WebifPort:\\t%s\\n", WebifPort);',
+                'fprintf(fp, "WebifPort:\\t%s\\n", WebifPort);\n'
+                '#ifdef S4PATCHED\n'
+                '\tfprintf(fp, "Patched:\\t%s\\n", S4PATCHED);\n'
+                '#endif',
+            )
+            oscam_c.write_text(content, encoding="utf-8")
+
+            self._log(f"  WebIF patched with build info")
+        except Exception as e:
+            self._log(f"  [yellow]WebIF patch failed: {e}[/yellow]")
 
     # -------------------------------------------------------------------------
     # PHASE 3: Configure oscam
