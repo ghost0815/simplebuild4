@@ -507,11 +507,29 @@ class BuildEngine:
             sysroot_path = tc_dir / tc.sysroot if tc.sysroot else tc_dir
             sysroot = str(sysroot_path)
 
+        # --- Auto-inject --sysroot if compiler's built-in sysroot is invalid ---
+        sysroot_inject = ""
+        if not is_native and cross:
+            import shutil as _shutil
+            gcc_path = _shutil.which(f"{tc.prefix}gcc", path=f"{tc_dir}/bin:{os.environ.get('PATH', '')}")
+            if gcc_path:
+                try:
+                    gcc_sysroot = subprocess.run(
+                        [gcc_path, "-print-sysroot"], capture_output=True, text=True, timeout=5,
+                    ).stdout.strip()
+                except Exception:
+                    gcc_sysroot = ""
+                if not gcc_sysroot or not Path(gcc_sysroot).is_dir():
+                    sysroot_inject = f"--sysroot={sysroot}"
+                    self._log(f"  Auto-injected: {sysroot_inject}")
+
         # --- CC_OPTS, CFLAGS, LDFLAGS ---
         # s4 settings = base, toolchain appends, target overrides toolchain
         tc_cc = tcc.cc_opts if tcc.cc_opts else (tc.cc_opts or "")
         cc_opts = f"{self.compiler_opt} {tc_cc}".strip() if tc_cc else (self.compiler_opt or "")
         cflags = tcc.cflags if tcc.cflags else (tc.cflags or "")
+        if sysroot_inject and "--sysroot" not in cflags:
+            cflags = f"{cflags} {sysroot_inject}".strip()
         ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
         extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
 
