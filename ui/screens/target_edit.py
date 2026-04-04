@@ -45,10 +45,12 @@ class TargetEditScreen(Screen):
 
     BINDINGS = [
         ("1", "switch_tab('general')", "General"),
-        ("2", "switch_tab('source')", "Source+Toolchain"),
+        ("2", "switch_tab('source')", "Repo/Toolchain"),
         ("3", "switch_tab('oscam')", "Options"),
         ("4", "switch_tab('upload')", "Upload"),
     ]
+
+    _collapsible_states: dict[str, bool] = {}  # class-level: id → collapsed
 
     def __init__(self, target: Target | None = None, save_path: Path | None = None, active_tab: str = "general", focus_id: str = "") -> None:
         super().__init__()
@@ -104,6 +106,9 @@ class TargetEditScreen(Screen):
             self.app.paths.toolchains_dir,
         )
         registry.load()
+        installed = registry.installed_toolchains()
+        tc_names = [tc.name for tc in t.toolchains]
+        tc_map = {tc.name: tc for tc in t.toolchains}
         oscam = self._load_oscam_options()
 
         yield S4Header()
@@ -111,80 +116,143 @@ class TargetEditScreen(Screen):
         # Tab bar
         with Horizontal(id="te-tab-bar"):
             yield Static(" General ", id="te-tab-general", classes="tab-active")
-            yield Static(" Source+Toolchain", id="te-tab-source", classes="tab-inactive")
+            yield Static(" Repo/Toolchain", id="te-tab-source", classes="tab-inactive")
             yield Static(" Options", id="te-tab-oscam", classes="tab-inactive")
             yield Static(" Upload ", id="te-tab-upload", classes="tab-inactive")
 
         # === Tab 1: General ===
+        # UPX detection (once)
+        import shutil as _shutil
+        import subprocess as _sp
+        self._upx_path = _shutil.which("upx") or ""
+        self._upx_info = ""
+        if self._upx_path:
+            try:
+                _upx_ver = _sp.check_output([self._upx_path, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5).splitlines()[0]
+                self._upx_info = f" [dim]{self._upx_path} — {_upx_ver}[/dim]"
+            except Exception:
+                self._upx_info = f" [dim]{self._upx_path}[/dim]"
+
+        has_source = bool(oscam.addons)  # True if any source repo is assigned and cloned
+
         with VerticalScroll(id="te-panel-general"):
-            yield Horizontal(
-                Static(" Name", classes="s-label-tall"),
-                Input(value=t.name, placeholder="e.g. DM920", id="t-name"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" Description", classes="s-label-tall"),
-                Input(value=t.description, placeholder="e.g. Dreambox 920 living room", id="t-desc"),
-                classes="s-row",
-            )
-            yield _switch_row("USE_COMPRESS (UPX)", b.use_compress, "f-use-compress")
-            yield Horizontal(
-                Static(" Binary name", classes="s-label-tall"),
-                Input(value=b.use_oscamname, placeholder="empty = default", id="t-oscamname"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" Config directory", classes="s-label-tall"),
-                Input(value=b.confdir, id="t-confdir"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" Certificate file", classes="s-label-tall"),
-                Input(value=b.cert_file, placeholder="path to certificate (.pem)", id="t-cert-file"),
-                classes="s-row",
-            )
-            yield Horizontal(
-                Static(" Private key file", classes="s-label-tall"),
-                Input(value=b.key_file, placeholder="path to private key (.pem)", id="t-key-file"),
-                classes="s-row",
-            )
-
-            with Collapsible(title="Library + Static Flags", collapsed=True, id="col-lib-flags"):
+            with Collapsible(title="Common", collapsed=False, id="col-common"):
                 yield Horizontal(
-                    Static(" USE_LIBCRYPTO", classes="flag-label"), Switch(value=b.use_libcrypto, id="f-use-libcrypto"),
-                    Static(" STATIC_LIBCRYPTO", classes="flag-label"), Switch(value=b.static_libcrypto, id="f-static-libcrypto"),
-                    classes="flag-row",
+                    Static(" Name", classes="s-label-tall"),
+                    Input(value=t.name, placeholder="e.g. DM920", id="t-name"),
+                    classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" USE_SSL", classes="flag-label"), Switch(value=b.use_ssl, id="f-use-ssl"),
-                    Static(" STATIC_SSL", classes="flag-label"), Switch(value=b.static_ssl, id="f-static-ssl"),
-                    classes="flag-row",
+                    Static(" Description", classes="s-label-tall"),
+                    Input(value=t.description, placeholder="e.g. Dreambox 920 living room", id="t-desc"),
+                    classes="s-row",
+                )
+                compress_enabled = b.use_compress and bool(self._upx_path)
+                upx_label = Static(self._upx_info if compress_enabled else (" [dim red]upx not found[/dim red]" if not self._upx_path else ""), id="upx-info")
+                upx_label.styles.padding = (1, 0)
+                yield Horizontal(
+                    Static(f" USE_COMPRESS (UPX)", classes="s-label"),
+                    Switch(value=compress_enabled, id="f-use-compress", disabled=not bool(self._upx_path)),
+                    upx_label,
+                    classes="s-toggle",
                 )
                 yield Horizontal(
-                    Static(" USE_LIBUSB", classes="flag-label"), Switch(value=b.use_libusb, id="f-use-libusb"),
-                    Static(" STATIC_LIBUSB", classes="flag-label"), Switch(value=b.static_libusb, id="f-static-libusb"),
-                    classes="flag-row",
+                    Static(" Binary name", classes="s-label-tall"),
+                    Input(value=b.use_oscamname, placeholder="empty = default", id="t-oscamname"),
+                    classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" USE_PCSC", classes="flag-label"), Switch(value=b.use_pcsc, id="f-use-pcsc"),
-                    Static(" STATIC_PCSC", classes="flag-label"), Switch(value=b.static_pcsc, id="f-static-pcsc"),
-                    classes="flag-row",
+                    Static(" Config directory", classes="s-label-tall"),
+                    Input(value=b.confdir, id="t-confdir"),
+                    classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" USE_LIBDVBCSA", classes="flag-label"), Switch(value=b.use_libdvbcsa, id="f-use-libdvbcsa"),
-                    Static(" STATIC_LIBDVBCSA", classes="flag-label"), Switch(value=b.static_libdvbcsa, id="f-static-libdvbcsa"),
-                    classes="flag-row",
+                    Static(" Certificate file", classes="s-label-tall"),
+                    Input(value=b.cert_file, placeholder="path to certificate (.pem)", id="t-cert-file"),
+                    classes="s-row",
+                )
+                yield Horizontal(
+                    Static(" Private key file", classes="s-label-tall"),
+                    Input(value=b.key_file, placeholder="path to private key (.pem)", id="t-key-file"),
+                    classes="s-row",
                 )
 
-            with Collapsible(title="Hardware Flags", collapsed=True, id="col-hw-flags"):
-                yield _switch_row("USE_STAPI", b.use_stapi, "f-use-stapi")
-                yield _switch_row("USE_STAPI5", b.use_stapi5, "f-use-stapi5")
-                yield _switch_row("USE_COOLAPI", b.use_coolapi, "f-use-coolapi")
-                yield _switch_row("USE_COOLAPI2", b.use_coolapi2, "f-use-coolapi2")
-                yield _switch_row("USE_SU980", b.use_su980, "f-use-su980")
-                yield _switch_row("USE_AZBOX", b.use_azbox, "f-use-azbox")
+            if has_source:
+                with Collapsible(title="Library + Static Flags", collapsed=True, id="col-lib-flags"):
+                    yield Horizontal(
+                        Static(" USE_LIBCRYPTO", classes="flag-label"), Switch(value=b.use_libcrypto, id="f-use-libcrypto"),
+                        Static(" STATIC_LIBCRYPTO", classes="flag-label"), Switch(value=b.static_libcrypto, id="f-static-libcrypto"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_SSL", classes="flag-label"), Switch(value=b.use_ssl, id="f-use-ssl"),
+                        Static(" STATIC_SSL", classes="flag-label"), Switch(value=b.static_ssl, id="f-static-ssl"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_LIBUSB", classes="flag-label"), Switch(value=b.use_libusb, id="f-use-libusb"),
+                        Static(" STATIC_LIBUSB", classes="flag-label"), Switch(value=b.static_libusb, id="f-static-libusb"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_PCSC", classes="flag-label"), Switch(value=b.use_pcsc, id="f-use-pcsc"),
+                        Static(" STATIC_PCSC", classes="flag-label"), Switch(value=b.static_pcsc, id="f-static-pcsc"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_LIBDVBCSA", classes="flag-label"), Switch(value=b.use_libdvbcsa, id="f-use-libdvbcsa"),
+                        Static(" STATIC_LIBDVBCSA", classes="flag-label"), Switch(value=b.static_libdvbcsa, id="f-static-libdvbcsa"),
+                        classes="flag-row",
+                    )
 
-        # === Tab 2: Source+Toolchain===
+                with Collapsible(title="Hardware Flags", collapsed=True, id="col-hw-flags"):
+                    # STAPI row — with optional STAPI_LIB field inline
+                    _stapi5_sw = Switch(value=b.use_stapi5, id="f-use-stapi5")
+                    _stapi_widgets = [
+                        Static(" USE_STAPI", classes="flag-label"), Switch(value=b.use_stapi, id="f-use-stapi"),
+                        Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
+                    ]
+                    if b.use_stapi or b.use_stapi5:
+                        _stapi5_sw.styles.margin = (0, 1, 0, 0)
+                        _stapi_default = ""
+                        for _tc in installed:
+                            if _tc.name in tc_names:
+                                _stapi_default = _tc.stapi_lib or ""
+                                if _stapi_default:
+                                    break
+                        _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
+                        _stapi_is_default = (_stapi_val == _stapi_default)
+                        from textual.widgets import Button as _Btn
+                        _stapi_inp = Input(value=_stapi_val, placeholder="e.g. liboscam_stapi.a", id="f-stapi-lib")
+                        _stapi_inp.styles.max_width = 25
+                        if _stapi_is_default:
+                            _stapi_inp.add_class("tc-default")
+                        _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
+                        _stapi_lbl.tooltip = "Path to precompiled STAPI library. Passed as STAPI_LIB= or STAPI5_LIB= to make."
+                        _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
+                        _stapi_rst.tooltip = "Load toolchain default"
+                        self._stapi_default = _stapi_default
+                        _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
+                    yield Horizontal(*_stapi_widgets, classes="flag-row")
+                    yield Horizontal(
+                        Static(" USE_COOLAPI", classes="flag-label"), Switch(value=b.use_coolapi, id="f-use-coolapi"),
+                        Static(" USE_COOLAPI2", classes="flag-label"), Switch(value=b.use_coolapi2, id="f-use-coolapi2"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_SU980", classes="flag-label"), Switch(value=b.use_su980, id="f-use-su980"),
+                        Static(" USE_AZBOX", classes="flag-label"), Switch(value=b.use_azbox, id="f-use-azbox"),
+                        classes="flag-row",
+                    )
+                    yield Horizontal(
+                        Static(" USE_AMSMC", classes="flag-label"), Switch(value=b.use_amsmc, id="f-use-amsmc"),
+                        Static(" USE_MCA", classes="flag-label"), Switch(value=b.use_mca, id="f-use-mca"),
+                        classes="flag-row",
+                    )
+            else:
+                yield Static("  [dim]Select a source repository to configure build flags[/dim]")
+
+        # === Tab 2: Repo/Toolchain===
         with VerticalScroll(id="te-panel-source"):
             # Sources
             src_names = [s.name for s in t.sources]
@@ -199,8 +267,9 @@ class TargetEditScreen(Screen):
                     enabled = r.name in src_names
                     sc = src_map.get(r.name, SourceConfig(name=r.name))
                     rid = _safe_id(r.name)
+                    src_label = Static(f" {r.name}\n [dim]{r.url}[/dim]", classes="src-name")
                     yield Horizontal(
-                        Static(f" {r.name} [dim]({r.url})[/dim]", classes="src-name"),
+                        src_label,
                         Switch(value=enabled, id=f"src-{rid}"),
                         *([
                             Static(" [dim]Update before build[/dim]", classes="src-opt-label"),
@@ -220,18 +289,22 @@ class TargetEditScreen(Screen):
                     yield Static("  [dim]No repositories configured — use F3 Repositories first[/dim]")
 
             # Toolchains
-            tc_names = [tc.name for tc in t.toolchains]
-            tc_map = {tc.name: tc for tc in t.toolchains}
             tc_count = len(t.toolchains)
-            installed = registry.installed_toolchains()
             with Collapsible(title=f"Toolchains ({tc_count} selected)", collapsed=False, id="col-toolchains"):
                 for tc in installed:
                     enabled = tc.name in tc_names
                     tcc = tc_map.get(tc.name, ToolchainConfig(name=tc.name))
-                    label = f"{tc.name} [dim]({tc.arch})[/dim]" if tc.arch else tc.name
                     if tc.native:
-                        label = f"[bold]{tc.name}[/bold] [dim]({tc.arch})[/dim]"
-                    yield _switch_row(label, enabled, f"tc-{_safe_id(tc.name)}")
+                        label = f" [bold]{tc.name}[/bold] [dim]({tc.arch})[/dim]"
+                    elif tc.arch:
+                        label = f" {tc.name} [dim]({tc.arch})[/dim]"
+                    else:
+                        label = f" {tc.name}"
+                    yield Horizontal(
+                        Static(label, classes="src-name"),
+                        Switch(value=enabled, id=f"tc-{_safe_id(tc.name)}"),
+                        classes="src-row",
+                    )
                     if enabled:
                         # Per-toolchain build flags (only shown when active)
                         sid = _safe_id(tc.name)
@@ -415,6 +488,12 @@ class TargetEditScreen(Screen):
 
     def on_mount(self) -> None:
         self._show_tab(self._active_tab)
+        # Restore collapsible states from previous screen instance
+        for cid, collapsed in TargetEditScreen._collapsible_states.items():
+            try:
+                self.query_one(f"#{cid}", Collapsible).collapsed = collapsed
+            except Exception:
+                pass
         if self._focus_id:
             self.set_timer(0.1, self._restore_focus)
 
@@ -423,6 +502,18 @@ class TargetEditScreen(Screen):
             self.query_one(f"#{self._focus_id}", Switch).focus()
         except Exception:
             pass
+
+    def _save_collapsible_states(self) -> None:
+        """Save current collapsible states before screen refresh."""
+        for col in self.query(Collapsible):
+            if col.id:
+                TargetEditScreen._collapsible_states[col.id] = col.collapsed
+
+    def _refresh_screen(self, target: Target, active_tab: str, focus_id: str = "") -> None:
+        """Save state and refresh the screen."""
+        self._save_collapsible_states()
+        self.app.pop_screen()
+        self.app.push_screen(TargetEditScreen(target=target, save_path=self.save_path, active_tab=active_tab, focus_id=focus_id))
 
     def on_click(self, event) -> None:
         widget = event.widget if hasattr(event, 'widget') else None
@@ -443,14 +534,35 @@ class TargetEditScreen(Screen):
         is_patch_toggle = sid.startswith("src-patch-")
         is_toolchain = sid.startswith("tc-") and not sid.startswith("tc-cc-") and not sid.startswith("tc-cf-") and not sid.startswith("tc-ld-") and not sid.startswith("tc-mv-")
         if is_source or is_patch_toggle or is_toolchain:
-            target = self._collect()
-            self._focus_after_reload = sid
-            self.app.pop_screen()
-            self.app.push_screen(TargetEditScreen(target=target, save_path=self.save_path, active_tab="source", focus_id=sid))
+            self._refresh_screen(self._collect(), "source", sid)
+            return
+
+        # STAPI toggle — refresh to show/hide stapi_lib field
+        if sid in ("f-use-stapi", "f-use-stapi5"):
+            self._refresh_screen(self._collect(), "general", sid)
+            return
+
+        # UPX toggle — update info text
+        if sid == "f-use-compress":
+            try:
+                info = self.query_one("#upx-info", Static)
+                if event.value and self._upx_path:
+                    info.update(self._upx_info)
+                else:
+                    info.update("")
+            except Exception:
+                pass
 
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-cleanup":
             self._do_cleanup()
+        elif event.button.id == "rst-stapi-lib":
+            try:
+                inp = self.query_one("#f-stapi-lib", Input)
+                inp.value = getattr(self, '_stapi_default', '')
+                inp.add_class("tc-default")
+            except Exception:
+                pass
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
 
@@ -488,6 +600,14 @@ class TargetEditScreen(Screen):
             else:
                 event.input.add_class("tc-default")
 
+        # STAPI_LIB field style tracking
+        if iid == "f-stapi-lib":
+            default_val = getattr(self, '_stapi_default', '')
+            if event.value != default_val:
+                event.input.remove_class("tc-default")
+            else:
+                event.input.add_class("tc-default")
+
     def _do_cleanup(self) -> None:
         """Remove stale options that no longer exist in oscam."""
         if not self._removed_opts:
@@ -502,9 +622,7 @@ class TargetEditScreen(Screen):
         target.build.protocols = [m for m in target.build.protocols if m in oscam.protocols]
         target.build.readers = [m for m in target.build.readers if m in oscam.readers]
         target.build.card_readers = [m for m in target.build.card_readers if m in oscam.card_readers]
-        # Refresh screen
-        self.app.pop_screen()
-        self.app.push_screen(TargetEditScreen(target=target, save_path=self.save_path, active_tab="oscam"))
+        self._refresh_screen(target, "oscam")
         self.notify(f"Cleaned up {count} removed option(s) — save to apply", severity="information")
 
     def action_switch_tab(self, tab: str) -> None:
@@ -611,12 +729,15 @@ class TargetEditScreen(Screen):
             use_coolapi2=self._switch_on("f-use-coolapi2"),
             use_su980=self._switch_on("f-use-su980"),
             use_azbox=self._switch_on("f-use-azbox"),
+            use_amsmc=self._switch_on("f-use-amsmc"),
+            use_mca=self._switch_on("f-use-mca"),
             static_libcrypto=self._switch_on("f-static-libcrypto"),
             static_ssl=self._switch_on("f-static-ssl"),
             static_libusb=self._switch_on("f-static-libusb"),
             static_pcsc=self._switch_on("f-static-pcsc"),
             static_libdvbcsa=self._switch_on("f-static-libdvbcsa"),
             use_compress=self._switch_on("f-use-compress"),
+            stapi_lib=self._input_val("f-stapi-lib"),
             use_oscamname=self.query_one("#t-oscamname", Input).value.strip(),
             confdir=self.query_one("#t-confdir", Input).value.strip(),
             cert_file=self._input_val("t-cert-file"),

@@ -71,6 +71,8 @@ class BuildSettings:
     use_coolapi2: bool = False
     use_su980: bool = False
     use_azbox: bool = False
+    use_amsmc: bool = False
+    use_mca: bool = False
 
     # USE flags — Static linking
     use_static: bool = False
@@ -83,6 +85,7 @@ class BuildSettings:
     # USE flags — Other
     use_compress: bool = False
     use_oscamname: str = ""        # Custom binary name (empty = default)
+    stapi_lib: str = ""            # STAPI library path override
 
     # Build options
     confdir: str = "/etc/tuxbox/config"
@@ -177,6 +180,8 @@ class Target:
                 "use_coolapi2": self.build.use_coolapi2,
                 "use_su980": self.build.use_su980,
                 "use_azbox": self.build.use_azbox,
+                "use_amsmc": self.build.use_amsmc,
+                "use_mca": self.build.use_mca,
                 "use_static": self.build.use_static,
                 "static_libcrypto": self.build.static_libcrypto,
                 "static_ssl": self.build.static_ssl,
@@ -185,6 +190,7 @@ class Target:
                 "static_libdvbcsa": self.build.static_libdvbcsa,
                 "use_compress": self.build.use_compress,
                 "use_oscamname": self.build.use_oscamname,
+                "stapi_lib": self.build.stapi_lib,
                 "confdir": self.build.confdir,
                 "cert_file": self.build.cert_file,
                 "key_file": self.build.key_file,
@@ -234,6 +240,8 @@ class Target:
             use_coolapi2=build_data.get("use_coolapi2", False),
             use_su980=build_data.get("use_su980", False),
             use_azbox=build_data.get("use_azbox", False),
+            use_amsmc=build_data.get("use_amsmc", False),
+            use_mca=build_data.get("use_mca", False),
             use_static=build_data.get("use_static", False),
             static_libcrypto=build_data.get("static_libcrypto", False),
             static_ssl=build_data.get("static_ssl", False),
@@ -242,6 +250,7 @@ class Target:
             static_libdvbcsa=build_data.get("static_libdvbcsa", False),
             use_compress=build_data.get("use_compress", False),
             use_oscamname=build_data.get("use_oscamname", ""),
+            stapi_lib=build_data.get("stapi_lib", ""),
             confdir=build_data.get("confdir", "/etc/tuxbox/config"),
             cert_file=build_data.get("cert_file", ""),
             key_file=build_data.get("key_file", ""),

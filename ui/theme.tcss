@@ -82,7 +82,7 @@ Screen {
 }
 
 .src-row {
-    height: 3;
+    height: 4;
     padding: 0 1;
 }
 
@@ -91,7 +91,7 @@ Screen {
 }
 
 .src-name {
-    width: 50;
+    width: 55;
     padding: 1 0;
 }
 
@@ -100,12 +100,8 @@ Screen {
     padding: 1 1;
 }
 
-.flag-row {
-    height: 3;
-}
-
 .flag-label {
-    width: 20;
+    width: 30;
     padding: 1 0;
 }
 
@@ -167,7 +163,7 @@ Screen {
 }
 
 .s-row Select {
-    width: 40;
+    width: 30;
 }
 
 .s-row-tall {
@@ -176,12 +172,12 @@ Screen {
 }
 
 .s-label {
-    width: 40;
+    width: 30;
     padding: 1 0;
 }
 
 .s-label-tall {
-    width: 40;
+    width: 30;
     padding: 1 0;
 }
 
@@ -190,8 +186,17 @@ Screen {
     margin: 0 0 0 2;
 }
 
+.flag-row {
+    height: 3;
+    margin: 0 0 0 2;
+}
+
+.flag-row Switch {
+    margin: 0 6 0 0;
+}
+
 .s-toggle .s-label {
-    width: 40;
+    width: 30;
     padding: 1 0;
 }
 

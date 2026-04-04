@@ -6,7 +6,7 @@ from textual.containers import Horizontal
 VERSION = "2026.04 alpha"
 DEVELOPER = "WXbet"
 DEDICATION = "in memory of gorgone"
-ICON = " S4 "
+ICON = " s4 "
 
 
 class S4HeaderIcon(Static):
