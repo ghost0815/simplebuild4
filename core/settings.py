@@ -30,9 +30,6 @@ class Settings:
     targz: bool = False
     save_smargo: bool = True
 
-    # Compression
-    upx_option: str = "--best"
-
     # Signing
     sign_cert: str = ""
     sign_key: str = ""
@@ -57,7 +54,6 @@ class Settings:
             "delete_debug": self.delete_debug,
             "targz": self.targz,
             "save_smargo": self.save_smargo,
-            "upx_option": self.upx_option,
             "sign_cert": self.sign_cert,
             "sign_key": self.sign_key,
             "qemu_test": self.qemu_test,
@@ -90,7 +86,6 @@ class Settings:
             delete_debug=data.get("delete_debug", True),
             targz=data.get("targz", False),
             save_smargo=data.get("save_smargo", True),
-            upx_option=data.get("upx_option", "--best"),
             sign_cert=data.get("sign_cert", ""),
             sign_key=data.get("sign_key", ""),
             qemu_test=data.get("qemu_test", False),

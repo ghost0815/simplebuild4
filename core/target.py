@@ -75,7 +75,6 @@ class BuildSettings:
     use_mca: bool = False
 
     # USE flags — Static linking
-    use_static: bool = False
     static_libcrypto: bool = False
     static_ssl: bool = False
     static_libusb: bool = False
@@ -84,13 +83,13 @@ class BuildSettings:
 
     # USE flags — Other
     use_compress: bool = False
+    compress_level: str = "--best" # UPX compression level (--best, --ultra-brute, -1..-9)
     use_oscamname: str = ""        # Custom binary name (empty = default)
     stapi_lib: str = ""            # STAPI library path override
 
     # Build options
+    build_system: str = "make"         # "make" or "cmake"
     confdir: str = "/etc/tuxbox/config"
-    cert_file: str = ""            # Certificate file for WITH_SIGNING
-    key_file: str = ""             # Private key file for WITH_SIGNING
     make_vars: str = ""            # Raw make variable assignments
 
 
@@ -182,18 +181,17 @@ class Target:
                 "use_azbox": self.build.use_azbox,
                 "use_amsmc": self.build.use_amsmc,
                 "use_mca": self.build.use_mca,
-                "use_static": self.build.use_static,
                 "static_libcrypto": self.build.static_libcrypto,
                 "static_ssl": self.build.static_ssl,
                 "static_libusb": self.build.static_libusb,
                 "static_pcsc": self.build.static_pcsc,
                 "static_libdvbcsa": self.build.static_libdvbcsa,
                 "use_compress": self.build.use_compress,
+                "compress_level": self.build.compress_level,
                 "use_oscamname": self.build.use_oscamname,
                 "stapi_lib": self.build.stapi_lib,
+                "build_system": self.build.build_system,
                 "confdir": self.build.confdir,
-                "cert_file": self.build.cert_file,
-                "key_file": self.build.key_file,
                 "make_vars": self.build.make_vars,
             },
             "upload": [
@@ -218,8 +216,11 @@ class Target:
 
     @classmethod
     def load(cls, path: Path) -> "Target":
-        """Load target from YAML file."""
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        """Load target from YAML file. Ignores unknown fields gracefully."""
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except Exception:
+            return cls()
         if not data:
             return cls()
 
@@ -242,18 +243,17 @@ class Target:
             use_azbox=build_data.get("use_azbox", False),
             use_amsmc=build_data.get("use_amsmc", False),
             use_mca=build_data.get("use_mca", False),
-            use_static=build_data.get("use_static", False),
             static_libcrypto=build_data.get("static_libcrypto", False),
             static_ssl=build_data.get("static_ssl", False),
             static_libusb=build_data.get("static_libusb", False),
             static_pcsc=build_data.get("static_pcsc", False),
             static_libdvbcsa=build_data.get("static_libdvbcsa", False),
             use_compress=build_data.get("use_compress", False),
+            compress_level=build_data.get("compress_level", "--best"),
             use_oscamname=build_data.get("use_oscamname", ""),
             stapi_lib=build_data.get("stapi_lib", ""),
+            build_system=build_data.get("build_system", "make"),
             confdir=build_data.get("confdir", "/etc/tuxbox/config"),
-            cert_file=build_data.get("cert_file", ""),
-            key_file=build_data.get("key_file", ""),
             make_vars=build_data.get("make_vars", ""),
         )
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Switch, Input, Collapsible
+from textual.widgets import Static, Switch, Input, Collapsible, Select
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.target import Target, BuildSettings, UploadConfig, SourceConfig, ToolchainConfig
@@ -148,13 +148,38 @@ class TargetEditScreen(Screen):
                     classes="s-row",
                 )
                 compress_enabled = b.use_compress and bool(self._upx_path)
-                upx_label = Static(self._upx_info if compress_enabled else (" [dim red]upx not found[/dim red]" if not self._upx_path else ""), id="upx-info")
-                upx_label.styles.padding = (1, 0)
+                upx_switch = Switch(value=compress_enabled, id="f-use-compress", disabled=not bool(self._upx_path))
+                upx_text = self._upx_info.strip() if self._upx_path else "upx not found"
+                upx_info = Static(f" [dim]{upx_text}[/dim]")
+                upx_info.styles.padding = (1, 0)
+                upx_info.styles.width = "auto"
+                if compress_enabled:
+                    lvl_inp = Input(value=b.compress_level, placeholder="--best", id="t-compress-level")
+                    lvl_inp.styles.max_width = 25
+                    yield Horizontal(
+                        Static(" USE_COMPRESS", classes="flag-label"),
+                        upx_switch,
+                        upx_info,
+                        Static("", classes="spacer"),
+                        Static(" Compression level", classes="src-opt-label"),
+                        lvl_inp,
+                        classes="flag-row",
+                    )
+                else:
+                    yield Horizontal(
+                        Static(" USE_COMPRESS", classes="flag-label"),
+                        upx_switch,
+                        upx_info,
+                        classes="flag-row",
+                    )
                 yield Horizontal(
-                    Static(f" USE_COMPRESS (UPX)", classes="s-label"),
-                    Switch(value=compress_enabled, id="f-use-compress", disabled=not bool(self._upx_path)),
-                    upx_label,
-                    classes="s-toggle",
+                    Static(" Build system", classes="s-label-tall"),
+                    Select(
+                        options=[("make", "make"), ("cmake", "cmake")],
+                        value=b.build_system or "make",
+                        id="t-build-system",
+                    ),
+                    classes="s-row",
                 )
                 yield Horizontal(
                     Static(" Binary name", classes="s-label-tall"),
@@ -166,17 +191,6 @@ class TargetEditScreen(Screen):
                     Input(value=b.confdir, id="t-confdir"),
                     classes="s-row",
                 )
-                yield Horizontal(
-                    Static(" Certificate file", classes="s-label-tall"),
-                    Input(value=b.cert_file, placeholder="path to certificate (.pem)", id="t-cert-file"),
-                    classes="s-row",
-                )
-                yield Horizontal(
-                    Static(" Private key file", classes="s-label-tall"),
-                    Input(value=b.key_file, placeholder="path to private key (.pem)", id="t-key-file"),
-                    classes="s-row",
-                )
-
             if has_source:
                 with Collapsible(title="Library + Static Flags", collapsed=True, id="col-lib-flags"):
                     yield Horizontal(
@@ -566,16 +580,10 @@ class TargetEditScreen(Screen):
             self._refresh_screen(self._collect(), "general", sid)
             return
 
-        # UPX toggle — update info text
+        # UPX toggle — refresh to show/hide compress level field
         if sid == "f-use-compress":
-            try:
-                info = self.query_one("#upx-info", Static)
-                if event.value and self._upx_path:
-                    info.update(self._upx_info)
-                else:
-                    info.update("")
-            except Exception:
-                pass
+            self._refresh_screen(self._collect(), "general", sid)
+            return
 
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-cleanup":
@@ -761,11 +769,11 @@ class TargetEditScreen(Screen):
             static_pcsc=self._switch_on("f-static-pcsc"),
             static_libdvbcsa=self._switch_on("f-static-libdvbcsa"),
             use_compress=self._switch_on("f-use-compress"),
+            compress_level=self._input_val("t-compress-level") or "--best",
             stapi_lib=self._input_val("f-stapi-lib"),
             use_oscamname=self.query_one("#t-oscamname", Input).value.strip(),
+            build_system=self.query_one("#t-build-system", Select).value or "make",
             confdir=self.query_one("#t-confdir", Input).value.strip(),
-            cert_file=self._input_val("t-cert-file"),
-            key_file=self._input_val("t-key-file"),
         )
 
         # Upload

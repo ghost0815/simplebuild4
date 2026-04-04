@@ -177,6 +177,9 @@ class MainScreen(Screen):
             return
         target, path = result
 
+        # Clear output
+        self.query_one("#output-text", Static).update("")
+
         def log(msg: str):
             try:
                 self.app.call_from_thread(self._log, msg)
@@ -190,6 +193,14 @@ class MainScreen(Screen):
                 repos_dir=self.app.paths.repos_dir,
                 patches_dir=self.app.paths.patches_dir,
                 logs_dir=self.app.paths.logs_dir,
+                binaries_dir=self.app.paths.binaries_dir,
+                toolchains_dir=self.app.paths.toolchains_dir,
+                toolchains_local=self.app.paths.toolchains_local,
+                toolchains_defaults=self.app.paths.toolchains_defaults,
+                max_cpus=self.app.settings.max_cpus,
+                compiler_opt=self.app.settings.compiler_opt,
+                sign_cert=self.app.settings.sign_cert,
+                sign_key=self.app.settings.sign_key,
                 log=log,
             )
             engine.build()

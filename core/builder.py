@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import os
+import socket
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -27,6 +30,14 @@ class BuildEngine:
         repos_dir: Path,
         patches_dir: Path,
         logs_dir: Path,
+        binaries_dir: Path,
+        toolchains_dir: Path,
+        toolchains_local: Path,
+        toolchains_defaults: Path,
+        max_cpus: int = 0,
+        compiler_opt: str = "",
+        sign_cert: str = "",
+        sign_key: str = "",
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -34,6 +45,14 @@ class BuildEngine:
         self.repos_dir = repos_dir
         self.patches_dir = patches_dir
         self.logs_dir = logs_dir
+        self.binaries_dir = binaries_dir
+        self.toolchains_dir = toolchains_dir
+        self.toolchains_local = toolchains_local
+        self.toolchains_defaults = toolchains_defaults
+        self.max_cpus = max_cpus or os.cpu_count() or 4
+        self.compiler_opt = compiler_opt
+        self.sign_cert = sign_cert
+        self.sign_key = sign_key
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
 
@@ -116,7 +135,32 @@ class BuildEngine:
             self._log("[red]PHASE 3 failed — aborting[/red]")
             return False
 
-        # Future phases per source x toolchain
+        # Signing: add certificate to repos if WITH_SIGNING enabled
+        if self.sign_cert and self.sign_key:
+            for src in sources:
+                if src.name not in repo_dirs:
+                    continue
+                repo_dir = repo_dirs[src.name]
+                config_sh = repo_dir / "config.sh"
+                if config_sh.exists():
+                    from core.oscam_config import _run_config_sh
+                    is_signing = _run_config_sh(config_sh, ["--enabled", "WITH_SIGNING"])
+                    if is_signing == "Y":
+                        self._log(f"  Adding signing certificate to '{src.name}'...")
+                        result = _run_config_sh(config_sh, ["--add-cert", self.sign_cert, self.sign_key])
+                        if result is not None:
+                            self._log(f"  [green]Certificate added[/green]")
+                        else:
+                            self._log(f"  [yellow]Warning: could not add certificate[/yellow]")
+
+        # Load toolchain registry for PHASE 4
+        from core.toolchain import ToolchainRegistry
+        tc_registry = ToolchainRegistry(self.toolchains_defaults, self.toolchains_local, self.toolchains_dir)
+        tc_registry.load()
+
+        # PHASE 4: Build for each source x toolchain
+        self._log("")
+        self._log("[bold]PHASE 4: Build[/bold]")
         success_count = 0
         fail_count = 0
         for src in sources:
@@ -124,10 +168,18 @@ class BuildEngine:
                 fail_count += len(toolchains)
                 continue
             for tcc in toolchains:
-                self._log(f"\n[bold]--- {src.name} x {tcc.name} ---[/bold]")
-                # PHASE 4-6 TODO
-                self._log(f"[dim]Build phases 4-6 not yet implemented[/dim]")
-                success_count += 1
+                if self._cancel():
+                    self._log("[yellow]Build cancelled[/yellow]")
+                    return False
+                tc = tc_registry.get(tcc.name)
+                if not tc:
+                    self._log(f"  [red]Toolchain '{tcc.name}' not found — skipping[/red]")
+                    fail_count += 1
+                    continue
+                if self._phase4_build(src, repo_dirs[src.name], tcc, tc):
+                    success_count += 1
+                else:
+                    fail_count += 1
 
         self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
         return fail_count == 0
@@ -298,6 +350,266 @@ class BuildEngine:
             return False
 
         return True
+
+    # -------------------------------------------------------------------------
+    # PHASE 4: Build (make)
+    # -------------------------------------------------------------------------
+
+    def _phase4_build(self, src: SourceConfig, repo_dir: Path, tcc: ToolchainConfig, tc) -> bool:
+        """PHASE 4: Execute make for each source x toolchain combination."""
+        self._log(f"\n  [bold]Building {src.name} x {tcc.name}[/bold]")
+
+        b = self.target.build
+        is_native = tc.native
+
+        # --- Toolchain paths ---
+        tc_dir = self.toolchains_dir / tc.name
+        if is_native:
+            cross = ""
+            sysroot = ""
+        else:
+            cross = str(tc_dir / "bin" / tc.prefix)
+            sysroot_path = tc_dir / tc.sysroot if tc.sysroot else tc_dir
+            sysroot = str(sysroot_path)
+
+        # --- CC_OPTS, CFLAGS, LDFLAGS ---
+        # s4 settings = base, toolchain appends, target overrides toolchain
+        tc_cc = tcc.cc_opts if tcc.cc_opts else (tc.cc_opts or "")
+        cc_opts = f"{self.compiler_opt} {tc_cc}".strip() if tc_cc else (self.compiler_opt or "")
+        cflags = tcc.cflags if tcc.cflags else (tc.cflags or "")
+        ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
+        extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
+
+        # --- USE_FLAGS ---
+        use_flags = []
+        if b.use_libcrypto: use_flags.append("USE_LIBCRYPTO=1")
+        if b.use_ssl: use_flags.append("USE_SSL=1")
+        if b.use_libusb: use_flags.append("USE_LIBUSB=1")
+        if b.use_pcsc: use_flags.append("USE_PCSC=1")
+        if b.use_libdvbcsa: use_flags.append("USE_LIBDVBCSA=1")
+        if b.use_stapi: use_flags.append("USE_STAPI=1")
+        if b.use_stapi5: use_flags.append("USE_STAPI5=1")
+        if b.use_coolapi: use_flags.append("USE_COOLAPI=1")
+        if b.use_coolapi2: use_flags.append("USE_COOLAPI2=1")
+        if b.use_su980: use_flags.append("USE_SU980=1")
+        if b.use_azbox: use_flags.append("USE_AZBOX=1")
+        if b.use_amsmc: use_flags.append("USE_AMSMC=1")
+        if b.use_mca: use_flags.append("USE_MCA=1")
+        if b.use_compress:
+            use_flags.append("USE_COMPRESS=1")
+            if b.compress_level and b.compress_level != "--best":
+                use_flags.append(f"COMP_LEVEL={b.compress_level}")
+
+        # --- Static library detection ---
+        static_libs = {}
+        if is_native:
+            # Search system paths + native toolchain local libs
+            search_dirs = self._get_native_lib_paths(tc_dir)
+        else:
+            search_dirs = [sysroot] if sysroot else [str(tc_dir)]
+
+        lib_map = {
+            "LIBCRYPTO": ("libcrypto.a", b.use_libcrypto, b.static_libcrypto),
+            "SSL": ("libssl.a", b.use_ssl, b.static_ssl),
+            "LIBUSB": ("libusb-1.0.a", b.use_libusb, b.static_libusb),
+            "PCSC": ("libpcsclite.a", b.use_pcsc, b.static_pcsc),
+            "LIBDVBCSA": ("libdvbcsa.a", b.use_libdvbcsa, b.static_libdvbcsa),
+        }
+        for key, (lib_file, use_flag, static_flag) in lib_map.items():
+            if use_flag and static_flag:
+                found = self._find_static_lib(lib_file, search_dirs)
+                if found:
+                    static_libs[f"{key}_LIB"] = found
+                    self._log(f"  Static: {key}_LIB={found}")
+                else:
+                    self._log(f"  [yellow]Static {lib_file} not found[/yellow]")
+
+        # --- STAPI library ---
+        stapi_lib = ""
+        if b.use_stapi or b.use_stapi5:
+            stapi_val = b.stapi_lib if b.stapi_lib else (tc.stapi_lib or "")
+            if stapi_val:
+                stapi_key = "STAPI5_LIB" if b.use_stapi5 else "STAPI_LIB"
+                stapi_lib = f"{stapi_key}={stapi_val}"
+                self._log(f"  {stapi_lib}")
+
+        # --- CONF_DIR ---
+        confdir = b.confdir or "/usr/local/etc"
+
+        # --- Binary name ---
+        oscam_name = self._generate_binary_name(repo_dir, tcc.name, is_native, b)
+
+        # --- Output path ---
+        self.binaries_dir.mkdir(parents=True, exist_ok=True)
+        bin_path = self.binaries_dir / oscam_name
+
+        # --- Construct make command ---
+        make_cmd = ["make", f"-j{self.max_cpus}"]
+        make_cmd.append(f"CONF_DIR={confdir}")
+        make_cmd.append(f"OSCAM_BIN={bin_path}")
+        if cc_opts:
+            make_cmd.append(f"CC_OPTS={cc_opts}")
+        if cflags:
+            make_cmd.append(f"EXTRA_CFLAGS={cflags}")
+        if ldflags:
+            make_cmd.append(f"EXTRA_LDFLAGS={ldflags}")
+        if cross:
+            make_cmd.append(f"CROSS={cross}")
+        for flag in use_flags:
+            make_cmd.append(flag)
+        for key, val in static_libs.items():
+            make_cmd.append(f"{key}={val}")
+        if stapi_lib:
+            make_cmd.append(stapi_lib)
+        if extra_make:
+            make_cmd.extend(extra_make.split())
+
+        # --- Log the command ---
+        self._log(f"  Output: {bin_path.name}")
+        self._log(f"  CROSS: {cross or '(native)'}")
+        self._log(f"  CC_OPTS: {cc_opts}")
+        if cflags:
+            self._log(f"  EXTRA_CFLAGS: {cflags}")
+        if ldflags:
+            self._log(f"  EXTRA_LDFLAGS: {ldflags}")
+        self._log(f"  CONF_DIR: {confdir}")
+        self._log(f"  CPUs: {self.max_cpus}")
+        self._log("")
+
+        # --- Clean before build ---
+        self._log("  Cleaning...")
+        self._run(["make", "clean"], cwd=repo_dir)
+
+        # --- Execute make ---
+        self._log("  Compiling...")
+        started = datetime.now()
+        ok = self._run(make_cmd, cwd=repo_dir)
+        elapsed = (datetime.now() - started).total_seconds()
+
+        if ok and bin_path.exists():
+            size_kb = bin_path.stat().st_size / 1024
+            self._log(f"  [green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
+            return True
+        else:
+            self._log(f"  [red]Build FAILED after {elapsed:.0f}s[/red]")
+            return False
+
+    def _generate_binary_name(self, repo_dir: Path, tc_name: str, is_native: bool, b) -> str:
+        """Generate the output binary name.
+
+        Format: oscam-git<rev>@<commit>-<toolchain>-<backend>-<features>-<linking>
+        """
+        # Custom name overrides everything
+        if b.use_oscamname:
+            return b.use_oscamname
+
+        # Revision info
+        rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
+        commit = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) or "unknown"
+
+        # Toolchain part
+        if is_native:
+            tc_part = f"{socket.gethostname().split('.')[0]}-{os.uname().machine}"
+        else:
+            tc_part = tc_name
+
+        # SSL backend (openssl vs mbedtls) — only if Makefile supports USE_OPENSSL
+        backend = ""
+        makefile = repo_dir / "Makefile"
+        if makefile.exists():
+            try:
+                mk_content = makefile.read_text(encoding="utf-8", errors="replace")
+                if "USE_OPENSSL" in mk_content:
+                    # New oscam with dual backend support
+                    backend = "-openssl"  # TODO: add USE_OPENSSL flag to target config
+            except Exception:
+                pass
+
+        # Feature suffixes (alphabetically sorted)
+        features = []
+        from core.oscam_config import _run_config_sh
+        config_sh = repo_dir / "config.sh"
+        if config_sh.exists():
+            checks = [
+                ("HAVE_DVBAPI", "dvbapi"),
+                ("WITH_EMU", "emu"),
+                ("CARDREADER_GXAPI", "gxapi"),
+                ("MODULE_STREAMRELAY", "icam"),
+                ("IPV6SUPPORT", "ipv6"),
+                ("WITH_ARM_NEON", "neon"),
+                ("WITH_SIGNING", "signed"),
+                ("WITH_SSL", "ssl"),
+                ("WEBIF", "webif"),
+            ]
+            for option, suffix in checks:
+                result = _run_config_sh(config_sh, ["--enabled", option])
+                if result == "Y":
+                    features.append(suffix)
+
+        # USE_FLAGS based features
+        if b.use_libdvbcsa:
+            features.append("libdvbcsa") if "libdvbcsa" not in features else None
+        if b.use_libusb:
+            features.append("libusb")
+        if b.use_pcsc:
+            features.append("pcsc")
+        if b.use_stapi:
+            features.append("stapi")
+        if b.use_stapi5:
+            features.append("stapi5")
+        if b.use_compress:
+            features.append("upx")
+
+        features.sort()
+
+        # Linking type
+        lib_count = sum(1 for x in [b.use_libcrypto, b.use_ssl, b.use_libusb, b.use_pcsc, b.use_libdvbcsa] if x)
+        stat_count = sum(1 for x in [b.static_libcrypto, b.static_ssl, b.static_libusb, b.static_pcsc, b.static_libdvbcsa] if x)
+        if stat_count > 0 and stat_count >= lib_count:
+            linking = "-static"
+        elif stat_count > 0:
+            linking = "-mixed"
+        else:
+            linking = ""
+
+        # Assemble
+        feat_str = "-" + "-".join(features) if features else ""
+        return f"oscam-git{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
+
+    def _get_native_lib_paths(self, tc_dir: Path) -> list[str]:
+        """Get library search paths for native toolchain.
+
+        Includes native toolchain local libs (data/toolchains/native/)
+        AND system library paths from ldconfig.
+        """
+        paths = []
+        # Native toolchain local libs first (higher priority)
+        for d in tc_dir.glob("**/lib"):
+            if d.is_dir():
+                paths.append(str(d))
+        # System paths
+        try:
+            result = subprocess.run(
+                ["ldconfig", "-v"],
+                capture_output=True, text=True, timeout=10,
+                env={**os.environ, "LC_ALL": "C"},
+            )
+            for line in result.stderr.splitlines() + result.stdout.splitlines():
+                if line and not line.startswith("\t") and ":" in line:
+                    path = line.split(":")[0].strip()
+                    if path and Path(path).is_dir():
+                        paths.append(path)
+        except Exception:
+            paths.extend(["/usr/lib", "/usr/local/lib", "/lib"])
+        return paths
+
+    def _find_static_lib(self, lib_name: str, search_dirs: list[str]) -> str:
+        """Find a static library (.a) file in search directories."""
+        for search_dir in search_dirs:
+            for root, dirs, files in os.walk(search_dir):
+                if lib_name in files:
+                    return os.path.join(root, lib_name)
+        return ""
 
     # -------------------------------------------------------------------------
     # Helpers

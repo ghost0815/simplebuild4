@@ -40,7 +40,6 @@ INPUT_MAP = {
     "set-s4-url": "s4_url",
     "set-compiler-opt": "compiler_opt",
     "set-max-cpus": "max_cpus",
-    "set-upx-option": "upx_option",
     "set-sign-cert": "sign_cert",
     "set-sign-key": "sign_key",
     "set-qemu-timeout": "qemu_timeout",
@@ -105,14 +104,6 @@ class SettingsScreen(Screen):
             yield _switch_row("Delete debug binary after build", s.delete_debug, "set-delete-debug")
             yield _switch_row("Create tar.gz of binary", s.targz, "set-targz")
             yield _switch_row("Save list_smargo", s.save_smargo, "set-save-smargo")
-
-            # Compression
-            yield Static(" [bold]Compression[/bold]", classes="section-title")
-            yield Horizontal(
-                Static(" UPX level", classes="s-label"),
-                Input(value=s.upx_option, id="set-upx-option"),
-                classes="s-row",
-            )
 
             # Signing
             yield Static(" [bold]Binary Signing[/bold]", classes="section-title")
