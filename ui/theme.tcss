@@ -50,8 +50,35 @@ Screen {
     padding: 0 0 0 1;
 }
 
-#te-panel-source, #te-panel-oscam, #te-panel-build, #te-panel-upload {
+#te-panel-general, #te-panel-source, #te-panel-oscam, #te-panel-build, #te-panel-upload {
     padding: 1 3;
+}
+
+.mod-grid {
+    grid-size: 3;
+    grid-gutter: 0 1;
+    height: auto;
+    padding: 0;
+}
+
+.s-compact {
+    height: 1;
+    width: 1fr;
+    padding: 0;
+}
+
+.s-compact Switch {
+    height: 1;
+    min-height: 1;
+    border: none;
+    padding: 0;
+    margin: 0;
+}
+
+.sc-label {
+    width: 1fr;
+    height: 1;
+    padding: 0;
 }
 
 /* Settings & shared form styles */

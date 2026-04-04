@@ -55,8 +55,11 @@ class Paths:
             d.mkdir(parents=True, exist_ok=True)
 
         # seed default targets on first run
+        # Only copy files that are actual target configs (contain 'sources:' or 'toolchain:')
         if self.defaults_dir.is_dir():
             for default in self.defaults_dir.glob("*.yaml"):
+                if default.name in ("toolchains.yaml", "libraries.yaml"):
+                    continue
                 dest = self.targets_dir / default.name
                 if not dest.exists():
                     shutil.copy2(default, dest)

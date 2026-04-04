@@ -7,7 +7,7 @@ from pathlib import Path
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Static, Switch, Input, Collapsible
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.target import Target, BuildSettings, UploadConfig
 from core.toolchain import ToolchainRegistry
@@ -25,14 +25,24 @@ def _switch_row(label: str, value: bool, widget_id: str) -> Horizontal:
     )
 
 
+def _switch_compact(label: str, value: bool, widget_id: str) -> Horizontal:
+    """Compact switch for multi-column grid layout."""
+    return Horizontal(
+        Switch(value=value, id=widget_id),
+        Static(f" {label}", classes="sc-label"),
+        classes="s-compact",
+    )
+
+
 class TargetEditScreen(Screen):
     """Edit or create a target configuration."""
 
     BINDINGS = [
-        ("1", "switch_tab('source')", "Source/Toolchain"),
-        ("2", "switch_tab('oscam')", "oscam"),
-        ("3", "switch_tab('build')", "Build"),
-        ("4", "switch_tab('upload')", "Upload"),
+        ("1", "switch_tab('general')", "General"),
+        ("2", "switch_tab('source')", "Source/Toolchain"),
+        ("3", "switch_tab('oscam')", "oscam"),
+        ("4", "switch_tab('build')", "Build"),
+        ("5", "switch_tab('upload')", "Upload"),
     ]
 
     def __init__(self, target: Target | None = None, save_path: Path | None = None) -> None:
@@ -50,21 +60,35 @@ class TargetEditScreen(Screen):
         for src_name in self.target.sources:
             for r in repos:
                 if r.name == src_name:
-                    repo_dir = self.app.paths.repos_dir / r.name
-                    opts = read_options(repo_dir)
-                    if opts:
-                        self._oscam_opts = opts
-                        return opts
+                    for repo_dir in self._find_repo_dirs(r.name):
+                        opts = read_options(repo_dir)
+                        if opts:
+                            self._oscam_opts = opts
+                            return opts
         # Fallback: try any repo
         for r in repos:
-            repo_dir = self.app.paths.repos_dir / r.name
-            opts = read_options(repo_dir)
-            if opts:
-                self._oscam_opts = opts
-                return opts
+            for repo_dir in self._find_repo_dirs(r.name):
+                opts = read_options(repo_dir)
+                if opts:
+                    self._oscam_opts = opts
+                    return opts
         # Empty fallback
         self._oscam_opts = OscamOptions()
         return self._oscam_opts
+
+    def _find_repo_dirs(self, name: str) -> list[Path]:
+        """Find possible repo directories for a given repo name."""
+        repos_dir = self.app.paths.repos_dir
+        candidates = [
+            repos_dir / name,
+            repos_dir / f"oscam-{name}",
+        ]
+        # Also check any directory containing the name
+        if repos_dir.is_dir():
+            for d in repos_dir.iterdir():
+                if d.is_dir() and name in d.name and d not in candidates:
+                    candidates.append(d)
+        return [d for d in candidates if d.is_dir()]
 
     def compose(self) -> ComposeResult:
         t = self.target
@@ -84,13 +108,14 @@ class TargetEditScreen(Screen):
 
         # Tab bar
         with Horizontal(id="te-tab-bar"):
-            yield Static(" Source/Toolchain ", id="te-tab-source", classes="tab-active")
+            yield Static(" General ", id="te-tab-general", classes="tab-active")
+            yield Static(" Source/Toolchain ", id="te-tab-source", classes="tab-inactive")
             yield Static(" oscam ", id="te-tab-oscam", classes="tab-inactive")
             yield Static(" Build ", id="te-tab-build", classes="tab-inactive")
             yield Static(" Upload ", id="te-tab-upload", classes="tab-inactive")
 
-        # === Tab 1: Source/Toolchain ===
-        with VerticalScroll(id="te-panel-source"):
+        # === Tab 1: General ===
+        with VerticalScroll(id="te-panel-general"):
             yield Static(" [bold]Target[/bold]", classes="section-title-top")
             yield Horizontal(
                 Static(" Name", classes="s-label-tall"),
@@ -103,6 +128,8 @@ class TargetEditScreen(Screen):
                 classes="s-row",
             )
 
+        # === Tab 2: Source/Toolchain ===
+        with VerticalScroll(id="te-panel-source"):
             # Sources
             src_count = len(t.sources)
             with Collapsible(title=f"Sources ({src_count} selected)", collapsed=False, id="col-sources"):
@@ -126,32 +153,44 @@ class TargetEditScreen(Screen):
                     yield Static("  [dim]No toolchains installed — use F4 Toolchains first[/dim]")
 
         # === Tab 2: oscam Modules ===
+        # For new targets (no modules set), use oscam defaults
+        is_new = not b.modules and not b.protocols and not b.readers and not b.card_readers
+        def_addons = oscam.default_enabled.get("addons", []) if is_new else b.modules
+        def_protocols = oscam.default_enabled.get("protocols", []) if is_new else b.protocols
+        def_readers = oscam.default_enabled.get("readers", []) if is_new else b.readers
+        def_card_readers = oscam.default_enabled.get("card_readers", []) if is_new else b.card_readers
+
         with VerticalScroll(id="te-panel-oscam"):
-            addon_count = len(b.modules)
-            with Collapsible(title=f"Addons ({addon_count}/{len(oscam.addons)})", collapsed=False, id="col-addons"):
-                for mod in oscam.addons:
-                    enabled = mod in b.modules
-                    yield _switch_row(mod, enabled, f"m-{mod}")
-                if not oscam.addons:
+            addons_sorted = sorted(oscam.addons)
+            addon_count = sum(1 for m in addons_sorted if m in def_addons)
+            with Collapsible(title=f"Addons ({addon_count}/{len(addons_sorted)})", collapsed=False, id="col-addons"):
+                if oscam.addons:
+                    with Grid(classes="mod-grid"):
+                        for mod in addons_sorted:
+                            yield _switch_compact(mod, mod in def_addons, f"m-{mod}")
+                else:
                     yield Static("  [dim]Clone a source repository first[/dim]")
 
-            proto_count = len(b.protocols)
-            with Collapsible(title=f"Protocols ({proto_count}/{len(oscam.protocols)})", collapsed=False, id="col-protocols"):
-                for mod in oscam.protocols:
-                    enabled = mod in b.protocols
-                    yield _switch_row(mod, enabled, f"m-{mod}")
+            protos_sorted = sorted(oscam.protocols)
+            proto_count = sum(1 for m in protos_sorted if m in def_protocols)
+            with Collapsible(title=f"Protocols ({proto_count}/{len(protos_sorted)})", collapsed=False, id="col-protocols"):
+                with Grid(classes="mod-grid"):
+                    for mod in protos_sorted:
+                        yield _switch_compact(mod, mod in def_protocols, f"m-{mod}")
 
-            reader_count = len(b.readers)
-            with Collapsible(title=f"Readers ({reader_count}/{len(oscam.readers)})", collapsed=False, id="col-readers"):
-                for mod in oscam.readers:
-                    enabled = mod in b.readers
-                    yield _switch_row(mod, enabled, f"m-{mod}")
+            readers_sorted = sorted(oscam.readers)
+            reader_count = sum(1 for m in readers_sorted if m in def_readers)
+            with Collapsible(title=f"Readers ({reader_count}/{len(readers_sorted)})", collapsed=False, id="col-readers"):
+                with Grid(classes="mod-grid"):
+                    for mod in readers_sorted:
+                        yield _switch_compact(mod, mod in def_readers, f"m-{mod}")
 
-            cr_count = len(b.card_readers)
-            with Collapsible(title=f"Card Readers ({cr_count}/{len(oscam.card_readers)})", collapsed=False, id="col-card-readers"):
-                for mod in oscam.card_readers:
-                    enabled = mod in b.card_readers
-                    yield _switch_row(mod, enabled, f"m-{mod}")
+            crs_sorted = sorted(oscam.card_readers)
+            cr_count = sum(1 for m in crs_sorted if m in def_card_readers)
+            with Collapsible(title=f"Card Readers ({cr_count}/{len(crs_sorted)})", collapsed=False, id="col-card-readers"):
+                with Grid(classes="mod-grid"):
+                    for mod in crs_sorted:
+                        yield _switch_compact(mod, mod in def_card_readers, f"m-{mod}")
 
         # === Tab 3: Build Options ===
         with VerticalScroll(id="te-panel-build"):
@@ -239,13 +278,14 @@ class TargetEditScreen(Screen):
         yield S4Footer(active_screen="target_edit")
 
     def on_mount(self) -> None:
-        # Show only first tab
-        self._show_tab("source")
+        self._show_tab("general")
 
     def on_click(self, event) -> None:
         widget = event.widget if hasattr(event, 'widget') else None
         if widget:
-            if widget.id == "te-tab-source":
+            if widget.id == "te-tab-general":
+                self._show_tab("general")
+            elif widget.id == "te-tab-source":
                 self._show_tab("source")
             elif widget.id == "te-tab-oscam":
                 self._show_tab("oscam")
@@ -259,6 +299,7 @@ class TargetEditScreen(Screen):
 
     def _show_tab(self, tab: str) -> None:
         panels = {
+            "general": ("#te-panel-general", "#te-tab-general"),
             "source": ("#te-panel-source", "#te-tab-source"),
             "oscam": ("#te-panel-oscam", "#te-tab-oscam"),
             "build": ("#te-panel-build", "#te-tab-build"),
