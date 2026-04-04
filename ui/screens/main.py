@@ -169,4 +169,30 @@ class MainScreen(Screen):
             self.notify("No target selected", severity="warning")
 
     def action_build(self) -> None:
-        self._log("[bold yellow]BUILD:[/bold yellow] not yet implemented")
+        """F5 Build — run the build pipeline for the selected target."""
+        import threading
+        result = self._get_selected_target()
+        if not result:
+            self.notify("No target selected", severity="warning")
+            return
+        target, path = result
+
+        def log(msg: str):
+            try:
+                self.app.call_from_thread(self._log, msg)
+            except Exception:
+                pass
+
+        def do_build():
+            from core.builder import BuildEngine
+            engine = BuildEngine(
+                target=target,
+                repos_dir=self.app.paths.repos_dir,
+                patches_dir=self.app.paths.patches_dir,
+                logs_dir=self.app.paths.logs_dir,
+                log=log,
+            )
+            engine.build()
+
+        thread = threading.Thread(target=do_build, daemon=True)
+        thread.start()
