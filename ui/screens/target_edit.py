@@ -537,6 +537,30 @@ class TargetEditScreen(Screen):
             self._refresh_screen(self._collect(), "source", sid)
             return
 
+        # Library + Static flag dependencies
+        _lib_pairs = {
+            "f-use-libcrypto": "f-static-libcrypto",
+            "f-use-ssl": "f-static-ssl",
+            "f-use-libusb": "f-static-libusb",
+            "f-use-pcsc": "f-static-pcsc",
+            "f-use-libdvbcsa": "f-static-libdvbcsa",
+        }
+        _static_to_use = {v: k for k, v in _lib_pairs.items()}
+
+        # USE deactivated → also deactivate STATIC
+        if sid in _lib_pairs and not event.value:
+            try:
+                self.query_one(f"#{_lib_pairs[sid]}", Switch).value = False
+            except Exception:
+                pass
+
+        # STATIC activated → also activate USE
+        if sid in _static_to_use and event.value:
+            try:
+                self.query_one(f"#{_static_to_use[sid]}", Switch).value = True
+            except Exception:
+                pass
+
         # STAPI toggle — refresh to show/hide stapi_lib field
         if sid in ("f-use-stapi", "f-use-stapi5"):
             self._refresh_screen(self._collect(), "general", sid)
