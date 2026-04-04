@@ -76,16 +76,20 @@ class MainScreen(Screen):
         from core.repos_config import load_repos
         repos = load_repos(self.app.paths.repos_config)
         repo_names = [r.name for r in repos]
-        if target.source in repo_names:
-            source_str = target.source
-        else:
-            source_str = f"[red]{target.source} (not found!)[/red]"
+        source_parts = []
+        for s in target.sources:
+            if s in repo_names:
+                source_parts.append(s)
+            else:
+                source_parts.append(f"[red]{s} (not found!)[/red]")
+        source_str = ", ".join(source_parts) or "none"
+        tc_str = ", ".join(target.toolchains) or "none"
 
         info = self.query_one("#info", Static)
         info.update(
             f"  [bold]{target.name}[/bold] — {target.description}\n"
-            f"  Source:     {source_str}\n"
-            f"  Toolchain:  {target.toolchain}\n"
+            f"  Sources:    {source_str}\n"
+            f"  Toolchains: {tc_str}\n"
             f"  Modules:    {modules_short}\n"
             f"  Upload:     {upload_str}\n"
         )
