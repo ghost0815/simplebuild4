@@ -16,6 +16,7 @@ class Settings:
     language: str = "en"
     update_check: bool = True
     verbose: bool = False
+    last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
     s4_url: str = "https://github.com/gorgone/s3_releases.git"
@@ -42,6 +43,7 @@ class Settings:
     def save(self, path: Path) -> None:
         """Save settings to YAML."""
         data = {
+            "last_target": self.last_target,
             "language": self.language,
             "update_check": self.update_check,
             "verbose": self.verbose,
@@ -74,6 +76,7 @@ class Settings:
         if not data:
             return cls()
         return cls(
+            last_target=data.get("last_target", ""),
             language=data.get("language", "en"),
             update_check=data.get("update_check", True),
             verbose=data.get("verbose", False),

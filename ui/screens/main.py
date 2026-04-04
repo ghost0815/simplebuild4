@@ -50,6 +50,17 @@ class MainScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#output", VerticalScroll).border_title = "Output"
+        # Restore last selected target
+        last = self.app.settings.last_target
+        if last:
+            from pathlib import Path
+            p = Path(last)
+            if p.exists():
+                try:
+                    sel = self.query_one("#target-select", Select)
+                    sel.value = str(p)
+                except Exception:
+                    pass
 
     def _log(self, msg: str) -> None:
         """Append a line to the output panel."""
@@ -111,6 +122,9 @@ class MainScreen(Screen):
             from pathlib import Path
             target = Target.load(Path(event.value))
             self._update_info(target)
+            # Remember last target
+            self.app.settings.last_target = event.value
+            self.app.settings.save(self.app.settings_path)
 
     def _get_selected_target(self) -> tuple[Target, "Path"] | None:
         """Get currently selected target and its path."""
