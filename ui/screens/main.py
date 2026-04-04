@@ -215,6 +215,8 @@ class MainScreen(Screen):
                 compiler_opt=self.app.settings.compiler_opt,
                 sign_cert=self.app.settings.sign_cert,
                 sign_key=self.app.settings.sign_key,
+                delete_debug=self.app.settings.delete_debug,
+                save_smargo=self.app.settings.save_smargo,
                 log=log,
             )
             engine.build()

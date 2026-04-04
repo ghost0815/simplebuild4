@@ -38,6 +38,8 @@ class BuildEngine:
         compiler_opt: str = "",
         sign_cert: str = "",
         sign_key: str = "",
+        delete_debug: bool = True,
+        save_smargo: bool = True,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -53,6 +55,8 @@ class BuildEngine:
         self.compiler_opt = compiler_opt
         self.sign_cert = sign_cert
         self.sign_key = sign_key
+        self.delete_debug = delete_debug
+        self.save_smargo = save_smargo
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
 
@@ -489,6 +493,24 @@ class BuildEngine:
         if ok and bin_path.exists():
             size_kb = bin_path.stat().st_size / 1024
             self._log(f"  [green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
+
+            # Post-build: delete debug binary
+            debug_bin = Path(f"{bin_path}.debug")
+            if self.delete_debug and debug_bin.exists():
+                debug_bin.unlink()
+                self._log(f"  Removed: {debug_bin.name}")
+
+            # Post-build: save list_smargo
+            if self.save_smargo:
+                dist_dir = repo_dir / "Distribution"
+                if dist_dir.is_dir():
+                    for smargo in dist_dir.glob("list_smargo*"):
+                        dest_name = f"{bin_path.stem}-list_smargo"
+                        dest = self.binaries_dir / dest_name
+                        import shutil
+                        shutil.move(str(smargo), str(dest))
+                        self._log(f"  Saved: {dest_name}")
+
             return True
         else:
             self._log(f"  [red]Build FAILED after {elapsed:.0f}s[/red]")
