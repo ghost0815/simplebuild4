@@ -187,11 +187,12 @@ class BuildEngine:
         tc_registry = ToolchainRegistry(self.toolchains_defaults, self.toolchains_local, self.toolchains_dir)
         tc_registry.load()
 
-        # PHASE 4: Build for each source x toolchain
+        # PHASE 4+5: Build and Post-Build for each source x toolchain
         self._log("")
         self._log("[bold]PHASE 4: Build[/bold]")
         success_count = 0
         fail_count = 0
+        built_binaries = []
         for src in sources:
             if src.name not in repo_dirs:
                 fail_count += len(toolchains)
@@ -205,13 +206,47 @@ class BuildEngine:
                     self._log(f"  [red]Toolchain '{tcc.name}' not found — skipping[/red]")
                     fail_count += 1
                     continue
-                if self._phase4_build(src, repo_dirs[src.name], tcc, tc):
+                bin_path = self._phase4_build(src, repo_dirs[src.name], tcc, tc)
+                if bin_path:
+                    built_binaries.append((bin_path, repo_dirs[src.name]))
                     success_count += 1
                 else:
                     fail_count += 1
 
+        # PHASE 5: Post-Build
+        if built_binaries:
+            self._log("")
+            self._log("[bold]PHASE 5: Post-Build[/bold]")
+            for bin_path, repo_dir in built_binaries:
+                self._phase5_postbuild(bin_path, repo_dir)
+
         self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
         return fail_count == 0
+
+    # -------------------------------------------------------------------------
+    # PHASE 5: Post-Build
+    # -------------------------------------------------------------------------
+
+    def _phase5_postbuild(self, bin_path: Path, repo_dir: Path) -> None:
+        """PHASE 5: Post-build tasks for a successfully built binary."""
+        self._log(f"  Post-build: {bin_path.name}")
+
+        # Delete debug binary
+        debug_bin = Path(f"{bin_path}.debug")
+        if self.delete_debug and debug_bin.exists():
+            debug_bin.unlink()
+            self._log(f"  Removed: {debug_bin.name}")
+
+        # Save list_smargo
+        if self.save_smargo:
+            dist_dir = repo_dir / "Distribution"
+            if dist_dir.is_dir():
+                for smargo in dist_dir.glob("list_smargo*"):
+                    import shutil
+                    dest_name = f"{bin_path.stem}-list_smargo"
+                    dest = self.binaries_dir / dest_name
+                    shutil.move(str(smargo), str(dest))
+                    self._log(f"  Saved: {dest_name}")
 
     def _close_log(self, log_path: Path) -> None:
         """Close the build log file and show its path."""
@@ -526,28 +561,10 @@ class BuildEngine:
         if ok and bin_path.exists():
             size_kb = bin_path.stat().st_size / 1024
             self._log(f"  [green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
-
-            # Post-build: delete debug binary
-            debug_bin = Path(f"{bin_path}.debug")
-            if self.delete_debug and debug_bin.exists():
-                debug_bin.unlink()
-                self._log(f"  Removed: {debug_bin.name}")
-
-            # Post-build: save list_smargo
-            if self.save_smargo:
-                dist_dir = repo_dir / "Distribution"
-                if dist_dir.is_dir():
-                    for smargo in dist_dir.glob("list_smargo*"):
-                        dest_name = f"{bin_path.stem}-list_smargo"
-                        dest = self.binaries_dir / dest_name
-                        import shutil
-                        shutil.move(str(smargo), str(dest))
-                        self._log(f"  Saved: {dest_name}")
-
-            return True
+            return bin_path
         else:
             self._log(f"  [red]Build FAILED after {elapsed:.0f}s[/red]")
-            return False
+            return None
 
     def _generate_binary_name(self, repo_dir: Path, tc_name: str, is_native: bool, b) -> str:
         """Generate the output binary name.

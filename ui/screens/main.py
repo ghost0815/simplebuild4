@@ -182,8 +182,16 @@ class MainScreen(Screen):
         else:
             self.notify("No target selected", severity="warning")
 
+    _building = False
+    _cancel_requested = False
+
     def action_build(self) -> None:
-        """F5 Build — run the build pipeline for the selected target."""
+        """F5 Build / Cancel — run or cancel the build pipeline."""
+        if self._building:
+            self._cancel_requested = True
+            self._log("[yellow]Cancelling build...[/yellow]")
+            return
+
         import threading
         result = self._get_selected_target()
         if not result:
@@ -193,6 +201,9 @@ class MainScreen(Screen):
 
         # Clear output
         self.query_one("#output-text", Static).update("")
+        self._building = True
+        self._cancel_requested = False
+        self._update_build_button()
 
         def log(msg: str):
             try:
@@ -200,26 +211,46 @@ class MainScreen(Screen):
             except Exception:
                 pass
 
+        def cancel_check() -> bool:
+            return self._cancel_requested
+
         def do_build():
             from core.builder import BuildEngine
-            engine = BuildEngine(
-                target=target,
-                repos_dir=self.app.paths.repos_dir,
-                patches_dir=self.app.paths.patches_dir,
-                logs_dir=self.app.paths.logs_dir,
-                binaries_dir=self.app.paths.binaries_dir,
-                toolchains_dir=self.app.paths.toolchains_dir,
-                toolchains_local=self.app.paths.toolchains_local,
-                toolchains_defaults=self.app.paths.toolchains_defaults,
-                max_cpus=self.app.settings.max_cpus,
-                compiler_opt=self.app.settings.compiler_opt,
-                sign_cert=self.app.settings.sign_cert,
-                sign_key=self.app.settings.sign_key,
-                delete_debug=self.app.settings.delete_debug,
-                save_smargo=self.app.settings.save_smargo,
-                log=log,
-            )
-            engine.build()
+            try:
+                engine = BuildEngine(
+                    target=target,
+                    repos_dir=self.app.paths.repos_dir,
+                    patches_dir=self.app.paths.patches_dir,
+                    logs_dir=self.app.paths.logs_dir,
+                    binaries_dir=self.app.paths.binaries_dir,
+                    toolchains_dir=self.app.paths.toolchains_dir,
+                    toolchains_local=self.app.paths.toolchains_local,
+                    toolchains_defaults=self.app.paths.toolchains_defaults,
+                    max_cpus=self.app.settings.max_cpus,
+                    compiler_opt=self.app.settings.compiler_opt,
+                    sign_cert=self.app.settings.sign_cert,
+                    sign_key=self.app.settings.sign_key,
+                    delete_debug=self.app.settings.delete_debug,
+                    save_smargo=self.app.settings.save_smargo,
+                    log=log,
+                    cancel_check=cancel_check,
+                )
+                engine.build()
+            finally:
+                self._building = False
+                self._cancel_requested = False
+                self.app.call_from_thread(self._update_build_button)
 
         thread = threading.Thread(target=do_build, daemon=True)
         thread.start()
+
+    def _update_build_button(self) -> None:
+        """Update F5 footer label: Build or Cancel."""
+        try:
+            for item in self.app.query("FooterItem"):
+                if hasattr(item, '_key') and item._key == "F5":
+                    item._label = "Cancel" if self._building else "Build"
+                    item.refresh()
+                    break
+        except Exception:
+            pass
