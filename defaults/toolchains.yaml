@@ -45,8 +45,8 @@ toolchains:
   description: armv5 devices (generic)
   category: common
   arch: armv5
-  prefix: armv5-eabi-buildroot-linux-musleabi-
-  sysroot: armv5-eabi-buildroot-linux-musleabi/sysroot
+  prefix: arm-buildroot-linux-gnueabi-
+  sysroot: arm-buildroot-linux-gnueabi/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f6d91d016e0025c927e68a9cf62e4c49a88b46b6f26eb0f52ddd22265588aafe
 

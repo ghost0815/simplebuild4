@@ -1,8 +1,10 @@
 # Native build — compile oscam for the local system
 name: native
 description: Build for local system
-source: default
-toolchain: native
+sources:
+  - default
+toolchains:
+  - native
 
 build:
   modules:
@@ -10,37 +12,38 @@ build:
     - WEBIF_LIVELOG
     - WEBIF_JQUERY
     - TOUCH
-    - DVBAPI
-    - LB
-    - CACHEEX
+    - WITH_SSL
+    - HAVE_DVBAPI
+    - WITH_LB
+    - CS_CACHEEX
     - CW_CYCLE_CHECK
-    - LCD
-    - LED
     - CLOCKFIX
     - IPV6SUPPORT
   protocols:
-    - CAMD35
-    - CAMD35_TCP
-    - CCCAM
-    - NEWCAMD
-    - RADEGAST
-    - SERIAL
+    - MODULE_CAMD35
+    - MODULE_CAMD35_TCP
+    - MODULE_CCCAM
+    - MODULE_NEWCAMD
+    - MODULE_RADEGAST
+    - MODULE_SERIAL
   readers:
-    - INTERNAL
-    - PHOENIX
-    - SC8IN1
-    - MP35
-    - SMARGO
-    - STINGER
-    - DRECAS
-    - PCSC
-  card_readers: []
-  useflags: "USE_LIBCRYPTO"
-  cc_opts: ""
-  cflags: ""
-  ldflags: ""
-  make_vars: ""
+    - READER_NAGRA
+    - READER_IRDETO
+    - READER_CONAX
+    - READER_CRYPTOWORKS
+    - READER_SECA
+    - READER_VIACCESS
+    - READER_VIDEOGUARD
+    - READER_DRE
+    - READER_TONGFANG
+    - READER_BULCRYPT
+    - READER_GRIFFIN
+    - READER_DGCRYPT
+  card_readers:
+    - CARDREADER_PHOENIX
+    - CARDREADER_SMART
+    - CARDREADER_PCSC
+  use_libcrypto: true
   confdir: /usr/local/etc
-  stapi_lib: ""
 
 upload: []

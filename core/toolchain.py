@@ -51,7 +51,6 @@ class Toolchain:
 
     # Runtime state (not persisted, set at load time)
     installed: bool = False
-    source: str = ""               # "defaults" or "local" — origin yaml
 
     def build_defaults(self) -> dict[str, str]:
         """Return the build defaults that get copied into a target."""
@@ -372,12 +371,11 @@ def check_library_updates(
 class ToolchainRegistry:
     """Manages the toolchain registry and installed toolchains.
 
-    Loads from two sources:
-    - defaults_path: shipped with s4, git-managed (defaults/toolchains.yaml)
-    - local_path: user additions, gitignored (data/toolchains.local.yaml)
+    Two independent sources:
+    - defaults_path: PreBuild catalog (defaults/toolchains.yaml) — browse & install
+    - local_path: installed/imported toolchains (data/toolchains.local.yaml) — single source of truth
 
-    Both lists coexist independently. Toolchains with the same name can exist
-    in both files, but only one can be installed at a time (shared install dir).
+    Install copies an entry from defaults → local. Installed = in local + dir exists.
     """
 
     def __init__(self, defaults_path: Path, local_path: Path, install_dir: Path):
@@ -388,47 +386,45 @@ class ToolchainRegistry:
 
     def load(self) -> None:
         """Load toolchain registry from both YAML files."""
-        all_tcs: list[Toolchain] = []
-
-        # Load defaults
-        for tc in self._load_file(self.defaults_path):
-            tc.source = "defaults"
-            all_tcs.append(tc)
-
         # Ensure native toolchain exists in local file
         self._ensure_native()
 
-        # Load local (independent, no overrides)
-        for tc in self._load_file(self.local_path):
-            tc.source = "local"
-            all_tcs.append(tc)
+        # Load local = installed/imported toolchains (single source of truth)
+        self._local_tcs = self._load_file(self.local_path)
+        local_names = {tc.name for tc in self._local_tcs}
 
-        # Check installed state — for duplicate names, only the one whose
-        # config matches the installed toolchain is marked as installed
-        for tc in all_tcs:
+        for tc in self._local_tcs:
             if tc.native:
                 tc.installed = shutil.which("gcc") is not None
             else:
-                install_path = self.install_dir / tc.name
-                if install_path.is_dir():
-                    # Check source marker to match correct entry
-                    marker = install_path / ".source"
-                    if marker.exists():
-                        tc.installed = marker.read_text().strip() == tc.source
-                    else:
-                        # No marker (legacy install) — mark defaults as installed
-                        tc.installed = (tc.source == "defaults")
-                else:
-                    tc.installed = False
+                tc.installed = (self.install_dir / tc.name).is_dir()
 
-        self._toolchains = sorted(all_tcs, key=lambda t: (t.name, t.source))
+        # Load defaults = PreBuild catalog
+        self._default_tcs = self._load_file(self.defaults_path)
+        for tc in self._default_tcs:
+            # Mark as installed if same name exists in local and dir exists
+            tc.installed = tc.name in local_names and (self.install_dir / tc.name).is_dir()
+
+        # Combined list: local entries override defaults with same name
+        by_name: dict[str, Toolchain] = {}
+        for tc in self._default_tcs:
+            by_name[tc.name] = tc
+        for tc in self._local_tcs:
+            by_name[tc.name] = tc  # local overrides defaults for installed config
+        self._toolchains = sorted(by_name.values(), key=lambda t: t.name)
 
     def _ensure_native(self) -> None:
         """Auto-detect and register the native (host) toolchain in local yaml."""
-        # Check if native already exists in local file
+        # Check if native already exists in local file AND directory exists
         local_tcs = self._load_file(self.local_path)
-        if any(tc.native for tc in local_tcs):
+        native_dir = self.install_dir / "native" / "bin"
+        has_entry = any(tc.native for tc in local_tcs)
+        has_dir = native_dir.is_dir() and any(native_dir.iterdir())
+        if has_entry and has_dir:
             return
+        # Remove stale native entry if dir is missing
+        if has_entry and not has_dir:
+            local_tcs = [tc for tc in local_tcs if not tc.native]
 
         # Detect system gcc
         gcc = shutil.which("gcc")
@@ -563,34 +559,41 @@ class ToolchainRegistry:
     def toolchains(self) -> list[Toolchain]:
         return list(self._toolchains)
 
-    def get(self, name: str, source: str = "") -> Optional[Toolchain]:
-        """Get a toolchain by name and optionally source.
-
-        If source is not specified and multiple entries exist with the same name,
-        the installed one is preferred.
-        """
-        if source:
-            for tc in self._toolchains:
-                if tc.name == name and tc.source == source:
-                    return tc
-            return None
-        # No source specified — prefer installed
-        match = None
+    def get(self, name: str) -> Optional[Toolchain]:
+        """Get a toolchain by name."""
         for tc in self._toolchains:
             if tc.name == name:
-                if tc.installed:
-                    return tc
-                if match is None:
-                    match = tc
-        return match
+                return tc
+        return None
+
+    def get_from_defaults(self, name: str) -> Optional[Toolchain]:
+        """Get a toolchain from the defaults catalog (not local)."""
+        for tc in self._load_file(self.defaults_path):
+            if tc.name == name:
+                return tc
+        return None
+
+    def is_local(self, name: str) -> bool:
+        """Check if a toolchain is in the local yaml."""
+        return any(tc.name == name for tc in self._load_file(self.local_path))
 
     def installed_toolchains(self) -> list[Toolchain]:
-        """Return only installed toolchains."""
-        return [tc for tc in self._toolchains if tc.installed]
+        """Return only installed toolchains (from local yaml), native first."""
+        installed = [tc for tc in self._local_tcs if tc.installed]
+        return sorted(installed, key=lambda t: (not t.native, t.name))
+
+    def catalog_toolchains(self) -> list[Toolchain]:
+        """Return the PreBuild catalog (all defaults, with installed status)."""
+        return list(self._default_tcs)
+
+    def local_toolchains(self) -> list[Toolchain]:
+        """Return toolchains from local yaml that don't exist in defaults."""
+        default_names = {tc.name for tc in self._default_tcs}
+        return [tc for tc in self._local_tcs if tc.name not in default_names]
 
     def available_toolchains(self) -> list[Toolchain]:
         """Return toolchains that are not yet installed but have a download URL."""
-        return [tc for tc in self._toolchains if not tc.installed and tc.url]
+        return [tc for tc in self._default_tcs if not tc.installed and tc.url]
 
     def add(self, tc: Toolchain) -> None:
         """Add a toolchain to the registry."""

@@ -72,7 +72,7 @@ class S4DataTable(DataTable):
 from ui.footer import S4Footer
 
 CATEGORIES = [
-    ("custom", "Custom"),
+    ("local", "Local"),
     ("common", "Common"),
     ("stb", "STB"),
     ("android", "Android"),
@@ -148,7 +148,7 @@ class FilePickerScreen(ModalScreen[tuple]):
     def compose(self) -> ComposeResult:
         with Vertical(id="file-picker-box"):
             with Horizontal(id="fp-title-row"):
-                yield Static("Select toolchain archive", id="fp-title")
+                yield Static("Restore toolchain from backup", id="fp-title")
                 yield Static("", classes="spacer")
                 yield Button("⌂ Home", id="fp-home", classes="fp-nav-btn")
                 yield Button("/ Root", id="fp-root", classes="fp-nav-btn")
@@ -210,7 +210,13 @@ class FilePickerScreen(ModalScreen[tuple]):
 
 
 class ToolchainsScreen(Screen):
-    BINDINGS = []
+    BINDINGS = [
+        ("1", "switch_right_tab('details')", "Details"),
+        ("2", "switch_right_tab('libs')", "Libraries"),
+        ("3", "switch_right_tab('log')", "Log"),
+        ("p", "switch_left_tab('prebuild')", "PreBuild"),
+        ("s", "switch_left_tab('selfbuild')", "SelfBuild"),
+    ]
 
     _log_history: list[str] = []
     _selected_tc: str = ""
@@ -247,12 +253,15 @@ class ToolchainsScreen(Screen):
                     install_btn = Button("Install", id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
                     yield install_btn
-                    import_btn = Button("Import", id="btn-import")
-                    import_btn.tooltip = "Import a toolchain from a local .tar.xz backup"
-                    yield import_btn
                     check_btn = Button("Check", id="btn-check")
                     check_btn.tooltip = "Verify the selected toolchain is working"
                     yield check_btn
+                    backup_btn = Button("Backup", id="btn-backup")
+                    backup_btn.tooltip = "Backup the selected installed toolchain to .tar.xz"
+                    yield backup_btn
+                    restore_btn = Button("Restore", id="btn-restore")
+                    restore_btn.tooltip = "Restore a toolchain from a .tar.xz backup"
+                    yield restore_btn
                     remove_btn = Button("Remove", id="btn-remove", variant="error")
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
@@ -266,12 +275,13 @@ class ToolchainsScreen(Screen):
                     yield Static(" PreBuild ", id="btn-ltab-prebuild", classes="tab-active")
                     yield Static(" SelfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
 
-                # PreBuild panel — registry categories only
+                # PreBuild panel — catalog categories + local
                 with VerticalScroll(id="tc-browser"):
                     for cat_key, cat_label in CATEGORIES:
-                        tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
-                        if not tcs:
-                            continue
+                        if cat_key == "local":
+                            tcs = reg.local_toolchains()
+                        else:
+                            tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
                         with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
                             table = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
                             yield table
@@ -326,12 +336,11 @@ class ToolchainsScreen(Screen):
     def on_mount(self) -> None:
         reg = self._get_registry()
 
-        # Populate installed table
+        # Populate installed table (from local yaml)
         tbl = self.query_one("#tbl-installed", DataTable)
         tbl.add_columns("Name", "Arch", "Description")
-        local_names = {t.name for t in reg._load_file(reg.local_path)}
         for tc in reg.installed_toolchains():
-            if tc.name in local_names:
+            if tc.native:
                 tbl.add_row(
                     Text(tc.name, style="bold"),
                     Text(tc.arch, style="bold"),
@@ -343,7 +352,10 @@ class ToolchainsScreen(Screen):
 
         # Populate category tables
         for cat_key, _ in CATEGORIES:
-            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+            if cat_key == "local":
+                tcs = reg.local_toolchains()
+            else:
+                tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
             if not tcs:
                 continue
             try:
@@ -420,11 +432,10 @@ class ToolchainsScreen(Screen):
             tbl = self.query_one("#tbl-installed", DataTable)
             tbl.clear()
             count = 0
-            local_names = {t.name for t in reg._load_file(reg.local_path)}
             for tc in reg.installed_toolchains():
                 if not self._tc_matches(tc, term_lower):
                     continue
-                if tc.name in local_names:
+                if tc.native:
                     tbl.add_row(
                         Text(tc.name, style="bold"),
                         Text(tc.arch, style="bold"),
@@ -440,7 +451,10 @@ class ToolchainsScreen(Screen):
 
         # Rebuild category tables
         for cat_key, cat_label in CATEGORIES:
-            tcs = [tc for tc in reg.toolchains if tc.category == cat_key]
+            if cat_key == "local":
+                tcs = reg.local_toolchains()
+            else:
+                tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
             if not tcs:
                 continue
             try:
@@ -563,6 +577,39 @@ class ToolchainsScreen(Screen):
                     Text("failed", style="red"),
                     key=temp_key,
                 )
+        except Exception:
+            pass
+
+    def _set_installed_row_desc(self, tc_name: str, desc: str) -> None:
+        """Update the description column of an installed toolchain row."""
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            row_keys = {k.value: k for k in tbl.rows}
+            if tc_name not in row_keys:
+                return
+            rk = row_keys[tc_name]
+            cols = list(tbl.columns.keys())
+            tbl.update_cell(rk, cols[2], desc)  # 3rd column = Description
+        except Exception:
+            pass
+
+    def _set_installed_row_style(self, tc_name: str, style: str) -> None:
+        """Update the style of an existing row in the installed table."""
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            row_keys = {k.value: k for k in tbl.rows}
+            if tc_name not in row_keys:
+                return
+            rk = row_keys[tc_name]
+            cols = list(tbl.columns.keys())
+            # Read current cell values as plain text
+            for ci, col in enumerate(cols):
+                val = tbl.get_cell(rk, col)
+                plain = str(val) if not isinstance(val, Text) else val.plain
+                if style:
+                    tbl.update_cell(rk, col, Text(plain, style=style))
+                else:
+                    tbl.update_cell(rk, col, plain)
         except Exception:
             pass
 
@@ -903,8 +950,10 @@ class ToolchainsScreen(Screen):
         btn = event.button.id
         if btn == "btn-install":
             self._handle_install()
-        elif btn == "btn-import":
-            self._handle_import()
+        elif btn == "btn-backup":
+            self._handle_backup()
+        elif btn == "btn-restore":
+            self._handle_restore()
         elif btn == "btn-check":
             self._handle_check()
         elif btn == "btn-remove":
@@ -994,25 +1043,40 @@ class ToolchainsScreen(Screen):
             filename = url.split("/")[-1]
             filepath = downloads_dir / filename
 
-            self._log(f"Downloading {filename}...")
-            try:
-                result = subprocess.run(
-                    ["wget", "-q", "-O", str(filepath), url],
-                    capture_output=True, text=True, timeout=600,
-                )
-                if result.returncode != 0:
-                    result = subprocess.run(
-                        ["curl", "-sL", "-o", str(filepath), url],
-                        capture_output=True, text=True, timeout=600,
-                    )
-                if result.returncode != 0:
-                    self._log("[red]Download failed[/red]")
+            # Handle local file:// URLs — resolve relative to downloads dir
+            if url.startswith("file://"):
+                file_ref = url.replace("file://", "")
+                local_path = Path(file_ref) if file_ref.startswith("/") else downloads_dir / file_ref
+                if not local_path.exists():
+                    self._log(f"[red]Archive not found: {local_path}[/red]")
                     self.app.call_from_thread(self._set_installed_status, tc, "failed")
                     return
-            except Exception as e:
-                self._log(f"[red]Download failed: {e}[/red]")
-                self.app.call_from_thread(self._set_installed_status, tc, "failed")
-                return
+                filepath = local_path
+                self._log(f"Using local archive: {filepath.name}")
+            else:
+                # Skip download if file exists and checksum matches
+                if filepath.exists() and tc.checksum and self._verify_checksum(filepath, tc.checksum):
+                    self._log(f"Using cached {filename} (checksum OK)")
+                else:
+                    self._log(f"Downloading {filename}...")
+                    try:
+                        result = subprocess.run(
+                            ["wget", "-q", "-O", str(filepath), url],
+                            capture_output=True, text=True, timeout=600,
+                        )
+                        if result.returncode != 0:
+                            result = subprocess.run(
+                                ["curl", "-sL", "-o", str(filepath), url],
+                                capture_output=True, text=True, timeout=600,
+                            )
+                        if result.returncode != 0:
+                            self._log("[red]Download failed[/red]")
+                            self.app.call_from_thread(self._set_installed_status, tc, "failed")
+                            return
+                    except Exception as e:
+                        self._log(f"[red]Download failed: {e}[/red]")
+                        self.app.call_from_thread(self._set_installed_status, tc, "failed")
+                        return
 
             if tc.checksum:
                 self._log("Verifying checksum...")
@@ -1042,19 +1106,201 @@ class ToolchainsScreen(Screen):
                 return
 
             self._relocate_toolchain(install_dir, tc)
-            # Write source marker
-            (install_dir / ".source").write_text(tc.source or "defaults")
+            self._fix_pc_files(install_dir)
+            # Copy entry from defaults catalog to local yaml
+            reg = self._get_registry()
+            local_tcs = reg._load_file(reg.local_path)
+            local_tcs = [t for t in local_tcs if t.name != tc.name]
+            local_tcs.append(tc)
+            reg.save_local(local_tcs)
             self._log(f"[green]{tc.name} installed successfully[/green]")
             self.app.call_from_thread(self._set_installed_status, tc, "done")
 
         self._run_in_thread(do_install)
 
-    def _handle_import(self) -> None:
-        """Import a toolchain from a local .tar.xz backup file."""
-        start = str(self.app.paths.downloads_dir) if self.app.paths.downloads_dir.exists() else "/"
-        self.app.push_screen(FilePickerScreen(start), callback=self._do_import)
+    def _handle_backup(self) -> None:
+        """Backup the selected installed toolchain to a .tar.xz archive."""
+        name = ToolchainsScreen._selected_tc
+        if not name:
+            self.notify("No toolchain selected", severity="warning")
+            return
+        reg = self._get_registry()
+        tc = reg.get(name)
+        if not tc:
+            return
+        if tc.native:
+            self.notify("Native toolchain cannot be backed up", severity="warning")
+            return
+        if not tc.installed:
+            self.notify(f"{tc.name} is not installed", severity="warning")
+            return
 
-    def _do_import(self, result: tuple) -> None:
+        install_dir = self.app.paths.toolchains_dir / tc.name
+        backup_dir = self.app.paths.downloads_dir
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        backup_file = backup_dir / f"Toolchain-{tc.name}.tar.xz"
+
+        self._log_sync(f"[bold]Backing up {tc.name}...[/bold]")
+        self._set_installed_row_desc(tc.name, "backing up...")
+
+        def do_backup():
+            from datetime import datetime
+            from rich.markup import escape as rich_escape
+
+            # Setup log file
+            logs_dir = self.app.paths.logs_dir
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+            log_path = logs_dir / f"{timestamp}.{tc.name}.backup.log"
+            log_file = open(log_path, "w", encoding="utf-8")
+
+            def blog(msg):
+                import re
+                plain = re.sub(r'\[/?[a-z_ ]+\]', '', msg)
+                log_file.write(plain + "\n")
+                log_file.flush()
+                self._log(msg)
+
+            try:
+                blog(f"Source: {install_dir}")
+                blog(f"Target: {backup_file}")
+                blog(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                blog("")
+
+                # Create backup with verbose output
+                proc = subprocess.Popen(
+                    ["tar", "-cJvf", str(backup_file), "-C", str(self.app.paths.toolchains_dir), tc.name],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                )
+                for line in proc.stdout:
+                    blog(f"  {rich_escape(line.rstrip())}")
+                proc.wait()
+
+                if proc.returncode != 0:
+                    blog(f"[red]Backup failed (exit {proc.returncode})[/red]")
+                    self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]backup failed[/red]")
+                    return
+
+                size_mb = backup_file.stat().st_size / (1024 * 1024)
+
+                # Update checksum + url in local yaml only for local (file://) toolchains
+                if not tc.url or tc.url.startswith("file://"):
+                    import hashlib as _hashlib
+                    h = _hashlib.sha256()
+                    with open(backup_file, "rb") as bf:
+                        for chunk in iter(lambda: bf.read(8192), b""):
+                            h.update(chunk)
+                    new_checksum = f"sha256:{h.hexdigest()}"
+
+                    reg = self._get_registry()
+                    local_tcs = reg._load_file(reg.local_path)
+                    for ltc in local_tcs:
+                        if ltc.name == tc.name:
+                            ltc.url = f"file://{backup_file.name}"
+                            ltc.checksum = new_checksum
+                            break
+                    reg.save_local(local_tcs)
+
+                blog(f"")
+                blog(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                blog(f"Size: {size_mb:.1f} MB")
+                blog(f"Checksum: {new_checksum}")
+                blog(f"Log: {log_path}")
+                blog(f"[green]{tc.name} backed up to {backup_file.name}[/green]")
+                self.app.call_from_thread(self._set_installed_row_desc, tc.name, f"{tc.description} [green]✓ backed up[/green]")
+            except Exception as e:
+                blog(f"[red]Backup failed: {e}[/red]")
+                self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]backup failed[/red]")
+            finally:
+                log_file.close()
+
+        thread = threading.Thread(target=do_backup, daemon=True)
+        thread.start()
+
+    def _handle_restore(self) -> None:
+        """Restore a toolchain from backup or import from file."""
+        name = ToolchainsScreen._selected_tc
+        reg = self._get_registry()
+        tc = reg.get(name) if name else None
+
+        # Check for pending confirmation (second press)
+        if hasattr(self, '_pending_restore') and self._pending_restore:
+            pending_tc, pending_file = self._pending_restore
+            self._pending_restore = None
+            if pending_tc.name == (tc.name if tc else ""):
+                self._do_restore_from_backup(pending_tc, pending_file)
+                return
+
+        # Check if selected toolchain has a local backup
+        if tc and tc.installed:
+            backup_file = self.app.paths.downloads_dir / f"Toolchain-{tc.name}.tar.xz"
+            if not backup_file.exists():
+                for ext in (".tar.bz2", ".tar.gz"):
+                    alt = self.app.paths.downloads_dir / f"Toolchain-{tc.name}{ext}"
+                    if alt.exists():
+                        backup_file = alt
+                        break
+            if backup_file.exists():
+                size_mb = backup_file.stat().st_size / (1024 * 1024)
+                self.notify(
+                    f"Restore {tc.name} from {backup_file.name} ({size_mb:.1f} MB)? Press Restore again to confirm.",
+                    severity="information",
+                )
+                self._pending_restore = (tc, backup_file)
+                return
+
+        # No backup found — open file picker
+        start = str(self.app.paths.downloads_dir) if self.app.paths.downloads_dir.exists() else "/"
+        self.app.push_screen(FilePickerScreen(start), callback=self._do_restore)
+
+    def _do_restore_from_backup(self, tc, backup_file: Path) -> None:
+        """Restore an installed toolchain from its local backup."""
+        install_dir = self.app.paths.toolchains_dir / tc.name
+
+        self._log_sync(f"[bold]Restoring {tc.name} from {backup_file.name}...[/bold]")
+        self._set_installed_row_desc(tc.name, "restoring...")
+
+        def do_restore_backup():
+            # Remove existing
+            if install_dir.exists():
+                self._log("Removing current installation...")
+                shutil.rmtree(install_dir)
+
+            # Extract without checksum verification
+            self._log(f"Extracting {backup_file.name}...")
+            try:
+                install_dir.mkdir(parents=True, exist_ok=True)
+                result = subprocess.run(
+                    ["tar", "-xf", str(backup_file), "-C", str(install_dir)],
+                    capture_output=True, text=True, timeout=600,
+                )
+                if result.returncode != 0:
+                    self._log(f"[red]Extract failed: {result.stderr.strip()}[/red]")
+                    shutil.rmtree(install_dir, ignore_errors=True)
+                    self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]restore failed[/red]")
+                    return
+            except Exception as e:
+                self._log(f"[red]Extract failed: {e}[/red]")
+                shutil.rmtree(install_dir, ignore_errors=True)
+                self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]restore failed[/red]")
+                return
+
+            # Flatten if needed
+            subdirs = [d for d in install_dir.iterdir() if d.is_dir()]
+            if len(subdirs) == 1 and not (install_dir / "bin").exists():
+                subdir = subdirs[0]
+                for item in subdir.iterdir():
+                    item.rename(install_dir / item.name)
+                subdir.rmdir()
+
+            self._fix_pc_files(install_dir)
+            self._relocate_toolchain(install_dir, tc)
+            self._log(f"[green]{tc.name} restored from backup[/green]")
+            self.app.call_from_thread(self._set_installed_row_desc, tc.name, tc.description)
+
+        self._run_in_thread(do_restore_backup)
+
+    def _do_restore(self, result: tuple) -> None:
         """Process the selected file from the file picker."""
         filepath, name = result if result else ("", "")
         if not filepath or not name:
@@ -1073,17 +1319,42 @@ class ToolchainsScreen(Screen):
             self.notify(f"'{name}' already installed — remove first or choose a different name", severity="warning")
             return
 
-        self._log_sync(f"[bold]Importing {name}...[/bold]")
-        temp_tc = Toolchain(name=name, arch="...", description="importing...")
+        self._log_sync(f"[bold]Restoring {name}...[/bold]")
+        temp_tc = Toolchain(name=name, arch="...", description="restoring...")
         self._set_installed_status(temp_tc, "installing")
 
-        def do_import():
-            # Extract
-            self._log(f"Extracting {path.name}...")
+        def do_restore():
+            import hashlib
+
+            # Copy archive to downloads dir
+            downloads_dir = self.app.paths.downloads_dir
+            downloads_dir.mkdir(parents=True, exist_ok=True)
+            # Always name archive after the toolchain name
+            ext = ".tar.xz"
+            for e in (".tar.xz", ".tar.bz2", ".tar.gz"):
+                if path.name.endswith(e):
+                    ext = e
+                    break
+            local_archive = downloads_dir / f"Toolchain-{name}{ext}"
+
+            if path.resolve() != local_archive.resolve():
+                self._log(f"Copying archive to {local_archive.name}...")
+                shutil.copy2(str(path), str(local_archive))
+
+            # Calculate checksum
+            self._log("Calculating checksum...")
+            h = hashlib.sha256()
+            with open(local_archive, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b""):
+                    h.update(chunk)
+            checksum = f"sha256:{h.hexdigest()}"
+
+            # Extract from local copy
+            self._log(f"Extracting {local_archive.name}...")
             try:
                 install_dir.mkdir(parents=True, exist_ok=True)
                 result = subprocess.run(
-                    ["tar", "-xf", str(path), "-C", str(install_dir)],
+                    ["tar", "-xf", str(local_archive), "-C", str(install_dir)],
                     capture_output=True, text=True, timeout=600,
                 )
                 if result.returncode != 0:
@@ -1105,53 +1376,59 @@ class ToolchainsScreen(Screen):
                     item.rename(install_dir / item.name)
                 subdir.rmdir()
 
-            # Auto-detect toolchain properties
-            self._log("Detecting toolchain properties...")
-            tc = self._detect_toolchain(name, install_dir)
-            if not tc:
-                self._log("[red]Could not detect compiler in imported toolchain[/red]")
-                shutil.rmtree(install_dir, ignore_errors=True)
-                self.app.call_from_thread(self._set_installed_status, temp_tc, "failed")
-                return
+            # Fix .pc files with wrong prefix paths from backup
+            self._fix_pc_files(install_dir)
 
-            # Save to local yaml (replace existing local entry with same name)
+            # Check if this toolchain exists in defaults catalog (use its config)
             reg = self._get_registry()
+            default_tc = reg.get_from_defaults(name)
+            if default_tc:
+                tc = default_tc
+                self._log(f"  Matched catalog: {tc.description}")
+            else:
+                # Auto-detect toolchain properties
+                self._log("Detecting toolchain properties...")
+                tc = self._detect_toolchain(name, install_dir)
+                if not tc:
+                    self._log("[red]Could not detect compiler in restored toolchain[/red]")
+                    shutil.rmtree(install_dir, ignore_errors=True)
+                    self.app.call_from_thread(self._set_installed_status, temp_tc, "failed")
+                    return
+
+            # Set url and checksum from local archive
+            tc.url = f"file://{local_archive.name}"
+            tc.checksum = checksum
+
+            # Save to local yaml
             local_tcs = [t for t in reg._load_file(reg.local_path) if t.name != tc.name]
             local_tcs.append(tc)
             reg.save_local(local_tcs)
 
-            # Fix .pc files with wrong prefix paths from backup
-            self._fix_pc_files(install_dir)
+            self._log(f"  Name:     {tc.name}")
+            self._log(f"  Prefix:   {tc.prefix}")
+            self._log(f"  Arch:     {tc.arch}")
+            self._log(f"  Sysroot:  {tc.sysroot or '(none)'}")
+            self._log(f"  Archive:  {local_archive.name}")
+            self._log(f"  Checksum: {checksum}")
+            self._log(f"[green]{name} restored successfully[/green]")
 
-            # Write source marker
-            (install_dir / ".source").write_text("local")
-            self._log(f"  Name:    {tc.name}")
-            self._log(f"  Prefix:  {tc.prefix}")
-            self._log(f"  Arch:    {tc.arch}")
-            self._log(f"  Sysroot: {tc.sysroot or '(none)'}")
-            self._log(f"[green]{name} imported successfully[/green]")
-
-        self._run_in_thread(do_import)
+        self._run_in_thread(do_restore)
 
     def _fix_pc_files(self, install_dir: Path) -> None:
         """Fix prefix= paths in .pc files after import from a backup."""
-        for pc_file in install_dir.glob("**/pkgconfig/*.pc"):
+        pc_files = list(install_dir.glob("**/pkgconfig/*.pc"))
+        self._log(f"  Checking {len(pc_files)} .pc files...")
+        for pc_file in pc_files:
             try:
                 content = pc_file.read_text(encoding="utf-8", errors="replace")
-                # Find the current prefix= line
-                new_lines = []
                 for line in content.splitlines():
                     if line.startswith("prefix="):
                         old_prefix = line.split("=", 1)[1].strip()
-                        # Derive correct prefix from .pc file location:
-                        # .../lib/pkgconfig/foo.pc → prefix = .../lib/.. = ...
                         new_prefix = str(pc_file.parent.parent.parent)
                         if old_prefix != new_prefix:
-                            new_lines.append(f"prefix={new_prefix}")
-                            # Also replace any hardcoded old prefix in other lines
                             content = content.replace(old_prefix, new_prefix)
                             pc_file.write_text(content, encoding="utf-8")
-                            self._log(f"  Fixed {pc_file.name}: {old_prefix} → {new_prefix}")
+                            self._log(f"  Fixed {pc_file.name}")
                         break
             except Exception:
                 pass
@@ -1241,7 +1518,7 @@ class ToolchainsScreen(Screen):
         return Toolchain(
             name=name,
             description=description,
-            category="custom",
+            category="local",
             arch=arch,
             prefix=prefix,
             sysroot=sysroot,
@@ -1352,9 +1629,10 @@ class ToolchainsScreen(Screen):
         install_dir = self.app.paths.toolchains_dir / tc.name
         if install_dir.exists():
             shutil.rmtree(install_dir)
-        # Remove from local yaml if it's a local/custom toolchain
-        local_tcs = reg._load_file(reg.local_path)
-        if any(t.name == tc.name for t in local_tcs):
+        # Only remove from local yaml if it exists in defaults (catalog toolchain)
+        # Keep local yaml entry for user-added toolchains (visible in Local collapsible)
+        if reg.get_from_defaults(tc.name):
+            local_tcs = reg._load_file(reg.local_path)
             local_tcs = [t for t in local_tcs if t.name != tc.name]
             reg.save_local(local_tcs)
         self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
@@ -1458,6 +1736,12 @@ class ToolchainsScreen(Screen):
             for chunk in iter(lambda: f.read(8192), b""):
                 h.update(chunk)
         return h.hexdigest() == expected
+
+    def action_switch_right_tab(self, tab: str) -> None:
+        self._show_tab(tab)
+
+    def action_switch_left_tab(self, tab: str) -> None:
+        self._show_left_tab(tab)
 
     def action_go_back(self) -> None:
         if self._building:
