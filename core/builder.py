@@ -62,6 +62,31 @@ class BuildEngine:
 
     def build(self) -> bool:
         """Run the full build pipeline for all source x toolchain combinations."""
+        import re
+
+        # Setup build log file
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = self.logs_dir / f"{timestamp}.{self.target.name}.build.log"
+        self._log_file = open(log_path, "w", encoding="utf-8")
+        original_log = self._log
+
+        def _log_both(msg: str):
+            # Strip Rich markup for file
+            plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
+            self._log_file.write(plain + "\n")
+            self._log_file.flush()
+            original_log(msg)
+
+        self._log = _log_both
+
+        try:
+            return self._do_build(log_path)
+        finally:
+            self._close_log(log_path)
+
+    def _do_build(self, log_path: Path) -> bool:
+        """Internal build logic."""
         sources = self.target.sources
         toolchains = self.target.toolchains
 
@@ -187,6 +212,14 @@ class BuildEngine:
 
         self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
         return fail_count == 0
+
+    def _close_log(self, log_path: Path) -> None:
+        """Close the build log file and show its path."""
+        try:
+            self._log(f"Log: {log_path}")
+            self._log_file.close()
+        except Exception:
+            pass
 
     # -------------------------------------------------------------------------
     # PHASE 1: Prepare Repository
