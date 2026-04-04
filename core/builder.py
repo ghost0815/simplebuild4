@@ -99,6 +99,23 @@ class BuildEngine:
             self._log("[red]PHASE 2 failed — aborting[/red]")
             return False
 
+        # PHASE 3: Configure oscam for all repositories
+        self._log("")
+        self._log("[bold]PHASE 3: Configure oscam[/bold]")
+        phase3_ok = True
+        for src in sources:
+            if src.name not in repo_dirs:
+                continue
+            if not self._phase3_configure(src, repo_dirs[src.name]):
+                phase3_ok = False
+            if self._cancel():
+                self._log("[yellow]Build cancelled[/yellow]")
+                return False
+
+        if not phase3_ok:
+            self._log("[red]PHASE 3 failed — aborting[/red]")
+            return False
+
         # Future phases per source x toolchain
         success_count = 0
         fail_count = 0
@@ -108,8 +125,8 @@ class BuildEngine:
                 continue
             for tcc in toolchains:
                 self._log(f"\n[bold]--- {src.name} x {tcc.name} ---[/bold]")
-                # PHASE 3-6 TODO
-                self._log(f"[dim]Build phases 3-6 not yet implemented[/dim]")
+                # PHASE 4-6 TODO
+                self._log(f"[dim]Build phases 4-6 not yet implemented[/dim]")
                 success_count += 1
 
         self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
@@ -240,6 +257,47 @@ class BuildEngine:
 
         self._log(f"  Patches: {applied} applied, {failed} failed")
         return failed == 0
+
+    # -------------------------------------------------------------------------
+    # PHASE 3: Configure oscam
+    # -------------------------------------------------------------------------
+
+    def _phase3_configure(self, src: SourceConfig, repo_dir: Path) -> bool:
+        """PHASE 3: Configure oscam modules via config.sh.
+
+        Flow:
+        1. Restore oscam defaults (config.sh -R)
+        2. Disable ALL options (clean slate)
+        3. Enable only the target's selected options
+        4. config.sh resolves dependencies automatically
+        """
+        rel_path = repo_dir.relative_to(repo_dir.parent.parent.parent) if repo_dir.parent.parent.parent.exists() else repo_dir
+        self._log(f"  Configuring '{src.name}' @ {rel_path}/...")
+
+        from core.oscam_config import read_options, apply_config
+
+        # Read available options from this repo
+        opts = read_options(repo_dir)
+        if not opts:
+            self._log(f"  [red]Cannot read config.sh from {repo_dir}[/red]")
+            return False
+
+        # Build the enabled dict from target's build settings
+        b = self.target.build
+        enabled = {
+            "addons": b.modules,
+            "protocols": b.protocols,
+            "readers": b.readers,
+            "card_readers": b.card_readers,
+        }
+
+        # Apply configuration
+        ok = apply_config(repo_dir, enabled, opts, log=self._log)
+        if not ok:
+            self._log(f"  [red]Failed to configure '{src.name}'[/red]")
+            return False
+
+        return True
 
     # -------------------------------------------------------------------------
     # Helpers

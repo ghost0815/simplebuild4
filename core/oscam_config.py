@@ -68,51 +68,66 @@ def read_enabled(repo_dir: Path) -> dict[str, list[str]]:
     return result
 
 
-def apply_config(repo_dir: Path, enabled: dict[str, list[str]], all_options: OscamOptions) -> bool:
+def apply_config(
+    repo_dir: Path,
+    enabled: dict[str, list[str]],
+    all_options: OscamOptions,
+    log: "Callable[[str], None] | None" = None,
+) -> bool:
     """Apply a target configuration to config.h via config.sh.
 
-    1. Restores defaults
-    2. Enables/disables options based on the target config
-    3. Dependencies are resolved by config.sh automatically
+    Flow (same as s3):
+    1. Restore oscam defaults (config.sh -R)
+    2. Disable ALL options (clean slate)
+    3. Enable only the target's selected options
+    4. Dependencies resolved by config.sh automatically (update_deps)
 
     Args:
         repo_dir: Path to cloned oscam repo
         enabled: Dict of category → list of enabled option names
         all_options: All available options (to know what to disable)
+        log: Optional log callback
 
     Returns:
         True on success.
     """
+    _log = log or (lambda msg: None)
     config_sh = repo_dir / "config.sh"
     if not config_sh.exists():
+        _log(f"  [red]config.sh not found in {repo_dir}[/red]")
         return False
 
-    # Restore defaults first
+    # Step 1: Restore defaults
+    _log("  Restoring oscam defaults...")
     _run_config_sh(config_sh, ["--restore"])
 
-    # Build enable/disable lists
+    # Step 2: Disable ALL options (clean slate)
+    all_opts = []
+    for attr in ("addons", "protocols", "readers", "card_readers"):
+        all_opts.extend(getattr(all_options, attr))
+    if all_opts:
+        _log(f"  Disabling all {len(all_opts)} options...")
+        _run_config_sh(config_sh, ["-D"] + all_opts)
+
+    # Step 3: Enable only the target's selected options
     to_enable = []
-    to_disable = []
+    for category in ("addons", "protocols", "readers", "card_readers"):
+        to_enable.extend(enabled.get(category, []))
 
-    for category, attr in [
-        ("addons", "addons"),
-        ("protocols", "protocols"),
-        ("readers", "readers"),
-        ("card_readers", "card_readers"),
-    ]:
-        all_opts = getattr(all_options, attr)
-        target_enabled = enabled.get(category, [])
-        for opt in all_opts:
-            if opt in target_enabled:
-                to_enable.append(opt)
-            else:
-                to_disable.append(opt)
-
-    # Apply enables first, then disables (config.sh resolves deps)
     if to_enable:
-        _run_config_sh(config_sh, ["-E"] + to_enable)
-    if to_disable:
-        _run_config_sh(config_sh, ["-D"] + to_disable)
+        _log(f"  Enabling {len(to_enable)} options...")
+        result = _run_config_sh(config_sh, ["-E"] + to_enable)
+        if result:
+            for line in result.splitlines():
+                if line.strip():
+                    _log(f"    {line.strip()}")
+
+    # Step 4: Show final state
+    for category, label in [("addons", "Addons"), ("protocols", "Protocols"),
+                             ("readers", "Readers"), ("card_readers", "Card Readers")]:
+        final = _run_config_sh(config_sh, ["--show-enabled", category])
+        count = len(final.split()) if final else 0
+        _log(f"  {label}: {count} enabled")
 
     return True
 
