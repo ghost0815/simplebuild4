@@ -1059,7 +1059,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
         # --- cmake build ---
         self._log("  Compiling...")
-        build_cmd = ["cmake", "--build", ".", f"-j{self.max_cpus}"]
+        build_cmd = ["cmake", "--build", ".", "--", f"-j{self.max_cpus}"]
         ok = self._run(build_cmd, cwd=build_dir, colorize=True)
 
         if not ok:
