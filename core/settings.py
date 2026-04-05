@@ -18,7 +18,7 @@ class Settings:
     last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
-    s4_url: str = "https://github.com/gorgone/s3_releases.git"
+    s4_url: str = "https://git.streamboard.tv/common/simplebuild4.git"
 
     # Build
     compiler_opt: str = "-O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-schedule-insns"
