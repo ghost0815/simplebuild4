@@ -484,8 +484,10 @@ class BuildEngine:
             # Show current state
             self._log_repo_state(repo_dir)
 
-            # Create new backup
-            repo_mgr._backup(log=self._log)
+            # Create new backup only if revision changed
+            current_rev = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) if (repo_dir / ".git").exists() else self._run_output(["svnversion"], cwd=repo_dir)
+            if current_rev and current_rev not in repo_mgr.list_backups():
+                repo_mgr._backup(log=self._log)
 
         else:
             # No RepoManager available — fallback to git reset + pull
