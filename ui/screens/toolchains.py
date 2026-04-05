@@ -1070,7 +1070,7 @@ class ToolchainsScreen(Screen):
             downloads_dir = self.app.paths.downloads_dir
             downloads_dir.mkdir(parents=True, exist_ok=True)
 
-            url = tc.url.replace("${pversion}", "0.27.0")
+            url = tc.url
             filename = url.split("/")[-1]
             filepath = downloads_dir / filename
 
