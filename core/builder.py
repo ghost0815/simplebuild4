@@ -337,11 +337,24 @@ class BuildEngine:
         import threading
 
         # Determine qemu arch from cross-compiler's target
+        _QEMU_ARCH_MAP = {
+            "arm": "arm", "armv7": "arm", "armv7l": "arm", "armv7ve": "arm",
+            "armv7a": "arm", "armv7ahf": "arm", "armv6": "arm", "armv5te": "arm",
+            "aarch64": "aarch64", "arm64": "aarch64",
+            "mipsel": "mipsel", "mips32el": "mipsel",
+            "mips": "mips",
+            "i686": "i386", "i386": "i386",
+            "x86_64": "x86_64",
+            "riscv64": "riscv64",
+            "sh4": "sh4",
+        }
+
         try:
             dumpmachine = subprocess.run(
                 [f"{cross}gcc", "-dumpmachine"], capture_output=True, text=True, timeout=5,
             ).stdout.strip()
-            qemu_arch = dumpmachine.split("-")[0]
+            raw_arch = dumpmachine.split("-")[0]
+            qemu_arch = _QEMU_ARCH_MAP.get(raw_arch, raw_arch)
         except Exception:
             self._log("[yellow]QEMU -------> SKIP (cannot determine arch)[/yellow]")
             return
