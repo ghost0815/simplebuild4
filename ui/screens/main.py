@@ -355,8 +355,9 @@ class MainScreen(Screen):
     def _update_build_button(self) -> None:
         """Update F5 footer label and highlight: Build or Cancel."""
         try:
-            for item in self.app.query("FooterItem"):
-                if hasattr(item, '_key') and item._key == "F5":
+            from ui.footer import FooterItem
+            for item in self.query(FooterItem):
+                if item._key == "F5":
                     item._label = "Cancel" if self._building else "Build"
                     item._active = self._building
                     item.refresh()
