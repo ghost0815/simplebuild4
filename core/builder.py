@@ -899,7 +899,7 @@ class BuildEngine:
         confdir = b.confdir or "/usr/local/etc"
 
         # --- Binary name ---
-        oscam_name = self._generate_binary_name(repo_dir, tcc.name, is_native, b)
+        oscam_name = self._generate_binary_name(repo_dir, src.name, tcc.name, is_native, b)
 
         # --- Output path ---
         self.binaries_dir.mkdir(parents=True, exist_ok=True)
@@ -1127,10 +1127,10 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         shutil.copy2(str(cmake_bin), str(bin_path))
         return True, bin_path
 
-    def _generate_binary_name(self, repo_dir: Path, tc_name: str, is_native: bool, b) -> str:
+    def _generate_binary_name(self, repo_dir: Path, repo_name: str, tc_name: str, is_native: bool, b) -> str:
         """Generate the output binary name.
 
-        Format: oscam-git<rev>@<commit>-<toolchain>-<backend>-<features>-<linking>
+        Format: oscam-<vcs><rev>@<commit>-<repo>-<toolchain>-<backend>-<features>-<linking>
         """
         # Custom name overrides everything
         if b.use_oscamname:
@@ -1240,12 +1240,12 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
         # Assemble
         feat_str = "-" + "-".join(features) if features else ""
-        # Git: oscam-git10864@6c8324e0-toolchain-features
-        # SVN: oscam-svn2039-toolchain-features (no @commit)
+        # Git: oscam-git11945@6c8324e0-default-cortexa15hf-features
+        # SVN: oscam-svn2039-default-cortexa15hf-features (no @commit)
         if commit:
-            return f"oscam-{vcs}{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
+            return f"oscam-{vcs}{rev}@{commit}-{repo_name}-{tc_part}{backend}{feat_str}{linking}"
         else:
-            return f"oscam-{vcs}{rev}-{tc_part}{backend}{feat_str}{linking}"
+            return f"oscam-{vcs}{rev}-{repo_name}-{tc_part}{backend}{feat_str}{linking}"
 
     def _get_native_lib_paths(self, tc_dir: Path) -> list[str]:
         """Get library search paths for native toolchain.
