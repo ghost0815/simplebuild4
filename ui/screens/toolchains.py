@@ -1574,6 +1574,7 @@ class ToolchainsScreen(Screen):
         )
 
     def _handle_check(self) -> None:
+        """Comprehensive toolchain check like s3: compiler, sysroot, headers, libraries."""
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify("No toolchain selected", severity="warning")
@@ -1586,9 +1587,15 @@ class ToolchainsScreen(Screen):
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
 
-        self._log_sync(f"[bold]Checking {tc.name}...[/bold]")
         install_dir = self.app.paths.toolchains_dir / tc.name
         ok = True
+        log = self._log_sync
+        fmt_ok = lambda label, val, extra="": f"  [green]✓[/green] {label:<16s} {val}" + (f"  [dim]{extra}[/dim]" if extra else "")
+        fmt_fail = lambda label, val: f"  [red]✗[/red] {label:<16s} {val}"
+
+        # --- Compiler Info ---
+        log(f"\n[bold]Compiler info -----> {tc.name}[/bold]")
+        log(f"  {'=' * 40}")
 
         gcc = install_dir / "bin" / f"{tc.prefix}gcc"
         if not gcc.exists():
@@ -1596,39 +1603,219 @@ class ToolchainsScreen(Screen):
             if found:
                 gcc = found[0]
 
-        if not gcc.exists():
-            self._log_sync(f"  [red]gcc not found:[/red] {tc.prefix}gcc")
+        if not gcc.exists() and not tc.native:
+            log(fmt_fail("GCC Binary", f"{tc.prefix}gcc not found"))
             return
+        if tc.native:
+            gcc_path = shutil.which("gcc")
+            if not gcc_path:
+                log(fmt_fail("GCC Binary", "gcc not found"))
+                return
+            gcc = Path(gcc_path)
 
-        self._log_sync(f"  gcc:       {gcc}")
-
+        # GCC version
         try:
             version = subprocess.check_output(
-                [str(gcc), "--version"], text=True, stderr=subprocess.STDOUT, timeout=10,
+                [str(gcc), "--version"], text=True, stderr=subprocess.DEVNULL, timeout=10,
             ).splitlines()[0]
-            self._log_sync(f"  version:   {version}")
+            log(fmt_ok("GCC Version", version))
         except Exception as e:
-            self._log_sync(f"  [red]gcc not working: {e}[/red]")
+            log(fmt_fail("GCC Version", str(e)))
             ok = False
 
+        # GCC binary path (relative to install dir)
         try:
-            target = subprocess.check_output(
-                [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.STDOUT, timeout=10,
-            ).strip()
-            self._log_sync(f"  target:    {target}")
-        except Exception:
-            pass
+            rel_gcc = gcc.resolve().relative_to(install_dir.resolve())
+            log(fmt_ok("GCC Binary", str(rel_gcc)))
+        except ValueError:
+            log(fmt_ok("GCC Binary", str(gcc)))
 
+        # Sysroot
         if tc.sysroot:
             sysroot_path = install_dir / tc.sysroot
             if sysroot_path.is_dir():
-                self._log_sync(f"  sysroot:   {tc.sysroot} [green]OK[/green]")
+                log(fmt_ok("GCC Sysroot", tc.sysroot))
             else:
-                self._log_sync(f"  sysroot:   {tc.sysroot} [red]NOT FOUND[/red]")
+                log(fmt_fail("GCC Sysroot", f"{tc.sysroot} NOT FOUND"))
                 ok = False
+        elif not tc.native:
+            # Try gcc -print-sysroot
+            try:
+                sr = subprocess.check_output(
+                    [str(gcc), "-print-sysroot"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+                ).strip()
+                if sr and Path(sr).is_dir():
+                    log(fmt_ok("GCC Sysroot", sr))
+                else:
+                    log(fmt_fail("GCC Sysroot", sr or "(empty)"))
+            except Exception:
+                pass
 
+        # GDB version
+        gdb = str(gcc).replace("gcc", "gdb")
+        try:
+            gdb_ver = subprocess.check_output(
+                [gdb, "--version"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).splitlines()[0].split()[-1]
+            log(fmt_ok("GDB Version", gdb_ver))
+        except Exception:
+            pass
+
+        # LD version
+        ld = str(gcc).replace("gcc", "ld")
+        try:
+            ld_ver = subprocess.check_output(
+                [ld, "--version"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).splitlines()[0].split()[-1]
+            log(fmt_ok("LD Version", ld_ver))
+        except Exception:
+            pass
+
+        # Host + Target arch
+        try:
+            target_arch = subprocess.check_output(
+                [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+            ).strip()
+            log(fmt_ok("TARGET arch", target_arch))
+        except Exception:
+            target_arch = ""
+
+        import platform as _platform
+        log(fmt_ok("HOST arch", f"{_platform.machine()}-{_platform.system().lower()}"))
+
+        # C11 support
+        has_c11 = self._check_c11(install_dir, tc.prefix)
+        if has_c11:
+            log(fmt_ok("C11 Support", "Yes"))
+        else:
+            log(fmt_ok("C11 Support", "[yellow]No[/yellow]"))
+
+        # --- Sysroot Config ---
+        sysroot_path = install_dir / tc.sysroot if tc.sysroot else install_dir
+        if tc.native:
+            sysroot_path = Path("/")
+
+        log(f"\n[bold]Sysroot config ----> {tc.sysroot or '(system)'}[/bold]")
+        log(f"  {'=' * 40}")
+
+        # Linux headers
+        linux_h = None
+        for candidate in [
+            sysroot_path / "usr" / "include" / "linux" / "version.h",
+            sysroot_path / "include" / "linux" / "version.h",
+        ]:
+            if candidate.exists():
+                linux_h = candidate
+                break
+        if linux_h:
+            try:
+                content = linux_h.read_text(errors="replace")
+                for line in content.splitlines():
+                    if "LINUX_VERSION_CODE" in line or "UTS_RELEASE" in line:
+                        log(fmt_ok("Linux", "version.h", line.strip()))
+                        break
+                else:
+                    log(fmt_ok("Linux", "version.h"))
+            except Exception:
+                log(fmt_ok("Linux", "version.h"))
+        else:
+            log(fmt_fail("Linux", "version.h not found"))
+
+        # C-Library detection
+        libc_type = "unknown"
+        libc_ver = ""
+        libc_so = None
+        for candidate in ["libc.so.6", "libc.so", "libc.so.0"]:
+            found = list(sysroot_path.glob(f"**/{candidate}"))
+            if found:
+                libc_so = found[0]
+                break
+        if libc_so:
+            name_str = libc_so.name
+            if "musl" in str(libc_so) or "musl" in str(libc_so.resolve()):
+                libc_type = "musl"
+            elif "uclibc" in str(libc_so) or "uclibc" in str(libc_so.resolve()):
+                libc_type = "uclibc"
+            else:
+                libc_type = "glibc"
+            # Try to get version from the resolved symlink name
+            try:
+                resolved = libc_so.resolve().name
+                if "-" in resolved:
+                    libc_ver = resolved.split("-")[-1].replace(".so", "")
+            except Exception:
+                pass
+            log(fmt_ok("C-Library", libc_type, libc_ver))
+        else:
+            log(fmt_fail("C-Library", "not found"))
+
+        # Important header files
+        check_headers = [
+            "openssl/opensslconf.h", "openssl/crypto.h",
+            "libusb-1.0/libusb.h", "PCSC/pcsclite.h",
+            "pthread.h", "dvbcsa/dvbcsa.h",
+        ]
+        for header in check_headers:
+            short = header.split("/")[-1]
+            found = False
+            for inc_dir in [sysroot_path / "usr" / "include", sysroot_path / "include"]:
+                if (inc_dir / header).exists():
+                    found = True
+                    break
+            if found:
+                log(fmt_ok("Header", short))
+            else:
+                log(fmt_fail("Header", f"{short} [dim]({header})[/dim]"))
+
+        # --- Library Config (pkgconfig) ---
+        pkg_dirs = list(sysroot_path.glob("**/pkgconfig"))
+        if pkg_dirs:
+            for pkg_dir in pkg_dirs:
+                try:
+                    rel_pkg = pkg_dir.resolve().relative_to(install_dir.resolve())
+                except ValueError:
+                    rel_pkg = pkg_dir
+                log(f"\n[bold]Library config ----> {rel_pkg}[/bold]")
+                log(f"  {'=' * 40}")
+
+                for pc_file in sorted(pkg_dir.glob("*.pc")):
+                    try:
+                        content = pc_file.read_text(encoding="utf-8", errors="replace")
+                        pc_name = ""
+                        pc_ver = ""
+                        for line in content.splitlines():
+                            if line.startswith("Name:"):
+                                pc_name = line.split(":", 1)[1].strip()
+                            elif line.startswith("Version:"):
+                                pc_ver = line.split(":", 1)[1].strip()
+
+                        # Check for static (.a) and dynamic (.so)
+                        lib_dir = pc_file.parent.parent
+                        base = pc_file.stem  # e.g. "libcrypto" from "libcrypto.pc"
+                        # Map common pc names to lib names
+                        lib_base = base.replace("openssl", "libcrypto").replace("zlib", "libz")
+                        has_static = bool(list(lib_dir.glob(f"{lib_base}.a")) or list(lib_dir.glob(f"**/{lib_base}.a")))
+                        has_dynamic = bool(list(lib_dir.glob(f"{lib_base}.so*")) or list(lib_dir.glob(f"**/{lib_base}.so*")))
+                        link_type = ""
+                        if has_static and has_dynamic:
+                            link_type = "static+dynamic"
+                        elif has_static:
+                            link_type = "static"
+                        elif has_dynamic:
+                            link_type = "dynamic"
+
+                        log(fmt_ok(f"{pc_file.name:<20s}", f"{pc_name:<20s} {pc_ver}", link_type))
+                    except Exception:
+                        log(fmt_fail(pc_file.name, "unreadable"))
+        else:
+            log(f"\n[bold]Library config[/bold]")
+            log(f"  [yellow]No pkgconfig directories found[/yellow]")
+
+        # --- Relocate check (OE-SDK) ---
         nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
         if nss.is_dir():
+            log(f"\n[bold]OE-SDK Relocate[/bold]")
+            log(f"  {'=' * 40}")
             ranlib_bins = list(nss.glob("usr/bin/*/**/*-ranlib"))
             if ranlib_bins:
                 real_bin = ranlib_bins[0].resolve()
@@ -1640,15 +1827,20 @@ class ToolchainsScreen(Screen):
                         if "interpreter" in line:
                             interp = line.split(":")[-1].strip().rstrip("]").strip()
                             if Path(interp).exists():
-                                self._log_sync(f"  relocate:  [green]OK[/green]")
+                                log(fmt_ok("Relocate", "OK"))
                             else:
-                                self._log_sync(f"  relocate:  [red]FAILED — {interp}[/red]")
+                                log(fmt_fail("Relocate", f"FAILED — {interp}"))
                                 ok = False
                             break
                 except Exception:
                     pass
 
-        self._log_sync(f"  [green]{tc.name} OK[/green]" if ok else f"  [red]{tc.name} has issues[/red]")
+        # --- Summary ---
+        log("")
+        if ok:
+            log(f"[green]{tc.name} — all checks passed[/green]")
+        else:
+            log(f"[red]{tc.name} — some checks failed[/red]")
 
     def _handle_remove(self) -> None:
         name = ToolchainsScreen._selected_tc
