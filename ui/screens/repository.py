@@ -376,17 +376,28 @@ class RepositoryScreen(Screen):
         """F10 Add — add new repo from edit fields."""
         self._handle_add_repo()
 
+    _remove_confirm_time: float = 0
+
     def do_remove(self) -> None:
-        """F11 Remove — remove selected repo."""
+        """F11 Remove — remove selected repo (double-press to confirm)."""
+        import time
         repo = self._get_selected_repo()
-        if repo:
-            if repo.name == "default":
-                self.notify("Cannot remove default repo", severity="error")
-                return
+        if not repo:
+            self.notify("No repo selected", severity="warning")
+            return
+        if repo.name == "default":
+            self.notify("Cannot remove default repo", severity="error")
+            return
+        now = time.time()
+        if now - self._remove_confirm_time < 3:
             self._repos = [r for r in self._repos if r.name != repo.name]
             save_repos(self._repos, self.app.paths.repos_config)
             self._log_sync(f"[yellow]Removed repo '{repo.name}'[/yellow]")
             self._full_refresh()
+            self._remove_confirm_time = 0
+            return
+        self._remove_confirm_time = now
+        self.notify(f"Press F11 again to remove '{repo.name}'", severity="warning", timeout=3)
 
     def _handle_save_repo(self, notify=True) -> None:
         """Save edits to the currently selected repo."""

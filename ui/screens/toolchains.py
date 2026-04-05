@@ -1944,7 +1944,12 @@ class ToolchainsScreen(Screen):
         else:
             log(f"[red]{tc.name} — some checks failed[/red]")
 
+    _remove_confirm_time: float = 0
+    _remove_confirm_name: str = ""
+
     def _handle_remove(self) -> None:
+        """Remove toolchain (double-press to confirm)."""
+        import time
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify("No toolchain selected", severity="warning")
@@ -1953,29 +1958,36 @@ class ToolchainsScreen(Screen):
         tc = reg.get(name)
         if not tc:
             return
-        if tc.native:
-            # Remove and regenerate native toolchain
-            install_dir = self.app.paths.toolchains_dir / tc.name
-            if install_dir.exists():
-                shutil.rmtree(install_dir)
-            # Remove from local yaml so _ensure_native recreates it
-            reg = self._get_registry()
-            local_tcs = [t for t in reg._load_file(reg.local_path) if not t.native]
-            reg.save_local(local_tcs)
-            self._log_sync("[yellow]Native toolchain regenerated[/yellow]")
-            self._refresh()
-            return
-        if not tc.installed:
+        if not tc.installed and not tc.native:
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
 
-        install_dir = self.app.paths.toolchains_dir / tc.name
-        if install_dir.exists():
-            shutil.rmtree(install_dir)
-        # Never remove the local yaml entry — only delete the directory.
-        # installed=False is determined at load() by checking if dir exists.
-        self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
-        self._refresh()
+        now = time.time()
+        if now - self._remove_confirm_time < 3 and self._remove_confirm_name == name:
+            self._remove_confirm_time = 0
+            self._remove_confirm_name = ""
+
+            if tc.native:
+                install_dir = self.app.paths.toolchains_dir / tc.name
+                if install_dir.exists():
+                    shutil.rmtree(install_dir)
+                reg = self._get_registry()
+                local_tcs = [t for t in reg._load_file(reg.local_path) if not t.native]
+                reg.save_local(local_tcs)
+                self._log_sync("[yellow]Native toolchain regenerated[/yellow]")
+                self._refresh()
+                return
+
+            install_dir = self.app.paths.toolchains_dir / tc.name
+            if install_dir.exists():
+                shutil.rmtree(install_dir)
+            self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
+            self._refresh()
+            return
+
+        self._remove_confirm_time = now
+        self._remove_confirm_name = name
+        self.notify(f"Press Remove again to delete '{tc.name}'", severity="warning", timeout=3)
 
     def _relocate_toolchain(self, install_dir: Path, tc: Toolchain) -> None:
         relocate_sh = install_dir / "relocate-sdk.sh"

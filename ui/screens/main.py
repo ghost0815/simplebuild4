@@ -265,11 +265,18 @@ class MainScreen(Screen):
         from ui.screens.target_edit import TargetEditScreen
         self.app.push_screen(TargetEditScreen())
 
+    _remove_confirm_time: float = 0
+
     def do_remove(self) -> None:
-        """F11 Remove — delete selected target."""
+        """F11 Remove — delete selected target (double-press to confirm)."""
+        import time
         result = self._get_selected_target()
-        if result:
-            target, path = result
+        if not result:
+            self.notify("No target selected", severity="warning")
+            return
+        target, path = result
+        now = time.time()
+        if now - self._remove_confirm_time < 3:
             path.unlink(missing_ok=True)
             self._refresh_targets()
             self.query_one("#info", Static).update(
@@ -277,8 +284,10 @@ class MainScreen(Screen):
                 "  Create a new target to get started."
             )
             self.notify(f"Target '{target.name}' deleted")
-        else:
-            self.notify("No target selected", severity="warning")
+            self._remove_confirm_time = 0
+            return
+        self._remove_confirm_time = now
+        self.notify(f"Press F11 again to delete '{target.name}'", severity="warning", timeout=3)
 
     _building = False
     _cancel_requested = False
