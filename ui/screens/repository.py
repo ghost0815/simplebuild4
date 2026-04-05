@@ -202,8 +202,12 @@ class RepositoryScreen(Screen):
         count = 0
         for name, path in Target.list_targets(targets_dir):
             target = Target.load(path)
-            if target.source == old_name:
-                target.source = new_name
+            changed = False
+            for src in target.sources:
+                if src.name == old_name:
+                    src.name = new_name
+                    changed = True
+            if changed:
                 target.save(path)
                 count += 1
         if count > 0:
