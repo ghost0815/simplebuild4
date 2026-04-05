@@ -326,6 +326,7 @@ class MainScreen(Screen):
                     patches_dir=self.app.paths.patches_dir,
                     logs_dir=self.app.paths.logs_dir,
                     binaries_dir=self.app.paths.binaries_dir,
+                    bin_dir=self.app.paths.bin_dir,
                     toolchains_dir=self.app.paths.toolchains_dir,
                     toolchains_local=self.app.paths.toolchains_local,
                     toolchains_defaults=self.app.paths.toolchains_defaults,

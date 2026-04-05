@@ -23,6 +23,7 @@ class Paths:
     patches_dir: Path
     binaries_dir: Path
     downloads_dir: Path
+    bin_dir: Path              # data/bin/ for custom tool symlinks (upx etc.)
     translation_dir: Path
 
     @classmethod
@@ -44,6 +45,7 @@ class Paths:
             patches_dir=data / "patches",
             binaries_dir=data / "binaries",
             downloads_dir=data / "downloads",
+            bin_dir=data / "bin",
             translation_dir=root / "translation",
         )
 
@@ -53,6 +55,7 @@ class Paths:
             self.targets_dir, self.repos_dir, self.backup_dir,
             self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
+            self.bin_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

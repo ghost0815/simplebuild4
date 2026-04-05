@@ -32,6 +32,7 @@ class BuildEngine:
         patches_dir: Path,
         logs_dir: Path,
         binaries_dir: Path,
+        bin_dir: Path,
         toolchains_dir: Path,
         toolchains_local: Path,
         toolchains_defaults: Path,
@@ -56,6 +57,7 @@ class BuildEngine:
         self.patches_dir = patches_dir
         self.logs_dir = logs_dir
         self.binaries_dir = binaries_dir
+        self.bin_dir = bin_dir
         self.toolchains_dir = toolchains_dir
         self.toolchains_local = toolchains_local
         self.toolchains_defaults = toolchains_defaults
@@ -106,6 +108,31 @@ class BuildEngine:
         finally:
             self._close_log(log_path)
 
+    def _setup_upx_symlink(self) -> None:
+        """Create/update data/bin/upx symlink based on target's upx_binary setting."""
+        import shutil as _shutil
+        self.bin_dir.mkdir(parents=True, exist_ok=True)
+        upx_link = self.bin_dir / "upx"
+
+        # Determine target path: custom or system default
+        upx_target = self.target.build.upx_binary.strip() if self.target.build.upx_binary else ""
+        if not upx_target:
+            upx_target = _shutil.which("upx") or ""
+
+        if not upx_target:
+            # No UPX found — remove symlink if exists
+            if upx_link.exists() or upx_link.is_symlink():
+                upx_link.unlink()
+            return
+
+        # Create/update symlink
+        upx_target_path = Path(upx_target).resolve()
+        if upx_link.is_symlink() or upx_link.exists():
+            if upx_link.resolve() == upx_target_path:
+                return  # Already correct
+            upx_link.unlink()
+        upx_link.symlink_to(upx_target_path)
+
     def _do_build(self, log_path: Path) -> bool:
         """Internal build logic."""
         sources = self.target.sources
@@ -117,6 +144,10 @@ class BuildEngine:
         if not toolchains:
             self._log("[red]No toolchains configured[/red]")
             return False
+
+        # Setup UPX symlink and prepend data/bin to PATH
+        self._setup_upx_symlink()
+        os.environ["PATH"] = f"{self.bin_dir}:{os.environ.get('PATH', '')}"
 
         total = len(sources) * len(toolchains)
         self._log(f"[bold]Building {self.target.name}: {len(sources)} source(s) x {len(toolchains)} toolchain(s) = {total} build(s)[/bold]")

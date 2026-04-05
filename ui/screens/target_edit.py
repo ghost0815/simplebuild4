@@ -149,18 +149,18 @@ class TargetEditScreen(Screen):
                 )
                 compress_enabled = b.use_compress and bool(self._upx_path)
                 upx_switch = Switch(value=compress_enabled, id="f-use-compress", disabled=not bool(self._upx_path))
-                upx_text = self._upx_info.strip() if self._upx_path else "upx not found"
-                upx_info = Static(f" [dim]{upx_text}[/dim]")
-                upx_info.styles.padding = (1, 0)
-                upx_info.styles.width = "auto"
+                upx_switch.tooltip = self._upx_info.strip() if self._upx_path else "upx not found"
+                upx_binary_val = b.upx_binary or self._upx_path or ""
+                upx_path_inp = Input(value=upx_binary_val, placeholder="system default", id="t-upx-binary")
+                upx_path_inp.styles.width = "1fr"
                 if compress_enabled:
                     lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
                     lvl_inp.styles.max_width = 25
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
                         upx_switch,
-                        upx_info,
-                        Static("", classes="spacer"),
+                        Static(" Binary", classes="src-opt-label"),
+                        upx_path_inp,
                         Static(" Compression level", classes="src-opt-label"),
                         lvl_inp,
                         classes="flag-row",
@@ -169,7 +169,6 @@ class TargetEditScreen(Screen):
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
                         upx_switch,
-                        upx_info,
                         classes="flag-row",
                     )
                 yield Horizontal(
@@ -632,6 +631,22 @@ class TargetEditScreen(Screen):
             else:
                 event.input.add_class("tc-default")
 
+        # UPX binary path validation
+        if iid == "t-upx-binary":
+            from pathlib import Path as _P
+            upx_path = event.value.strip()
+            try:
+                switch = self.query_one("#f-use-compress", Switch)
+                if upx_path and _P(upx_path).exists():
+                    switch.tooltip = f"{upx_path} — OK"
+                elif upx_path:
+                    switch.tooltip = f"{upx_path} — not found!"
+                    self.notify(f"UPX binary not found: {upx_path}", severity="warning", timeout=3)
+                else:
+                    switch.tooltip = "upx not configured"
+            except Exception:
+                pass
+
         # STAPI_LIB field style tracking
         if iid == "f-stapi-lib":
             default_val = getattr(self, '_stapi_default', '')
@@ -770,6 +785,7 @@ class TargetEditScreen(Screen):
             static_libdvbcsa=self._switch_on("f-static-libdvbcsa"),
             use_compress=self._switch_on("f-use-compress"),
             compress_level=self._input_val("t-compress-level") or "--lzma",
+            upx_binary=self._input_val("t-upx-binary"),
             stapi_lib=self._input_val("f-stapi-lib"),
             use_oscamname=self.query_one("#t-oscamname", Input).value.strip(),
             build_system=self.query_one("#t-build-system", Select).value or "make",
