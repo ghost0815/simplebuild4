@@ -154,7 +154,7 @@ class TargetEditScreen(Screen):
                 upx_info.styles.padding = (1, 0)
                 upx_info.styles.width = "auto"
                 if compress_enabled:
-                    lvl_inp = Input(value=b.compress_level, placeholder="--best", id="t-compress-level")
+                    lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
                     lvl_inp.styles.max_width = 25
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
@@ -769,7 +769,7 @@ class TargetEditScreen(Screen):
             static_pcsc=self._switch_on("f-static-pcsc"),
             static_libdvbcsa=self._switch_on("f-static-libdvbcsa"),
             use_compress=self._switch_on("f-use-compress"),
-            compress_level=self._input_val("t-compress-level") or "--best",
+            compress_level=self._input_val("t-compress-level") or "--lzma",
             stapi_lib=self._input_val("f-stapi-lib"),
             use_oscamname=self.query_one("#t-oscamname", Input).value.strip(),
             build_system=self.query_one("#t-build-system", Select).value or "make",
