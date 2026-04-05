@@ -18,7 +18,12 @@ Screen {
 }
 
 #target-select {
+    width: 30%;
+}
+
+#build-opts {
     width: 1fr;
+    margin: 0 0 0 1;
 }
 
 #target-bar Button {
@@ -42,6 +47,11 @@ Screen {
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
+}
+
+#main-tab-bar {
+    height: 1;
+    margin: 1 2 0 2;
 }
 
 /* Target editor tabs */
