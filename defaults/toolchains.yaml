@@ -16,7 +16,7 @@
 #   stapi_lib: "libwi.a"           # STAPI library name (empty = STAPI not supported, "default" = liboscam_stapi.a)
 #   url: https://example.com/tc.tar.gz  # Download URL
 #   checksum: "sha256:abc123..."    # Download verification: "md5:hash" or "sha256:hash"
-#   strip_components: 1             # tar --strip-components (default: 1, omit if 1)
+#   strip_components: 0             # tar --strip-components (default: 0, set 1 for Bootlin/generic)
 #   selfbuild: false                # true if toolchain was built locally (not downloaded)
 #
 # Categories: common (universal/generic), stb (OE-Alliance/OpenPLi/OpenDreambox),
@@ -40,6 +40,7 @@ toolchains:
   sysroot: aarch64-buildroot-linux-gnu/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:abae0522480b9f37ff6cee4249e147e7cb78e1997cc6f76dba7e0fb8ec04221d
+  strip_components: 1
 
 - name: armv5_universal
   description: armv5 devices (generic)
@@ -49,6 +50,7 @@ toolchains:
   sysroot: arm-buildroot-linux-gnueabi/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f6d91d016e0025c927e68a9cf62e4c49a88b46b6f26eb0f52ddd22265588aafe
+  strip_components: 1
 
 - name: armv6_universal
   description: armv6 stb's (generic)
@@ -58,6 +60,7 @@ toolchains:
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/armv6-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:f3d5bc10a3883dd40f0ea681714d6a834b49f2418f3ec3a406feedb697691e20
+  strip_components: 1
 
 - name: armv7_universal
   description: armv7 stb's (generic)
@@ -67,6 +70,7 @@ toolchains:
   sysroot: arm-buildroot-linux-gnueabihf/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv7-eabihf/tarballs/armv7-eabihf--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:c8d4d3ca70442652e0e72f57ae6e878375640508f1e08de3152f63414c43b2e4
+  strip_components: 1
 
 - name: mips32el_universal
   description: mips32el stb's (generic)
@@ -76,6 +80,7 @@ toolchains:
   sysroot: mipsel-buildroot-linux-gnu/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/mips32el/tarballs/mips32el--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:5b838521093a9b8c521ff518cc33e80ce8649b1c795013a47e167b79c175c049
+  strip_components: 1
 
 - name: powerpc_universal
   description: powerpc stb's (generic)
@@ -85,6 +90,7 @@ toolchains:
   sysroot: powerpc-buildroot-linux-gnu/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/powerpc-e500mc/tarballs/powerpc-e500mc--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:b06fd8740248309146e212214abf60ae4ba2018480ec42155286cafdcb401af4
+  strip_components: 1
 
 - name: sh4_universal
   description: sh4 stb's (generic)
@@ -94,6 +100,7 @@ toolchains:
   sysroot: sh4-buildroot-linux-gnu/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/sh-sh4/tarballs/sh-sh4--glibc--stable-2018.11-1.tar.bz2
   checksum: sha256:0845d8e46d8c0d9a79cfb1c054fc1a8631e48b220d5b11e4f166decd2b532997
+  strip_components: 1
 
 - name: aarch64_oealliance_5.6
   description: oealliance 5.6 aarch64
@@ -544,6 +551,7 @@ toolchains:
   sysroot: aarch64-buildroot-linux-musl/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/aarch64/tarballs/aarch64--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:0798b1b11969b0a6f792ae52f19e8da40d7fcce147d6c202fe27e1a43345375d
+  strip_components: 1
 
 - name: armv5-eabi--musl--stable-2020.02-2_universal
   description: armv5-eabi devices (generic)
@@ -553,6 +561,7 @@ toolchains:
   sysroot: arm-buildroot-linux-musleabi/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv5-eabi/tarballs/armv5-eabi--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:4734ebcde0fa185132f0fa6aebe104a05ed78b28ba97290504e9f599c948ba1c
+  strip_components: 1
 
 - name: armv6-eabihf--musl--stable-2020.02-2_universal
   description: armv6-eabihf devices (generic)
@@ -562,6 +571,7 @@ toolchains:
   sysroot: arm-buildroot-linux-musleabihf/sysroot
   url: https://toolchains.bootlin.com/downloads/releases/toolchains/armv6-eabihf/tarballs/armv6-eabihf--musl--stable-2020.02-2.tar.bz2
   checksum: sha256:c49d8fa512bd98eeacff91924cdc05342e0cffcca325f87ca3d076e950af5116
+  strip_components: 1
 
 - name: openwrt1505cc
   description: OpenWRT 15.05.1 Chaos Calmer
@@ -970,7 +980,7 @@ toolchains:
   sysroot: mipsel-newnigma2-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Dreambox-HW_s_u_p.tar.xz
   checksum: sha256:342a0a59b5ef728f42f52a49d84142291cde0ec26097af94c996b44a420a6a22
-  strip_components: 0
+
 
 - name: hd51
   description: AX/Mutant HD51
@@ -1012,7 +1022,7 @@ toolchains:
   sysroot: mipsel-unknown-linux-gnu/sys-root/usr
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE1.6_s_u_p.tar.xz
   checksum: sha256:7e554e152e172f735c17483bcb659b80154d8a429dadf8689472375e725c4e7e
-  strip_components: 0
+
 
 - name: mipsel_s3_ssl098
   description: generic mipsel ssl 0.9.8
@@ -1022,7 +1032,7 @@ toolchains:
   sysroot: /
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
   checksum: sha256:dce6ceda5bc829ae8d462b21c62b58f533cf57d3aa654bcb84d036ceb5a7066c
-  strip_components: 0
+
 
 - name: mipsel_s3_ssl100
   description: generic mipsel ssl 1.0.0
@@ -1032,7 +1042,7 @@ toolchains:
   sysroot: /
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
   checksum: sha256:23c0c0938e5012cfffd369ef0d970453cdfcd442b1cfd924ef25c87080247691
-  strip_components: 0
+
 
 - name: mipsel_s3_ssl102
   description: generic mipsel ssl 1.0.2
@@ -1042,7 +1052,7 @@ toolchains:
   sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
   checksum: sha256:110607cc3395002360f826303cb30b9dde1c561a6f58b64369314b1edc881b60
-  strip_components: 0
+
 
 - name: mipsoe20
   category: legacy
@@ -1051,7 +1061,7 @@ toolchains:
   sysroot: mipsel-unknown-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-MIPS-Tuxbox-OE2.0_s_u_p.tar.xz
   checksum: sha256:d9add89853a5382e3be113b0feacb15db83d4aa7ca50ce9828fb2c645e084e88
-  strip_components: 0
+
 
 - name: oe20_armv7
   description: OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices
@@ -1131,7 +1141,7 @@ toolchains:
   sysroot: sh4-linux/sys-root/usr
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-SH4_s_u_p.tar.xz
   checksum: sha256:db3602e495abbbb8ff88a52010bc6178a5d10c7c60bbc17cdb069c69997330f7
-  strip_components: 0
+
 
 - name: sh_4
   description: SH4

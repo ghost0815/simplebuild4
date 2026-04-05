@@ -45,7 +45,7 @@ class Toolchain:
     # Download / Install
     url: str = ""                  # Download URL
     checksum: str = ""             # Format: "md5:hash" or "sha256:hash"
-    strip_components: int = 1      # tar --strip-components
+    strip_components: int = 0      # tar --strip-components (0 = most STB toolchains)
     selfbuild: bool = False        # True if toolchain was built locally (not downloaded)
     native: bool = False           # True if this is the host system compiler
 
