@@ -582,8 +582,15 @@ class ToolchainRegistry:
         return sorted(installed, key=lambda t: (not t.native, t.name))
 
     def catalog_toolchains(self) -> list[Toolchain]:
-        """Return the PreBuild catalog (all defaults, with installed status)."""
-        return list(self._default_tcs)
+        """Return the PreBuild catalog. Local entries override defaults with same name."""
+        local_by_name = {tc.name: tc for tc in self._local_tcs}
+        result = []
+        for tc in self._default_tcs:
+            if tc.name in local_by_name:
+                result.append(local_by_name[tc.name])  # local supersedes defaults
+            else:
+                result.append(tc)
+        return result
 
     def local_toolchains(self) -> list[Toolchain]:
         """Return toolchains from local yaml that don't exist in defaults."""
