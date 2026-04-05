@@ -1090,9 +1090,21 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         if b.use_oscamname:
             return b.use_oscamname
 
-        # Revision info
-        rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
-        commit = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) or "unknown"
+        # Revision info — detect VCS type
+        is_git = (repo_dir / ".git").exists()
+        is_svn = (repo_dir / ".svn").exists()
+        if is_git:
+            vcs = "git"
+            rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
+            commit = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) or "unknown"
+        elif is_svn:
+            vcs = "svn"
+            rev = self._run_output(["svnversion"], cwd=repo_dir) or "0"
+            commit = rev
+        else:
+            vcs = "git"
+            rev = "0"
+            commit = "unknown"
 
         # Toolchain part
         if is_native:
@@ -1161,7 +1173,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
         # Assemble
         feat_str = "-" + "-".join(features) if features else ""
-        return f"oscam-git{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
+        return f"oscam-{vcs}{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
 
     def _get_native_lib_paths(self, tc_dir: Path) -> list[str]:
         """Get library search paths for native toolchain.
