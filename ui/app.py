@@ -76,7 +76,7 @@ class S4App(App):
             if behind > 0:
                 self.call_from_thread(
                     self.notify,
-                    f"s4 update available ({behind} new commit{'s' if behind > 1 else ''}) — run ./s4 update",
+                    f"s4 update available ({behind} new commit{'s' if behind > 1 else ''}) — press F1 → s4 update",
                     severity="information",
                     timeout=10,
                 )
