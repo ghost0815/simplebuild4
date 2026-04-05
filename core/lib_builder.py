@@ -437,8 +437,6 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
         return True
     if trait == "uclibc" and "uclibc" in prefix_lower:
         return True
-    if trait == "android" and ("android" in prefix_lower or (toolchain_dir / "sysroots").exists()):
-        return False  # Android check needs more logic
     if trait == "android" and "android" in prefix_lower:
         return True
     if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps", "fix_wirecheck", "fix_version"):
