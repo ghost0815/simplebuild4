@@ -18,16 +18,17 @@ class BuildEngine:
     Each build runs through phases:
     - PHASE 1: Prepare Repository (update, reset)
     - PHASE 2: Apply Patches
-    - PHASE 3: Configure (config.sh modules) — TODO
-    - PHASE 4: Build (make) — TODO
-    - PHASE 5: Post-Build (UPX, copy binary) — TODO
-    - PHASE 6: Upload (SSH) — TODO
+    - PHASE 3: Configure (config.sh modules)
+    - PHASE 4: Build + Post-Build (make distclean, make, save artifacts)
+    - PHASE 5: Upload (SSH) — TODO
     """
 
     def __init__(
         self,
         target: Target,
         repos_dir: Path,
+        backup_dir: Path,
+        repos_config: Path,
         patches_dir: Path,
         logs_dir: Path,
         binaries_dir: Path,
@@ -41,11 +42,14 @@ class BuildEngine:
         delete_debug: bool = True,
         save_smargo: bool = True,
         patch_webif: bool = True,
+        build_overrides: str = "",
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
         self.target = target
         self.repos_dir = repos_dir
+        self.backup_dir = backup_dir
+        self.repos_config = repos_config
         self.patches_dir = patches_dir
         self.logs_dir = logs_dir
         self.binaries_dir = binaries_dir
@@ -59,8 +63,16 @@ class BuildEngine:
         self.delete_debug = delete_debug
         self.save_smargo = save_smargo
         self.patch_webif = patch_webif
+        self.build_overrides = build_overrides
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
+        self._log_file = None  # set in build()
+
+    def _log_file_only(self, msg: str) -> None:
+        """Write a line only to the log file, not to the GUI."""
+        if self._log_file:
+            self._log_file.write(msg + "\n")
+            self._log_file.flush()
 
     def build(self) -> bool:
         """Run the full build pipeline for all source x toolchain combinations."""
@@ -194,7 +206,6 @@ class BuildEngine:
         self._log("[bold]PHASE 4: Build[/bold]")
         success_count = 0
         fail_count = 0
-        built_binaries = []
         for src in sources:
             if src.name not in repo_dirs:
                 fail_count += len(toolchains)
@@ -210,45 +221,38 @@ class BuildEngine:
                     continue
                 bin_path = self._phase4_build(src, repo_dirs[src.name], tcc, tc)
                 if bin_path:
-                    built_binaries.append((bin_path, repo_dirs[src.name]))
                     success_count += 1
                 else:
                     fail_count += 1
-
-        # PHASE 5: Post-Build
-        if built_binaries:
-            self._log("")
-            self._log("[bold]PHASE 5: Post-Build[/bold]")
-            for bin_path, repo_dir in built_binaries:
-                self._phase5_postbuild(bin_path, repo_dir)
 
         self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
         return fail_count == 0
 
     # -------------------------------------------------------------------------
-    # PHASE 5: Post-Build
+    # Post-Build (runs immediately after each make, before next distclean)
     # -------------------------------------------------------------------------
 
-    def _phase5_postbuild(self, bin_path: Path, repo_dir: Path) -> None:
-        """PHASE 5: Post-build tasks for a successfully built binary."""
-        self._log(f"  Post-build: {bin_path.name}")
+    def _postbuild_single(self, bin_path: Path, repo_dir: Path) -> None:
+        """Post-build tasks for a single build — runs immediately after each make.
 
+        Must happen before distclean of the next build, otherwise Distribution/
+        artifacts (list_smargo, .debug) would be deleted.
+        """
         # Delete debug binary
         debug_bin = Path(f"{bin_path}.debug")
         if self.delete_debug and debug_bin.exists():
             debug_bin.unlink()
-            self._log(f"  Removed: {debug_bin.name}")
+            self._log(f"Removed: {debug_bin.name}")
 
-        # Save list_smargo
+        # Save list_smargo (built by make when USE_LIBUSB is active)
         if self.save_smargo:
             dist_dir = repo_dir / "Distribution"
             if dist_dir.is_dir():
-                for smargo in dist_dir.glob("list_smargo*"):
-                    import shutil
-                    dest_name = f"{bin_path.stem}-list_smargo"
-                    dest = self.binaries_dir / dest_name
+                import shutil
+                for smargo in list(dist_dir.glob("list_smargo*")):
+                    dest = self.binaries_dir / smargo.name
                     shutil.move(str(smargo), str(dest))
-                    self._log(f"  Saved: {dest_name}")
+                    self._log(f"Saved: {smargo.name}")
 
     def _close_log(self, log_path: Path) -> None:
         """Close the build log file and show its path."""
@@ -266,10 +270,12 @@ class BuildEngine:
         """PHASE 1: Prepare the source repository.
 
         If update_before_build:
-          1. Reset repo (remove patches, local changes)
+          1. Restore repo from backup (clean state, removes patches)
+             Fallback: git checkout + clean if no backup exists
           2. Pull latest changes
+          3. Create new backup
         If not update_before_build:
-          Don't touch the repo
+          Don't touch the repo at all
         """
         if not src.update_before_build:
             self._log(f"[dim]PHASE 1: Skipping repo update for '{src.name}'[/dim]")
@@ -277,45 +283,86 @@ class BuildEngine:
 
         self._log(f"[bold]PHASE 1: Preparing repository '{src.name}'[/bold]")
 
-        is_git = (repo_dir / ".git").exists()
-        is_svn = (repo_dir / ".svn").exists()
+        # Get RepoManager for this source
+        repo_mgr = self._get_repo_manager(src.name)
 
-        if is_git:
-            # Reset to clean state (removes patches, local modifications)
-            self._log("  Resetting repository...")
-            if not self._run(["git", "checkout", "."], cwd=repo_dir):
-                self._log("[red]  Failed to reset repository[/red]")
-                return False
-            self._run(["git", "clean", "-fd"], cwd=repo_dir)
+        if repo_mgr:
+            # Restore from backup (fast, guaranteed clean state)
+            backups = repo_mgr.list_backups()
+            if backups:
+                self._log("  Restoring from backup...")
+                if not repo_mgr.restore(log=self._log):
+                    self._log("[red]  Restore failed — falling back to git reset[/red]")
+                    self._git_reset(repo_dir)
+            else:
+                self._log("  No backup found — using git reset")
+                self._git_reset(repo_dir)
 
             # Pull latest
+            self._log("  Pulling latest changes...")
+            is_git = (repo_dir / ".git").exists()
+            if is_git:
+                if not self._run(["git", "pull", "--ff-only"], cwd=repo_dir):
+                    self._log("[red]  Failed to pull latest changes[/red]")
+                    return False
+            else:
+                if not self._run(["svn", "update"], cwd=repo_dir):
+                    self._log("[red]  Failed to update repository[/red]")
+                    return False
+
+            # Show current state
+            self._log_repo_state(repo_dir)
+
+            # Create new backup
+            repo_mgr._backup(log=self._log)
+
+        else:
+            # No RepoManager available — fallback to git reset + pull
+            self._log("  [yellow]No repo config found — using git fallback[/yellow]")
+            self._git_reset(repo_dir)
+
             self._log("  Pulling latest changes...")
             if not self._run(["git", "pull", "--ff-only"], cwd=repo_dir):
                 self._log("[red]  Failed to pull latest changes[/red]")
                 return False
 
-            # Show current state
+            self._log_repo_state(repo_dir)
+
+        return True
+
+    def _get_repo_manager(self, source_name: str):
+        """Get a RepoManager for the given source name."""
+        try:
+            from core.repos_config import load_repos
+            from core.repo import RepoManager
+            repos = load_repos(self.repos_config)
+            for rc in repos:
+                if rc.name == source_name:
+                    return RepoManager(rc, self.repos_dir, self.backup_dir)
+        except Exception:
+            pass
+        return None
+
+    def _git_reset(self, repo_dir: Path) -> None:
+        """Fallback: reset repo via git checkout + clean."""
+        is_git = (repo_dir / ".git").exists()
+        if is_git:
+            self._run(["git", "checkout", "."], cwd=repo_dir)
+            self._run(["git", "clean", "-fd"], cwd=repo_dir)
+        else:
+            self._run(["svn", "revert", "-R", "."], cwd=repo_dir)
+
+    def _log_repo_state(self, repo_dir: Path) -> None:
+        """Log current repository revision info."""
+        is_git = (repo_dir / ".git").exists()
+        if is_git:
             rev = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir)
             branch = self._run_output(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=repo_dir)
             count = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir)
             self._log(f"  Repository: {branch} @ {rev} (r{count})")
-
-        elif is_svn:
-            self._log("  Reverting local changes...")
-            self._run(["svn", "revert", "-R", "."], cwd=repo_dir)
-
-            self._log("  Updating...")
-            if not self._run(["svn", "update"], cwd=repo_dir):
-                self._log("[red]  Failed to update repository[/red]")
-                return False
-
+        else:
             rev = self._run_output(["svnversion"], cwd=repo_dir)
             self._log(f"  Repository: r{rev}")
-
-        else:
-            self._log(f"[yellow]  Unknown VCS in {repo_dir} - skipping update[/yellow]")
-
-        return True
 
     # -------------------------------------------------------------------------
     # PHASE 2: Apply Patches
@@ -484,6 +531,20 @@ class BuildEngine:
             self._log(f"  [red]Failed to configure '{src.name}'[/red]")
             return False
 
+        # Apply build overrides (e.g. "USE_SSL USE_PCSC_off MODULE_GBOX_off")
+        if self.build_overrides:
+            from core.oscam_config import _run_config_sh
+            config_sh = repo_dir / "config.sh"
+            self._log(f"  Applying build overrides...")
+            for token in self.build_overrides.split():
+                if token.endswith("_off"):
+                    opt = token[:-4]  # strip _off
+                    _run_config_sh(config_sh, ["-D", opt])
+                    self._log(f"    [red]Disable[/red] {opt}")
+                else:
+                    _run_config_sh(config_sh, ["-E", token])
+                    self._log(f"    [green]Enable[/green] {token}")
+
         return True
 
     # -------------------------------------------------------------------------
@@ -508,7 +569,9 @@ class BuildEngine:
             sysroot = str(sysroot_path)
 
         # --- Auto-inject --sysroot if compiler's built-in sysroot is invalid ---
-        sysroot_inject = ""
+        # Like s3: override CC= so every gcc invocation (including Makefile's
+        # internal $(CC) -print-sysroot) sees the correct sysroot.
+        cross_sysroot = ""
         if not is_native and cross:
             import shutil as _shutil
             gcc_path = _shutil.which(f"{tc.prefix}gcc", path=f"{tc_dir}/bin:{os.environ.get('PATH', '')}")
@@ -520,16 +583,16 @@ class BuildEngine:
                 except Exception:
                     gcc_sysroot = ""
                 if not gcc_sysroot or not Path(gcc_sysroot).is_dir():
-                    sysroot_inject = f"--sysroot={sysroot}"
-                    self._log(f"  Auto-injected: {sysroot_inject}")
+                    cross_sysroot = f"--sysroot={sysroot}"
+                    self._log(f"  Auto-injected: {cross_sysroot}")
 
         # --- CC_OPTS, CFLAGS, LDFLAGS ---
         # s4 settings = base, toolchain appends, target overrides toolchain
         tc_cc = tcc.cc_opts if tcc.cc_opts else (tc.cc_opts or "")
         cc_opts = f"{self.compiler_opt} {tc_cc}".strip() if tc_cc else (self.compiler_opt or "")
         cflags = tcc.cflags if tcc.cflags else (tc.cflags or "")
-        if sysroot_inject and "--sysroot" not in cflags:
-            cflags = f"{cflags} {sysroot_inject}".strip()
+        if cross_sysroot and "--sysroot" not in cflags:
+            cflags = f"{cflags} {cross_sysroot}".strip()
         ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
         extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
 
@@ -552,6 +615,20 @@ class BuildEngine:
             use_flags.append("USE_COMPRESS=1")
             if b.compress_level and b.compress_level != "--best":
                 use_flags.append(f"COMP_LEVEL={b.compress_level}")
+
+        # --- Apply build overrides to USE_FLAGS ---
+        if self.build_overrides:
+            for token in self.build_overrides.split():
+                if token.startswith("USE_"):
+                    if token.endswith("_off"):
+                        # Remove: USE_SSL_off → remove USE_SSL=1
+                        flag = token[:-4] + "=1"
+                        use_flags = [f for f in use_flags if f != flag]
+                    else:
+                        # Add: USE_STAPI → add USE_STAPI=1
+                        flag = token + "=1"
+                        if flag not in use_flags:
+                            use_flags.append(flag)
 
         # --- Static library detection ---
         static_libs = {}
@@ -581,10 +658,25 @@ class BuildEngine:
         stapi_lib = ""
         if b.use_stapi or b.use_stapi5:
             stapi_val = b.stapi_lib if b.stapi_lib else (tc.stapi_lib or "")
+            # Fallback: use shipped stapi libs (like s3's support/stapi/)
+            if not stapi_val:
+                stapi_dir = self.repos_dir.parent.parent / "support" / "stapi"
+                if b.use_stapi5:
+                    # STAPI5: try platform-specific libs
+                    for candidate in ("liboscam_stapi5_UFS916.a", "liboscam_stapi5_OPENBOX.a"):
+                        if (stapi_dir / candidate).exists():
+                            stapi_val = str(stapi_dir / candidate)
+                            break
+                else:
+                    default_lib = stapi_dir / "liboscam_stapi.a"
+                    if default_lib.exists():
+                        stapi_val = str(default_lib)
             if stapi_val:
                 stapi_key = "STAPI5_LIB" if b.use_stapi5 else "STAPI_LIB"
                 stapi_lib = f"{stapi_key}={stapi_val}"
                 self._log(f"  {stapi_lib}")
+            else:
+                self._log(f"  [yellow]Warning: STAPI enabled but no library found[/yellow]")
 
         # --- CONF_DIR ---
         confdir = b.confdir or "/usr/local/etc"
@@ -596,7 +688,54 @@ class BuildEngine:
         self.binaries_dir.mkdir(parents=True, exist_ok=True)
         bin_path = self.binaries_dir / oscam_name
 
-        # --- Construct make command ---
+        # --- Log common settings ---
+        self._log(f"  Build system: {b.build_system}")
+        self._log(f"  Output: {bin_path.name}")
+        self._log(f"  CROSS: {cross or '(native)'}")
+        if cross_sysroot:
+            self._log(f"  CC: {cross}gcc {cross_sysroot}")
+        self._log(f"  CC_OPTS: {cc_opts}")
+        if cflags:
+            self._log(f"  EXTRA_CFLAGS: {cflags}")
+        if ldflags:
+            self._log(f"  EXTRA_LDFLAGS: {ldflags}")
+        self._log(f"  CONF_DIR: {confdir}")
+        self._log(f"  CPUs: {self.max_cpus}")
+        self._log("")
+
+        # --- Dispatch to make or cmake ---
+        started = datetime.now()
+        if b.build_system == "cmake":
+            ok, bin_path = self._build_cmake(
+                repo_dir, bin_path, cross, sysroot, cross_sysroot,
+                cc_opts, cflags, ldflags, confdir, use_flags, static_libs,
+                stapi_lib, is_native, tc, tcc,
+            )
+        else:
+            ok, bin_path = self._build_make(
+                repo_dir, bin_path, cross, cross_sysroot,
+                cc_opts, cflags, ldflags, extra_make, confdir,
+                use_flags, static_libs, stapi_lib,
+            )
+        elapsed = (datetime.now() - started).total_seconds()
+
+        if ok and bin_path and bin_path.exists():
+            size_kb = bin_path.stat().st_size / 1024
+            self._log("")
+            self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
+
+            # Post-build: immediately after each build (before distclean of next build)
+            self._postbuild_single(bin_path, repo_dir)
+
+            return bin_path
+        else:
+            self._log(f"[red]Build FAILED after {elapsed:.0f}s[/red]")
+            return None
+
+    def _build_make(self, repo_dir, bin_path, cross, cross_sysroot,
+                    cc_opts, cflags, ldflags, extra_make, confdir,
+                    use_flags, static_libs, stapi_lib):
+        """Build using make (default)."""
         make_cmd = ["make", f"-j{self.max_cpus}"]
         make_cmd.append(f"CONF_DIR={confdir}")
         make_cmd.append(f"OSCAM_BIN={bin_path}")
@@ -608,6 +747,8 @@ class BuildEngine:
             make_cmd.append(f"EXTRA_LDFLAGS={ldflags}")
         if cross:
             make_cmd.append(f"CROSS={cross}")
+        if cross_sysroot:
+            make_cmd.append(f"CC={cross}gcc {cross_sysroot}")
         for flag in use_flags:
             make_cmd.append(flag)
         for key, val in static_libs.items():
@@ -617,35 +758,132 @@ class BuildEngine:
         if extra_make:
             make_cmd.extend(extra_make.split())
 
-        # --- Log the command ---
-        self._log(f"  Output: {bin_path.name}")
-        self._log(f"  CROSS: {cross or '(native)'}")
-        self._log(f"  CC_OPTS: {cc_opts}")
-        if cflags:
-            self._log(f"  EXTRA_CFLAGS: {cflags}")
-        if ldflags:
-            self._log(f"  EXTRA_LDFLAGS: {ldflags}")
-        self._log(f"  CONF_DIR: {confdir}")
-        self._log(f"  CPUs: {self.max_cpus}")
-        self._log("")
-
-        # --- Clean before build ---
+        # Clean
         self._log("  Cleaning...")
-        self._run(["make", "clean"], cwd=repo_dir)
+        self._run(["make", "distclean"], cwd=repo_dir, colorize=True)
 
-        # --- Execute make ---
+        # Build
         self._log("  Compiling...")
-        started = datetime.now()
-        ok = self._run(make_cmd, cwd=repo_dir)
-        elapsed = (datetime.now() - started).total_seconds()
+        ok = self._run(make_cmd, cwd=repo_dir, colorize=True)
+        return ok, bin_path
 
-        if ok and bin_path.exists():
-            size_kb = bin_path.stat().st_size / 1024
-            self._log(f"  [green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
-            return bin_path
-        else:
-            self._log(f"  [red]Build FAILED after {elapsed:.0f}s[/red]")
-            return None
+    def _build_cmake(self, repo_dir, bin_path, cross, sysroot, cross_sysroot,
+                     cc_opts, cflags, ldflags, confdir, use_flags, static_libs,
+                     stapi_lib, is_native, tc, tcc):
+        """Build using cmake."""
+        import shutil as _shutil
+
+        build_dir = repo_dir / "build_s4"
+
+        # Clean previous cmake build
+        self._log("  Cleaning...")
+        if build_dir.exists():
+            _shutil.rmtree(build_dir)
+        # Also distclean make artifacts
+        self._run(["make", "distclean"], cwd=repo_dir, colorize=True)
+
+        build_dir.mkdir(parents=True, exist_ok=True)
+
+        # --- Generate cmake toolchain file for cross-compilation ---
+        toolchain_file = None
+        if not is_native and cross:
+            toolchain_file = build_dir / "s4-toolchain.cmake"
+            gcc_path = f"{cross}gcc"
+            gxx_path = f"{cross}g++"
+            if cross_sysroot:
+                gcc_path = f"{gcc_path} {cross_sysroot}"
+                gxx_path = f"{gxx_path} {cross_sysroot}"
+
+            # Combine all C flags for cmake toolchain
+            all_cflags = f"{cc_opts} {cflags}".strip()
+
+            tc_content = f"""# Auto-generated by s4 BuildEngine
+set(CMAKE_SYSTEM_NAME Linux)
+set(CMAKE_SYSTEM_PROCESSOR {tc.arch or 'arm'})
+set(CMAKE_C_COMPILER {cross}gcc)
+set(CMAKE_CXX_COMPILER {cross}g++)
+set(CMAKE_C_FLAGS_INIT "{all_cflags}")
+set(CMAKE_CXX_FLAGS_INIT "{all_cflags}")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "{ldflags}")
+set(CMAKE_FIND_ROOT_PATH "{sysroot}")
+set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+"""
+            if cross_sysroot:
+                tc_content += f'set(CMAKE_SYSROOT "{sysroot}")\n'
+
+            toolchain_file.write_text(tc_content)
+            self._log(f"  Generated toolchain file: {toolchain_file.name}")
+
+        # --- cmake configure ---
+        cmake_cmd = ["cmake", str(repo_dir)]
+
+        # Toolchain
+        if toolchain_file:
+            cmake_cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}")
+
+        # Compiler flags (only for native builds — cross uses toolchain file)
+        if not toolchain_file:
+            all_cflags = f"{cc_opts} {cflags}".strip()
+            if all_cflags:
+                cmake_cmd.append(f"-DCMAKE_C_FLAGS={all_cflags}")
+                cmake_cmd.append(f"-DCMAKE_CXX_FLAGS={all_cflags}")
+            if ldflags:
+                cmake_cmd.append(f"-DCMAKE_EXE_LINKER_FLAGS={ldflags}")
+
+        # Config dir
+        cmake_cmd.append(f"-DCS_CONFDIR={confdir}")
+
+        # USE_FLAGS as cmake -D variables
+        for flag in use_flags:
+            if "=" in flag:
+                key, val = flag.split("=", 1)
+                cmake_cmd.append(f"-D{key}={val}")
+
+        # Static libraries
+        for key, val in static_libs.items():
+            cmake_cmd.append(f"-D{key}={val}")
+
+        # STAPI
+        if stapi_lib and "=" in stapi_lib:
+            key, val = stapi_lib.split("=", 1)
+            cmake_cmd.append(f"-D{key}={val}")
+
+        # Build type
+        cmake_cmd.append("-DCMAKE_BUILD_TYPE=Release")
+
+        self._log("  Configuring (cmake)...")
+        ok = self._run(cmake_cmd, cwd=build_dir)
+        if not ok:
+            self._log("[red]cmake configure FAILED[/red]")
+            return False, None
+
+        # --- cmake build ---
+        self._log("  Compiling...")
+        build_cmd = ["cmake", "--build", ".", f"-j{self.max_cpus}"]
+        ok = self._run(build_cmd, cwd=build_dir, colorize=True)
+
+        if not ok:
+            return False, None
+
+        # --- Find and copy the built binary ---
+        # cmake builds to build_dir/oscam or build_dir/oscam-upx
+        cmake_bin = None
+        for candidate in ("oscam-upx", "oscam"):
+            p = build_dir / candidate
+            if p.exists():
+                cmake_bin = p
+                break
+
+        if not cmake_bin:
+            self._log("[red]cmake binary not found in build directory[/red]")
+            return False, None
+
+        # Copy to our standard binaries location with proper name
+        import shutil
+        shutil.copy2(str(cmake_bin), str(bin_path))
+        return True, bin_path
 
     def _generate_binary_name(self, repo_dir: Path, tc_name: str, is_native: bool, b) -> str:
         """Generate the output binary name.
@@ -783,8 +1021,12 @@ class BuildEngine:
                 return d
         return None
 
-    def _run(self, cmd: list[str], cwd: Path) -> bool:
-        """Run a command and log output. Returns True on success."""
+    def _run(self, cmd: list[str], cwd: Path, colorize: bool = False) -> bool:
+        """Run a command and log output. Returns True on success.
+
+        If colorize=True, applies s3-style coloring to make/build output.
+        Filtered lines still go to the log file (plain), just not to the GUI.
+        """
         try:
             from rich.markup import escape as rich_escape
             proc = subprocess.Popen(
@@ -796,12 +1038,67 @@ class BuildEngine:
                     proc.kill()
                     proc.wait()
                     return False
-                self._log(f"    {rich_escape(line.rstrip())}")
+                stripped = line.rstrip()
+                if colorize:
+                    colored = self._colorize_build_line(stripped)
+                    if colored is not None:
+                        self._log(f"    {colored}")
+                    else:
+                        # Filtered from GUI but still write to log file
+                        self._log_file_only(f"    {stripped}")
+                else:
+                    self._log(f"    {rich_escape(stripped)}")
             proc.wait()
             return proc.returncode == 0
         except Exception as e:
             self._log(f"  [red]Error: {e}[/red]")
             return False
+
+    # Build output coloring (like s3)
+    _BUILD_COLORS = [
+        # (prefix, rich color, label)       — order matters, first match wins
+        ("HOSTCC",  "green",        "BUILD ------> "),
+        ("CC\t",    "green",        "BUILD ------> "),
+        ("BUILD\t", "green",        "BUILD ------> "),
+        ("GEN\t",   "cyan",         "GEN --------> "),
+        ("WIKI\t",  "cyan",         "WIKI -------> "),
+        ("CONF\t",  "cyan",         "CONFIG -----> "),
+        ("LINK\t",  "magenta",      "LINK -------> "),
+        ("STRIP\t", "magenta",      "STRIP ------> "),
+        ("RM\t",    "red",          "REMOVE -----> "),
+        ("UPX\t",   "bright_green", "UPX --------> "),
+        ("UPX ",    "bright_green", "UPX --------> "),
+        ("SIGN\t",  "bright_yellow","SIGN -------> "),
+        ("SIGN ",   "bright_yellow","SIGN -------> "),
+    ]
+
+    def _colorize_build_line(self, line: str) -> str | None:
+        """Colorize a make output line like s3. Returns None to skip the line."""
+        from rich.markup import escape as rich_escape
+
+        stripped = line.lstrip()
+
+        # Info block lines (| ...) → yellow
+        if stripped.startswith("|") or stripped.startswith("+---"):
+            return f"[yellow]{rich_escape(stripped)}[/yellow]"
+
+        # Submodule lines
+        if "submodule" in stripped.lower():
+            return f"[cyan]{rich_escape(stripped)}[/cyan]"
+
+        # Known prefixes
+        for prefix, color, label in self._BUILD_COLORS:
+            if stripped.startswith(prefix):
+                rest = stripped[len(prefix):].strip()
+                return f"[{color}]{label}[/{color}]{rich_escape(rest)}"
+
+        # Filter: skip lines not matching any known pattern (like s3's grep filter)
+        # But keep error/warning lines
+        if any(kw in stripped.lower() for kw in ("error", "warning", "fatal", "undefined")):
+            return f"[red]{rich_escape(stripped)}[/red]"
+
+        # Skip unknown lines (noise from compiler, BFD warnings, etc.)
+        return None
 
     def _run_output(self, cmd: list[str], cwd: Path) -> str:
         """Run a command and return stdout (stripped)."""
