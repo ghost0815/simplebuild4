@@ -324,11 +324,15 @@ def check_library_updates(
         if not available:
             continue
 
-        # Latest available version (first in list after filtering)
-        lib.latest_version = available[0].get("version", "")
+        # Skip pre-release versions for recommendations
+        _prerelease = ("alpha", "beta", "preview", "rc", "dev")
+        stable = [v for v in available if not any(tag in v.get("version", "").lower() for tag in _prerelease)]
+
+        # Latest available version (first stable, or first overall if all are pre-release)
+        lib.latest_version = (stable[0] if stable else available[0]).get("version", "")
 
         if not lib.found or not lib.version:
-            # Not installed — recommend latest
+            # Not installed — recommend latest stable
             lib.update_version = lib.latest_version
             continue
 
