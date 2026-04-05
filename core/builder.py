@@ -81,7 +81,8 @@ class BuildEngine:
         # Setup build log file
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-        log_path = self.logs_dir / f"{timestamp}.{self.target.name}.build.log"
+        bs = self.target.build.build_system or "make"
+        log_path = self.logs_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
         self._log_file = open(log_path, "w", encoding="utf-8")
         original_log = self._log
 
@@ -835,15 +836,40 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         # Config dir
         cmake_cmd.append(f"-DCS_CONFDIR={confdir}")
 
-        # USE_FLAGS as cmake -D variables
+        # USE_FLAGS as cmake -D variables (translated to cmake names)
+        _CMAKE_FLAG_MAP = {
+            "USE_SSL": "WITH_SSL",
+            "USE_LIBCRYPTO": None,         # auto via WITH_SSL in cmake
+            "USE_LIBUSB": "HAVE_LIBUSB",
+            "USE_PCSC": "HAVE_PCSC",
+            "USE_LIBDVBCSA": "HAVE_LIBDVBCSA",
+            "USE_STAPI": "WITH_STAPI",
+            "USE_STAPI5": "WITH_STAPI5",
+            "USE_COMPRESS": "USE_COMPRESS",  # same name
+            "USE_COOLAPI": "WITH_COOLAPI",
+            "USE_COOLAPI2": "WITH_COOLAPI2",
+            "USE_SU980": "WITH_SU980",
+            "USE_AZBOX": "WITH_AZBOX",
+            "USE_AMSMC": "WITH_AMSMC",
+            "USE_MCA": "WITH_MCA",
+        }
         for flag in use_flags:
             if "=" in flag:
                 key, val = flag.split("=", 1)
-                cmake_cmd.append(f"-D{key}={val}")
+                cmake_key = _CMAKE_FLAG_MAP.get(key, key)
+                if cmake_key is not None:
+                    cmake_cmd.append(f"-D{cmake_key}={val}")
 
-        # Static libraries
-        for key, val in static_libs.items():
-            cmake_cmd.append(f"-D{key}={val}")
+        # Static libraries — cmake variable names differ from make
+        b = self.target.build
+        # OpenSSL static: set OPENSSL_*_LIBRARY (singular = cache hint for find_package)
+        if b.static_ssl and "SSL_LIB" in static_libs:
+            cmake_cmd.append(f"-DOPENSSL_SSL_LIBRARY={static_libs['SSL_LIB']}")
+        if b.static_libcrypto and "LIBCRYPTO_LIB" in static_libs:
+            cmake_cmd.append(f"-DOPENSSL_CRYPTO_LIBRARY={static_libs['LIBCRYPTO_LIB']}")
+        if b.static_libusb: cmake_cmd.append("-DSTATIC_LIBUSB=1")
+        if b.static_libdvbcsa: cmake_cmd.append("-DSTATIC_LIBDVBCSA=1")
+        # Note: STATIC_PCSC not supported by oscam's CMakeLists.txt
 
         # STAPI
         if stapi_lib and "=" in stapi_lib:
@@ -1073,7 +1099,7 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
     ]
 
     def _colorize_build_line(self, line: str) -> str | None:
-        """Colorize a make output line like s3. Returns None to skip the line."""
+        """Colorize a make/cmake output line like s3. Returns None to skip the line."""
         from rich.markup import escape as rich_escape
 
         stripped = line.lstrip()
@@ -1086,14 +1112,41 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         if "submodule" in stripped.lower():
             return f"[cyan]{rich_escape(stripped)}[/cyan]"
 
-        # Known prefixes
+        # Known make prefixes
         for prefix, color, label in self._BUILD_COLORS:
             if stripped.startswith(prefix):
                 rest = stripped[len(prefix):].strip()
                 return f"[{color}]{label}[/{color}]{rich_escape(rest)}"
 
-        # Filter: skip lines not matching any known pattern (like s3's grep filter)
-        # But keep error/warning lines
+        # cmake output: [  5%] Building C object ..., Linking C ..., Built target ...
+        if stripped.startswith("[") and "%]" in stripped[:8]:
+            rest = stripped.split("]", 1)[1].strip() if "]" in stripped else stripped
+            pct = stripped.split("]")[0].strip("[ %")
+            if "Linking" in rest:
+                return f"[magenta]LINK -------> \\[{pct}%][/magenta] {rich_escape(rest)}"
+            elif "Built target" in rest:
+                return f"[green]DONE -------> \\[{pct}%][/green] {rich_escape(rest)}"
+            elif "Building" in rest:
+                # Shorten: "Building C object CMakeFiles/csreaders.dir/reader-nagra.c.o" → "reader-nagra.c"
+                short = rest
+                if ".dir/" in rest:
+                    short = rest.split(".dir/")[-1].replace(".o", "")
+                return f"[green]BUILD ------> \\[{pct}%][/green] {rich_escape(short)}"
+            else:
+                return f"    \\[{pct}%] {rich_escape(rest)}"
+
+        # cmake status messages (-- ...)
+        if stripped.startswith("-- "):
+            return f"[cyan]{rich_escape(stripped)}[/cyan]"
+
+        # cmake [SIGN] [UPX] markers
+        if stripped.startswith("[SIGN]"):
+            return f"[bright_yellow]SIGN -------> [/bright_yellow]{rich_escape(stripped[6:].strip())}"
+        if stripped.startswith("[ UPX]") or stripped.startswith("[UPX]"):
+            rest = stripped.split("]", 1)[1].strip()
+            return f"[bright_green]UPX --------> [/bright_green]{rich_escape(rest)}"
+
+        # Error/warning lines
         if any(kw in stripped.lower() for kw in ("error", "warning", "fatal", "undefined")):
             return f"[red]{rich_escape(stripped)}[/red]"
 
