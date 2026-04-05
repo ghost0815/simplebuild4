@@ -255,7 +255,18 @@ def _do_build(
     filename = source.split("/")[-1].split("?")[0]
     filepath = downloads_dir / filename
 
-    if filepath.exists() and filepath.stat().st_size > 0 and not source.startswith("file://"):
+    if source.startswith("file://"):
+        # Local file — resolve relative to downloads_dir
+        file_ref = source[7:]  # strip "file://"
+        local_path = Path(file_ref) if file_ref.startswith("/") else downloads_dir / file_ref
+        if not local_path.exists():
+            if log:
+                log(f"[red]Local file not found: {local_path}[/red]")
+            return False
+        filepath = local_path
+        if log:
+            log(f"Using local file: {filepath.name}")
+    elif filepath.exists() and filepath.stat().st_size > 0:
         if log:
             log(f"Using cached {filename}")
     else:
