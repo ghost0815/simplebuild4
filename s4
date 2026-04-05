@@ -73,17 +73,16 @@ if [ "$1" == "update" ]; then
         git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
         echo ""
 
+        # Discard any local changes (e.g. from manual scp deploys)
+        git checkout . 2>/dev/null
+        git clean -fd 2>/dev/null
+
         if [ "$ahead" -gt 0 ]; then
-            echo "  Resetting to remote (local changes will be lost)..."
+            echo "  Resetting to remote (forced push detected)..."
             git reset "origin/$GIT_BRANCH" --hard 2>&1 | sed 's/^/  /'
         else
             echo "  Pulling updates..."
-            if ! git pull 2>&1 | sed 's/^/  /'; then
-                echo "  Pull failed — trying reset..."
-                git checkout . 2>/dev/null
-                git clean -fd 2>/dev/null
-                git pull 2>&1 | sed 's/^/  /'
-            fi
+            git pull 2>&1 | sed 's/^/  /'
         fi
 
         new_rev=$(git rev-list HEAD --count)

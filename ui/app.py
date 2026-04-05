@@ -193,6 +193,10 @@ class S4App(App):
                 self.notify("s4 is already up to date")
                 return
 
+            # Discard local changes before pull (e.g. from scp deploys)
+            subprocess.run(["git", "checkout", "."], cwd=str(root), capture_output=True, timeout=10)
+            subprocess.run(["git", "clean", "-fd"], cwd=str(root), capture_output=True, timeout=10)
+
             if ahead > 0:
                 # Force push detected — reset to remote
                 result = subprocess.run(
