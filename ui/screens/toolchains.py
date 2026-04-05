@@ -1886,12 +1886,8 @@ class ToolchainsScreen(Screen):
         install_dir = self.app.paths.toolchains_dir / tc.name
         if install_dir.exists():
             shutil.rmtree(install_dir)
-        # Only remove from local yaml if it exists in defaults (catalog toolchain)
-        # Keep local yaml entry for user-added toolchains (visible in Local collapsible)
-        if reg.get_from_defaults(tc.name):
-            local_tcs = reg._load_file(reg.local_path)
-            local_tcs = [t for t in local_tcs if t.name != tc.name]
-            reg.save_local(local_tcs)
+        # Never remove the local yaml entry — only delete the directory.
+        # installed=False is determined at load() by checking if dir exists.
         self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
         self._refresh()
 
