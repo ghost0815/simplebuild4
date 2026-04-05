@@ -1587,7 +1587,6 @@ class ToolchainsScreen(Screen):
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
 
-        self._show_tab("log")
         install_dir = self.app.paths.toolchains_dir / tc.name
         ok = True
         log = self._log_sync
@@ -1726,10 +1725,15 @@ class ToolchainsScreen(Screen):
         libc_type = "unknown"
         libc_ver = ""
         libc_so = None
+        lib_search = [sysroot_path / "lib", sysroot_path / "usr" / "lib",
+                      sysroot_path / "lib64", sysroot_path / "usr" / "lib64"]
         for candidate in ["libc.so.6", "libc.so", "libc.so.0"]:
-            found = list(sysroot_path.glob(f"**/{candidate}"))
-            if found:
-                libc_so = found[0]
+            for lib_dir in lib_search:
+                p = lib_dir / candidate
+                if p.exists():
+                    libc_so = p
+                    break
+            if libc_so:
                 break
         if libc_so:
             name_str = libc_so.name
@@ -1769,7 +1773,17 @@ class ToolchainsScreen(Screen):
                 log(fmt_fail("Header", f"{short} [dim]({header})[/dim]"))
 
         # --- Library Config (pkgconfig) ---
-        pkg_dirs = list(sysroot_path.glob("**/pkgconfig"))
+        if tc.native:
+            # Native: search known system pkgconfig dirs
+            pkg_dirs = [p for p in [
+                Path("/usr/lib/pkgconfig"),
+                Path("/usr/lib64/pkgconfig"),
+                Path("/usr/local/lib/pkgconfig"),
+                Path("/usr/share/pkgconfig"),
+                Path(f"/usr/lib/{target_arch}/pkgconfig") if target_arch else None,
+            ] if p and p.is_dir()]
+        else:
+            pkg_dirs = list(sysroot_path.glob("**/pkgconfig"))
         if pkg_dirs:
             for pkg_dir in pkg_dirs:
                 try:
@@ -1795,8 +1809,8 @@ class ToolchainsScreen(Screen):
                         base = pc_file.stem  # e.g. "libcrypto" from "libcrypto.pc"
                         # Map common pc names to lib names
                         lib_base = base.replace("openssl", "libcrypto").replace("zlib", "libz")
-                        has_static = bool(list(lib_dir.glob(f"{lib_base}.a")) or list(lib_dir.glob(f"**/{lib_base}.a")))
-                        has_dynamic = bool(list(lib_dir.glob(f"{lib_base}.so*")) or list(lib_dir.glob(f"**/{lib_base}.so*")))
+                        has_static = (lib_dir / f"{lib_base}.a").exists()
+                        has_dynamic = bool(list(lib_dir.glob(f"{lib_base}.so*")))
                         link_type = ""
                         if has_static and has_dynamic:
                             link_type = "static+dynamic"
