@@ -367,7 +367,7 @@ Switch.-on .switch--slider {
     margin: 0 1;
 }
 
-#tc-browser s4DataTable, #tc-selfbuild s4DataTable {
+#tc-browser S4DataTable, #tc-selfbuild S4DataTable {
     height: auto;
     max-height: 15;
     border-left: solid #444444;

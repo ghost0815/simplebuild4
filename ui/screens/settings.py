@@ -8,8 +8,8 @@ from textual.screen import Screen
 from textual.widgets import Static, Select, Switch, Input
 from textual.containers import Horizontal, VerticalScroll
 
-from ui.header import s4Header
-from ui.footer import s4Footer
+from ui.header import S4Header
+from ui.footer import S4Footer
 
 LANGUAGES = [
     ("English", "en"),
@@ -61,7 +61,7 @@ class SettingsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         s = self.app.settings
-        yield s4Header()
+        yield S4Header()
 
         with VerticalScroll(id="settings-content"):
             # General
@@ -121,7 +121,7 @@ class SettingsScreen(Screen):
                 classes="s-row",
             )
 
-        yield s4Footer(active_screen="settings")
+        yield S4Footer(active_screen="settings")
 
     def _save(self) -> None:
         s = self.app.settings

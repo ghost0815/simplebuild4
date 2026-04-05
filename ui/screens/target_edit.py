@@ -13,8 +13,8 @@ from core.target import Target, BuildSettings, UploadConfig, SourceConfig, Toolc
 from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
 from core.oscam_config import read_options, merge_options, OscamOptions
-from ui.header import s4Header
-from ui.footer import s4Footer
+from ui.header import S4Header
+from ui.footer import S4Footer
 
 
 def _switch_row(label: str, value: bool, widget_id: str) -> Horizontal:
@@ -111,7 +111,7 @@ class TargetEditScreen(Screen):
         tc_map = {tc.name: tc for tc in t.toolchains}
         oscam = self._load_oscam_options()
 
-        yield s4Header()
+        yield S4Header()
 
         # Tab bar
         with Horizontal(id="te-tab-bar"):
@@ -498,7 +498,7 @@ class TargetEditScreen(Screen):
                     classes="s-row",
                 )
 
-        yield s4Footer(active_screen="target_edit")
+        yield S4Footer(active_screen="target_edit")
 
     def on_mount(self) -> None:
         self._show_tab(self._active_tab)

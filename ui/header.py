@@ -9,18 +9,18 @@ DEDICATION = "in memory of gorgone"
 ICON = " s4 "
 
 
-class s4HeaderIcon(Static):
+class S4HeaderIcon(Static):
     """Clickable icon on the left side of the header."""
 
     DEFAULT_CSS = """
-    s4HeaderIcon {
+    S4HeaderIcon {
         width: auto;
         height: 1;
         background: $primary-darken-2;
         color: $text;
         text-style: bold;
     }
-    s4HeaderIcon:hover {
+    S4HeaderIcon:hover {
         background: $primary-lighten-1;
     }
     """
@@ -32,11 +32,11 @@ class s4HeaderIcon(Static):
         self.app.action_command_palette()
 
 
-class s4HeaderBar(Static):
+class S4HeaderBar(Static):
     """Center title and right-aligned version."""
 
     DEFAULT_CSS = """
-    s4HeaderBar {
+    S4HeaderBar {
         width: 1fr;
         height: 1;
         background: $primary;
@@ -58,11 +58,11 @@ class s4HeaderBar(Static):
         return f"{' ' * left_pad}{center}{' ' * right_pad}{version}"
 
 
-class s4Header(Horizontal):
+class S4Header(Horizontal):
     """Composite header with icon, title, and version."""
 
     DEFAULT_CSS = """
-    s4Header {
+    S4Header {
         dock: top;
         width: 100%;
         height: 1;
@@ -71,5 +71,5 @@ class s4Header(Horizontal):
     """
 
     def compose(self):
-        yield s4HeaderIcon()
-        yield s4HeaderBar()
+        yield S4HeaderIcon()
+        yield S4HeaderBar()

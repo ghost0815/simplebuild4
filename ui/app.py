@@ -5,17 +5,17 @@ from textual.binding import Binding
 
 from core.paths import Paths
 from core.settings import Settings
-from ui.commands import s4Commands
+from ui.commands import S4Commands
 
 
-class s4App(App):
+class S4App(App):
     """SimpleBuild4 TUI application."""
 
     TITLE = "SimpleBuild4"
     CSS_PATH = "theme.tcss"
 
     ENABLE_COMMAND_PALETTE = True
-    COMMANDS = App.COMMANDS | {s4Commands}
+    COMMANDS = App.COMMANDS | {S4Commands}
 
     BINDINGS = [
         Binding("q", "quit", "Quit", show=False),

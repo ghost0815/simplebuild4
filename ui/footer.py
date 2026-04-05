@@ -86,11 +86,11 @@ class FooterSpacer(Static):
         return ""
 
 
-class s4Footer(Horizontal):
+class S4Footer(Horizontal):
     """Unified clickable footer with left F-keys and right actions."""
 
     DEFAULT_CSS = """
-    s4Footer {
+    S4Footer {
         dock: bottom;
         width: 100%;
         height: 1;

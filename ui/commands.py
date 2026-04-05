@@ -10,7 +10,7 @@ S4_COMMANDS = [
 ]
 
 
-class s4Commands(Provider):
+class S4Commands(Provider):
     """s4 commands — appear first in the command palette."""
 
     async def discover(self) -> Hits:
