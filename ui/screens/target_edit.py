@@ -149,7 +149,9 @@ class TargetEditScreen(Screen):
                 )
                 compress_enabled = b.use_compress and bool(self._upx_path)
                 upx_switch = Switch(value=compress_enabled, id="f-use-compress", disabled=not bool(self._upx_path))
-                upx_switch.tooltip = self._upx_info.strip() if self._upx_path else "upx not found"
+                import re as _re
+                upx_tooltip = _re.sub(r'\[/?[a-z_ ]+\]', '', self._upx_info).strip() if self._upx_path else "upx not found"
+                upx_switch.tooltip = upx_tooltip
                 upx_binary_val = b.upx_binary or self._upx_path or ""
                 upx_path_inp = Input(value=upx_binary_val, placeholder="system default", id="t-upx-binary")
                 upx_path_inp.styles.width = "1fr"
@@ -634,11 +636,16 @@ class TargetEditScreen(Screen):
         # UPX binary path validation
         if iid == "t-upx-binary":
             from pathlib import Path as _P
+            import subprocess as _sp
             upx_path = event.value.strip()
             try:
                 switch = self.query_one("#f-use-compress", Switch)
                 if upx_path and _P(upx_path).exists():
-                    switch.tooltip = f"{upx_path} — OK"
+                    try:
+                        upx_ver = _sp.check_output([upx_path, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5).splitlines()[0]
+                    except Exception:
+                        upx_ver = "OK"
+                    switch.tooltip = f"{upx_path} — {upx_ver}"
                 elif upx_path:
                     switch.tooltip = f"{upx_path} — not found!"
                     self.notify(f"UPX binary not found: {upx_path}", severity="warning", timeout=3)
