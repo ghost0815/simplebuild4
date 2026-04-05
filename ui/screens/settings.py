@@ -26,12 +26,8 @@ LANGUAGES = [
 
 SWITCH_MAP = {
     "set-update-check": "update_check",
-    "set-verbose": "verbose",
-    "set-repo-autoupdate": "repo_autoupdate",
-    "set-url-check": "url_check",
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
-    "set-targz": "targz",
     "set-save-smargo": "save_smargo",
     "set-qemu-test": "qemu_test",
 }
@@ -81,12 +77,6 @@ class SettingsScreen(Screen):
                 classes="s-row",
             )
             yield _switch_row("Check for updates on start", s.update_check, "set-update-check")
-            yield _switch_row("Verbose output", s.verbose, "set-verbose")
-
-            # Repository
-            yield Static(" [bold]Repository[/bold]", classes="section-title")
-            yield _switch_row("Auto-update repo on start", s.repo_autoupdate, "set-repo-autoupdate")
-            yield _switch_row("Verify repo URL", s.url_check, "set-url-check")
 
             # Build
             yield Static(" [bold]Build[/bold]", classes="section-title")
@@ -102,7 +92,6 @@ class SettingsScreen(Screen):
             )
             yield _switch_row("Patch WebIf with build info", s.patch_webif, "set-patch-webif")
             yield _switch_row("Delete debug binary after build", s.delete_debug, "set-delete-debug")
-            yield _switch_row("Create tar.gz of binary", s.targz, "set-targz")
             yield _switch_row("Save list_smargo", s.save_smargo, "set-save-smargo")
 
             # Signing
