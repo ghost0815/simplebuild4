@@ -162,7 +162,7 @@ class S4App(App):
             screen.do_remove()
 
     def action_s4_update(self) -> None:
-        """Self-update s4 via git pull, then restart."""
+        """Self-update s4 via git pull (handles force pushes)."""
         import subprocess
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent
@@ -170,15 +170,43 @@ class S4App(App):
             self.notify("Not a git repository — use './s4 update' from shell", severity="warning")
             return
         try:
-            result = subprocess.run(
-                ["git", "pull"], cwd=str(root),
-                capture_output=True, text=True, timeout=30,
+            subprocess.run(
+                ["git", "fetch", "--prune"], cwd=str(root),
+                capture_output=True, text=True, timeout=15,
             )
-            output = result.stdout.strip()
-            if "Already up to date" in output:
+            branch = subprocess.run(
+                ["git", "branch", "--show-current"], cwd=str(root),
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+
+            ahead = int(subprocess.run(
+                ["git", "rev-list", f"origin/{branch}..HEAD", "--count"], cwd=str(root),
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip() or "0")
+
+            behind = int(subprocess.run(
+                ["git", "rev-list", f"HEAD..origin/{branch}", "--count"], cwd=str(root),
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip() or "0")
+
+            if behind == 0 and ahead == 0:
                 self.notify("s4 is already up to date")
-            elif result.returncode == 0:
-                self.notify("s4 updated — please restart", severity="warning")
+                return
+
+            if ahead > 0:
+                # Force push detected — reset to remote
+                result = subprocess.run(
+                    ["git", "reset", f"origin/{branch}", "--hard"], cwd=str(root),
+                    capture_output=True, text=True, timeout=30,
+                )
+            else:
+                result = subprocess.run(
+                    ["git", "pull"], cwd=str(root),
+                    capture_output=True, text=True, timeout=30,
+                )
+
+            if result.returncode == 0:
+                self.notify(f"s4 updated ({behind} new commits) — please restart", severity="warning")
             else:
                 self.notify(f"Update failed: {result.stderr.strip()}", severity="error")
         except Exception as e:
