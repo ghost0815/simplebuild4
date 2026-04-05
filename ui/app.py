@@ -167,8 +167,19 @@ class S4App(App):
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent
 
-        # Get RichLog from main screen
+        # Setup logging: RichLog + file
+        import re
+        from datetime import datetime
+        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        log_path = self.paths.logs_dir / f"{datetime.now().strftime('%Y-%m-%d.%H-%M-%S')}.s4-update.log"
+        log_file = open(log_path, "w", encoding="utf-8")
+
         def _log(msg: str) -> None:
+            # Write plain to file
+            plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
+            log_file.write(plain + "\n")
+            log_file.flush()
+            # Write markup to RichLog
             try:
                 from ui.screens.main import MainScreen
                 from textual.widgets import RichLog
@@ -277,3 +288,6 @@ class S4App(App):
         except Exception as e:
             _log(f"[red]Update failed: {e}[/red]")
             self.notify(f"Update failed: {e}", severity="error")
+        finally:
+            _log(f"Log: {log_path}")
+            log_file.close()
