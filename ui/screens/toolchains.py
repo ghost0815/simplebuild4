@@ -1732,56 +1732,82 @@ class ToolchainsScreen(Screen):
         else:
             log(fmt_fail("Linux", "version.h not found"))
 
-        # C-Library detection
-        libc_type = "unknown"
+        # C-Library detection (like s3: ldd --version for native, file search for cross)
+        libc_type = ""
         libc_ver = ""
-        libc_so = None
-        lib_search = [sysroot_path / "lib", sysroot_path / "usr" / "lib",
-                      sysroot_path / "lib64", sysroot_path / "usr" / "lib64"]
-        for candidate in ["libc.so.6", "libc.so", "libc.so.0"]:
-            for lib_dir in lib_search:
-                p = lib_dir / candidate
-                if p.exists():
-                    libc_so = p
-                    break
-            if libc_so:
-                break
-        if libc_so:
-            name_str = libc_so.name
-            if "musl" in str(libc_so) or "musl" in str(libc_so.resolve()):
-                libc_type = "musl"
-            elif "uclibc" in str(libc_so) or "uclibc" in str(libc_so.resolve()):
-                libc_type = "uclibc"
-            else:
-                libc_type = "glibc"
-            # Try to get version from the resolved symlink name
+        if tc.native:
             try:
-                resolved = libc_so.resolve().name
-                if "-" in resolved:
-                    libc_ver = resolved.split("-")[-1].replace(".so", "")
+                ldd_out = subprocess.check_output(
+                    ["ldd", "--version"], text=True, stderr=subprocess.STDOUT, timeout=5,
+                ).splitlines()[0].lower()
+                if "musl" in ldd_out:
+                    libc_type = "musl"
+                elif "glibc" in ldd_out or "gnu" in ldd_out:
+                    libc_type = "glibc"
+                # Extract version number
+                import re
+                ver_match = re.search(r'(\d+\.\d+)', ldd_out)
+                if ver_match:
+                    libc_ver = ver_match.group(1)
             except Exception:
                 pass
+        else:
+            lib_search = [sysroot_path / "lib", sysroot_path / "usr" / "lib",
+                          sysroot_path / "lib64", sysroot_path / "usr" / "lib64"]
+            libc_so = None
+            for candidate in ["libc.so.6", "libc.so", "libc.so.0"]:
+                for lib_dir in lib_search:
+                    p = lib_dir / candidate
+                    if p.exists():
+                        libc_so = p
+                        break
+                if libc_so:
+                    break
+            if libc_so:
+                resolved = str(libc_so.resolve()) if libc_so.is_symlink() else str(libc_so)
+                if "musl" in resolved:
+                    libc_type = "musl"
+                elif "uclibc" in resolved:
+                    libc_type = "uclibc"
+                else:
+                    libc_type = "glibc"
+                try:
+                    name = libc_so.resolve().name
+                    ver_match = re.search(r'(\d+\.\d+)', name)
+                    if ver_match:
+                        libc_ver = ver_match.group(1)
+                except Exception:
+                    pass
+        if libc_type:
             log(fmt_ok("C-Library", libc_type, libc_ver))
         else:
             log(fmt_fail("C-Library", "not found"))
 
         # Important header files
         check_headers = [
-            "openssl/opensslconf.h", "openssl/crypto.h",
+            ("openssl/opensslconf.h", "openssl/configuration.h"),  # opensslconf.h → configuration.h in OpenSSL 3.x
+            "openssl/crypto.h",
             "libusb-1.0/libusb.h", "PCSC/pcsclite.h",
             "pthread.h", "dvbcsa/dvbcsa.h",
         ]
-        for header in check_headers:
-            short = header.split("/")[-1]
+        for header_entry in check_headers:
+            # Support alternatives: ("openssl/opensslconf.h", "openssl/configuration.h")
+            alternatives = header_entry if isinstance(header_entry, tuple) else (header_entry,)
+            short = alternatives[0].split("/")[-1]
             found = False
-            for inc_dir in [sysroot_path / "usr" / "include", sysroot_path / "include"]:
-                if (inc_dir / header).exists():
-                    found = True
+            found_name = ""
+            for header in alternatives:
+                for inc_dir in [sysroot_path / "usr" / "include", sysroot_path / "include"]:
+                    if (inc_dir / header).exists():
+                        found = True
+                        found_name = header.split("/")[-1]
+                        break
+                if found:
                     break
             if found:
-                log(fmt_ok("Header", short))
+                log(fmt_ok("Header", found_name))
             else:
-                log(fmt_fail("Header", f"{short} [dim]({header})[/dim]"))
+                log(fmt_fail("Header", f"{short} [dim]({alternatives[0]})[/dim]"))
 
         # --- Library Config (pkgconfig) ---
         if tc.native:
