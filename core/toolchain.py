@@ -248,14 +248,41 @@ def _version_tuple(version: str) -> tuple:
     return tuple(result)
 
 
-def load_library_recipes(libraries_path: Path) -> list[dict]:
-    """Load library recipes from libraries.yaml."""
+def load_library_recipes(libraries_path: Path, local_path: Path | None = None) -> list[dict]:
+    """Load library recipes from libraries.yaml, with optional local overrides.
+
+    Local entries with the same 'name' supersede the default entry completely.
+    New entries in local are appended.
+    """
     if not libraries_path.exists():
         return []
     data = yaml.safe_load(libraries_path.read_text(encoding="utf-8"))
     if not data or "libraries" not in data:
         return []
-    return data["libraries"]
+    recipes = data["libraries"]
+
+    # Merge local overrides
+    if local_path and local_path.exists():
+        local_data = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+        if local_data and "libraries" in local_data:
+            local_by_name = {lib["name"]: lib for lib in local_data["libraries"]}
+            # Replace defaults with local overrides
+            merged = []
+            seen = set()
+            for lib in recipes:
+                name = lib["name"]
+                if name in local_by_name:
+                    merged.append(local_by_name[name])
+                else:
+                    merged.append(lib)
+                seen.add(name)
+            # Append new local-only entries
+            for lib in local_data["libraries"]:
+                if lib["name"] not in seen:
+                    merged.append(lib)
+            recipes = merged
+
+    return recipes
 
 
 def check_library_updates(

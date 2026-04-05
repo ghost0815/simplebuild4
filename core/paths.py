@@ -18,6 +18,7 @@ class Paths:
     toolchains_dir: Path  # installed toolchains
     toolchains_defaults: Path  # shipped toolchain registry (defaults/toolchains.yaml)
     toolchains_local: Path     # user toolchain additions (data/toolchains.local.yaml)
+    libraries_local: Path      # user library overrides (data/libraries.local.yaml)
     logs_dir: Path
     patches_dir: Path
     binaries_dir: Path
@@ -38,6 +39,7 @@ class Paths:
             toolchains_dir=data / "toolchains",
             toolchains_defaults=root / "defaults" / "toolchains.yaml",
             toolchains_local=data / "toolchains.local.yaml",
+            libraries_local=data / "libraries.local.yaml",
             logs_dir=data / "logs",
             patches_dir=data / "patches",
             binaries_dir=data / "binaries",

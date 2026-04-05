@@ -730,7 +730,7 @@ class ToolchainsScreen(Screen):
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot, native=tc.native)
 
-            recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml")
+            recipes = load_library_recipes(self.app.paths.defaults_dir / "libraries.yaml", self.app.paths.libraries_local)
             has_c11 = self._check_c11(install_dir, tc.prefix)
             libs = check_library_updates(libs, recipes, has_c11=has_c11)
 
@@ -921,6 +921,7 @@ class ToolchainsScreen(Screen):
                         toolchain_cflags=tc.cflags,
                         toolchain_ldflags=tc.ldflags,
                         libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
+                        libraries_local=self.app.paths.libraries_local,
                         downloads_dir=self.app.paths.downloads_dir,
                         logs_dir=self.app.paths.logs_dir,
                         max_cpus=self.app.settings.max_cpus,

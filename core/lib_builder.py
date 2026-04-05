@@ -83,6 +83,7 @@ def build_library(
     native: bool = False,
     cancel_check: Optional[Callable[[], bool]] = None,
     log: Optional[Callable[[str], None]] = None,
+    libraries_local: Optional[Path] = None,
 ) -> bool:
     """Build and install a library into the toolchain sysroot.
 
@@ -131,6 +132,7 @@ def build_library(
             lib_name, version, toolchain_dir, toolchain_prefix,
             toolchain_sysroot, toolchain_cflags, toolchain_ldflags,
             libraries_yaml, downloads_dir, max_cpus, native, cancel_check, log,
+            libraries_local,
         )
         log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if log_file:
@@ -160,10 +162,11 @@ def _do_build(
     native: bool,
     cancel_check: Optional[Callable[[], bool]],
     log: Callable[[str], None],
+    libraries_local: Optional[Path] = None,
 ) -> bool:
     """Internal build logic."""
-    # Load recipe
-    recipe = _find_recipe(lib_name, version, libraries_yaml)
+    # Load recipe (local overrides defaults)
+    recipe = _find_recipe(lib_name, version, libraries_yaml, libraries_local)
     if not recipe:
         if log:
             log(f"[red]No recipe found for {lib_name} {version}[/red]")
@@ -388,15 +391,13 @@ def _do_build(
     return True
 
 
-def _find_recipe(lib_name: str, version: str, libraries_yaml: Path) -> Optional[dict]:
-    """Find the matching recipe and variant."""
-    if not libraries_yaml.exists():
-        return None
-    data = yaml.safe_load(libraries_yaml.read_text(encoding="utf-8"))
-    if not data or "libraries" not in data:
-        return None
+def _find_recipe(lib_name: str, version: str, libraries_yaml: Path,
+                  libraries_local: Optional[Path] = None) -> Optional[dict]:
+    """Find the matching recipe and variant. Local overrides defaults."""
+    from core.toolchain import load_library_recipes
+    recipes = load_library_recipes(libraries_yaml, libraries_local)
 
-    for lib in data["libraries"]:
+    for lib in recipes:
         if lib["name"] != lib_name:
             continue
         defaults = {k: v for k, v in lib.items() if k not in ("name", "pc_file", "version_check", "variants", "depends")}
