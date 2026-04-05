@@ -34,7 +34,7 @@ class Settings:
     # QEMU
     qemu_test: bool = False
     qemu_timeout: int = 5
-    qemu_expect: str = "Server running"
+    qemu_expect: str = "local cards done"
 
     def save(self, path: Path) -> None:
         """Save settings to YAML."""

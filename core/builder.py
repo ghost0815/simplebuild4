@@ -42,6 +42,9 @@ class BuildEngine:
         delete_debug: bool = True,
         save_smargo: bool = True,
         patch_webif: bool = True,
+        qemu_test: bool = False,
+        qemu_timeout: int = 5,
+        qemu_expect: str = "Server running",
         build_overrides: str = "",
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
@@ -63,6 +66,9 @@ class BuildEngine:
         self.delete_debug = delete_debug
         self.save_smargo = save_smargo
         self.patch_webif = patch_webif
+        self.qemu_test = qemu_test
+        self.qemu_timeout = qemu_timeout
+        self.qemu_expect = qemu_expect
         self.build_overrides = build_overrides
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
@@ -233,7 +239,8 @@ class BuildEngine:
     # Post-Build (runs immediately after each make, before next distclean)
     # -------------------------------------------------------------------------
 
-    def _postbuild_single(self, bin_path: Path, repo_dir: Path) -> None:
+    def _postbuild_single(self, bin_path: Path, repo_dir: Path,
+                          cross: str = "", sysroot: str = "", is_native: bool = True) -> None:
         """Post-build tasks for a single build — runs immediately after each make.
 
         Must happen before distclean of the next build, otherwise Distribution/
@@ -254,6 +261,149 @@ class BuildEngine:
                     dest = self.binaries_dir / smargo.name
                     shutil.move(str(smargo), str(dest))
                     self._log(f"Saved: {smargo.name}")
+
+        # Smoke test: QEMU for cross, direct for native
+        if self.qemu_test:
+            if is_native:
+                self._native_smoke_test(bin_path)
+            elif cross:
+                self._qemu_smoke_test(bin_path, cross, sysroot)
+
+    def _native_smoke_test(self, bin_path: Path) -> None:
+        """Run a smoke test on a native binary (direct execution)."""
+        import time
+        import threading
+
+        timeout = self.qemu_timeout
+        expect = self.qemu_expect
+
+        self._log(f"[cyan]TEST -------> [/cyan]testing {bin_path.name} ([red]{timeout}s timeout[/red])")
+
+        try:
+            proc = subprocess.Popen(
+                [str(bin_path)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                preexec_fn=os.setsid,
+            )
+
+            found = False
+
+            def reader():
+                nonlocal found
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    if stripped:
+                        self._log(f"          {stripped}")
+                    if expect and expect in stripped:
+                        found = True
+                        return
+
+            t = threading.Thread(target=reader, daemon=True)
+            t.start()
+
+            start = time.time()
+            while time.time() - start < timeout:
+                if found or self._cancel():
+                    break
+                time.sleep(0.2)
+
+            try:
+                os.killpg(os.getpgid(proc.pid), 9)
+                proc.wait(timeout=2)
+            except Exception:
+                pass
+
+            if self._cancel():
+                self._log("[yellow]TEST -------> CANCELLED[/yellow]")
+            elif found:
+                self._log(f"[green]TEST -------> PASS ({expect} found)[/green]")
+            else:
+                self._log(f"[red]TEST -------> FAIL ({expect} not found within {timeout}s)[/red]")
+
+        except Exception as e:
+            self._log(f"[red]TEST -------> ERROR: {e}[/red]")
+
+    def _qemu_smoke_test(self, bin_path: Path, cross: str, sysroot: str) -> None:
+        """Run a QEMU smoke test on a cross-compiled binary (like s3).
+
+        Starts the binary under qemu-<arch>, waits for expected output string,
+        kills after timeout. PASS if expected string found, FAIL otherwise.
+        """
+        import shutil as _shutil
+        import time
+        import threading
+
+        # Determine qemu arch from cross-compiler's target
+        try:
+            dumpmachine = subprocess.run(
+                [f"{cross}gcc", "-dumpmachine"], capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
+            qemu_arch = dumpmachine.split("-")[0]
+        except Exception:
+            self._log("[yellow]QEMU -------> SKIP (cannot determine arch)[/yellow]")
+            return
+
+        qemu_bin = f"qemu-{qemu_arch}"
+        if not _shutil.which(qemu_bin):
+            self._log(f"[yellow]QEMU -------> SKIP ({qemu_bin} not found)[/yellow]")
+            return
+
+        # Prepare sysroot for qemu -L (strip trailing /usr)
+        qemu_sysroot = sysroot.rstrip("/")
+        if qemu_sysroot.endswith("/usr"):
+            qemu_sysroot = qemu_sysroot[:-4]
+
+        timeout = self.qemu_timeout
+        expect = self.qemu_expect
+
+        self._log(f"[cyan]QEMU -------> [/cyan]testing {bin_path.name} ([red]{timeout}s timeout[/red])")
+
+        try:
+            proc = subprocess.Popen(
+                [qemu_bin, "-L", qemu_sysroot, str(bin_path)],
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                preexec_fn=os.setsid,
+            )
+
+            found = False
+
+            # Reader thread to avoid blocking on readline
+            def reader():
+                nonlocal found
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    if stripped and not stripped.startswith("qemu: Unsupported syscall"):
+                        self._log(f"          {stripped}")
+                    if expect and expect in stripped:
+                        found = True
+                        return
+
+            t = threading.Thread(target=reader, daemon=True)
+            t.start()
+
+            # Wait for expect string or timeout
+            start = time.time()
+            while time.time() - start < timeout:
+                if found or self._cancel():
+                    break
+                time.sleep(0.2)
+
+            # Kill entire process group (oscam may fork)
+            try:
+                os.killpg(os.getpgid(proc.pid), 9)
+                proc.wait(timeout=2)
+            except Exception:
+                pass
+
+            if self._cancel():
+                self._log("[yellow]QEMU -------> CANCELLED[/yellow]")
+            elif found:
+                self._log(f"[green]QEMU -------> PASS ({expect} found)[/green]")
+            else:
+                self._log(f"[red]QEMU -------> FAIL ({expect} not found within {timeout}s)[/red]")
+
+        except Exception as e:
+            self._log(f"[red]QEMU -------> ERROR: {e}[/red]")
 
     def _close_log(self, log_path: Path) -> None:
         """Close the build log file and show its path."""
@@ -726,7 +876,7 @@ class BuildEngine:
             self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
 
             # Post-build: immediately after each build (before distclean of next build)
-            self._postbuild_single(bin_path, repo_dir)
+            self._postbuild_single(bin_path, repo_dir, cross, sysroot, is_native)
 
             return bin_path
         else:
