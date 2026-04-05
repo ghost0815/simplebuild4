@@ -6,7 +6,7 @@ from textual.containers import Horizontal
 # Left side: F-key menu items (key, label, action, available_on_screens)
 # available_on = None means available everywhere
 FOOTER_LEFT = [
-    ("F1", "Options", "action_command_palette", None),
+    ("F1", "Settings", "action_command_palette", None),
     ("F2", "Targets", "action_open_targets", None),
     ("F3", "Repositories", "action_open_repository", None),
     ("F4", "Toolchains", "action_open_toolchains", None),
@@ -15,7 +15,8 @@ FOOTER_LEFT = [
 
 # Which screen each F-key navigates to (for highlighting)
 SCREEN_MAP = {
-    "F2": "target_edit",
+    "F1": "settings",
+    "F2": "main",
     "F3": "repository",
     "F4": "toolchains",
 }
