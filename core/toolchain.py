@@ -314,15 +314,14 @@ def check_library_updates(
                 exact_match = True
                 break
 
-        # For "auto" variants: installed "1.1.0-128" matches if any fixed variant
-        # shares the same base (e.g. "1.1.0-64" → base "1.1.0")
+        # For "auto" variants: installed "1.1.0-128-neon" or "1.1.0-128" matches
+        # if it starts with any variant's base version (e.g. "1.1.0-")
         if not exact_match and has_auto and "-" in lib.version:
-            installed_base = lib.version.rsplit("-", 1)[0]  # "1.1.0-128" → "1.1.0"
             for v in available:
                 v_version = v.get("version", "")
                 if v_version not in ("auto", "master") and "-" in v_version:
-                    variant_base = v_version.rsplit("-", 1)[0]  # "1.1.0-64" → "1.1.0"
-                    if installed_base == variant_base:
+                    variant_base = v_version.split("-")[0]  # "1.1.0-64" → "1.1.0"
+                    if lib.version.startswith(variant_base + "-"):
                         exact_match = True
                         break
 
