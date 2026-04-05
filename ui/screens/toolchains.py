@@ -1587,6 +1587,7 @@ class ToolchainsScreen(Screen):
             self.notify(f"{tc.name} is not installed", severity="warning")
             return
 
+        self._show_tab("log")
         install_dir = self.app.paths.toolchains_dir / tc.name
         ok = True
         log = self._log_sync
