@@ -255,10 +255,14 @@ def _do_build(
     filename = source.split("/")[-1].split("?")[0]
     filepath = downloads_dir / filename
 
-    if log:
-        log(f"Downloading {filename}...")
-    if not _download(source, filepath, log):
-        return False
+    if filepath.exists() and filepath.stat().st_size > 0 and not source.startswith("file://"):
+        if log:
+            log(f"Using cached {filename}")
+    else:
+        if log:
+            log(f"Downloading {filename}...")
+        if not _download(source, filepath, log):
+            return False
 
     if _cancelled():
         log("[yellow]Cancelled[/yellow]")
