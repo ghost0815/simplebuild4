@@ -276,7 +276,7 @@ class TargetEditScreen(Screen):
             patches_dir = self.app.paths.patches_dir
             available_patches = sorted(p.name for p in patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
 
-            with Collapsible(title=f"Sources ({src_count} selected)", collapsed=False, id="col-sources"):
+            with Collapsible(title=f"Repositories ({src_count} selected)", collapsed=False, id="col-sources"):
                 for r in repos:
                     enabled = r.name in src_names
                     sc = src_map.get(r.name, SourceConfig(name=r.name))
