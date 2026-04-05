@@ -43,8 +43,17 @@ class S4App(App):
         from pathlib import Path
         return self.paths.root / "data" / "settings.yaml"
 
+    def watch_theme(self, theme: str) -> None:
+        """Save theme to settings when changed via command palette."""
+        if hasattr(self, 'settings') and self.settings.theme != theme:
+            self.settings.theme = theme
+            self.settings.save(self.settings_path)
+
     def on_mount(self) -> None:
         self.paths.ensure_dirs()
+        # Restore saved theme
+        if self.settings.theme:
+            self.theme = self.settings.theme
         from ui.screens.main import MainScreen
         self.push_screen(MainScreen())
 

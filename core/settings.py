@@ -14,6 +14,7 @@ class Settings:
 
     # General
     language: str = "en"
+    theme: str = "textual-dark"    # Textual theme name (auto-saved)
     update_check: bool = False
     last_target: str = ""          # Last loaded target path (auto-saved)
 
@@ -41,6 +42,7 @@ class Settings:
         data = {
             "last_target": self.last_target,
             "language": self.language,
+            "theme": self.theme,
             "update_check": self.update_check,
             "s4_url": self.s4_url,
             "compiler_opt": self.compiler_opt,
@@ -70,6 +72,7 @@ class Settings:
         return cls(
             last_target=data.get("last_target", ""),
             language=data.get("language", "en"),
+            theme=data.get("theme", "textual-dark"),
             update_check=data.get("update_check", True),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
