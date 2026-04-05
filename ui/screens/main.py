@@ -179,10 +179,20 @@ class MainScreen(Screen):
             f"  [bold]{target.name}[/bold] — {target.description}",
             f"  Repositories: {repo_str}",
             f"  Toolchains:   {tc_str}",
-            self._wrap_values("  Options:      ", all_opts),
+        ]
+        # Options per category
+        if b.modules:
+            lines.append(self._wrap_values("  Addons:       ", b.modules))
+        if b.protocols:
+            lines.append(self._wrap_values("  Protocols:    ", b.protocols))
+        if b.readers:
+            lines.append(self._wrap_values("  Readers:      ", b.readers))
+        if b.card_readers:
+            lines.append(self._wrap_values("  Card Readers: ", b.card_readers))
+        lines.extend([
             self._wrap_values("  Libraries:    ", lib_flags) + (f"  [dim]Static: {static_str}[/dim]" if static_str else ""),
             self._wrap_values("  Hardware:     ", hw_flags),
-        ]
+        ])
         if b.use_compress:
             lines.append(f"  Compress:     USE_COMPRESS ({b.compress_level})")
         lines.append(f"  Upload:       {upload_str}")
