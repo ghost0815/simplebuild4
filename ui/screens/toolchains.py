@@ -1138,6 +1138,7 @@ class ToolchainsScreen(Screen):
 
             self._relocate_toolchain(install_dir, tc)
             self._fix_pc_files(install_dir)
+            self._fix_la_files(install_dir)
             # Add entry to local yaml only if not already there (defaults → local copy)
             reg = self._get_registry()
             local_tcs = reg._load_file(reg.local_path)
@@ -1326,6 +1327,7 @@ class ToolchainsScreen(Screen):
                 subdir.rmdir()
 
             self._fix_pc_files(install_dir)
+            self._fix_la_files(install_dir)
             self._relocate_toolchain(install_dir, tc)
             self._log(f"[green]{tc.name} restored from backup[/green]")
             self.app.call_from_thread(self._set_installed_row_desc, tc.name, tc.description)
@@ -1410,6 +1412,7 @@ class ToolchainsScreen(Screen):
 
             # Fix .pc files with wrong prefix paths from backup
             self._fix_pc_files(install_dir)
+            self._fix_la_files(install_dir)
 
             # Check if this toolchain exists in defaults catalog (use its config)
             reg = self._get_registry()
@@ -1484,6 +1487,47 @@ class ToolchainsScreen(Screen):
                     self._log(f"  Fixed {pc_file.name}")
             except Exception:
                 pass
+
+    def _fix_la_files(self, install_dir: Path) -> None:
+        """Fix .la files: replace '=' sysroot prefix in dependency_libs with actual path.
+
+        OE-SDK .la files use '=/usr/lib/...' as sysroot-relative paths, but
+        libtool on the host doesn't understand the '=' prefix. We replace it
+        with the actual sysroot path.
+        """
+        la_files = list(install_dir.glob("**/*.la"))
+        if not la_files:
+            return
+        # Find sysroot — look for usr/lib pattern
+        sysroot = ""
+        for la in la_files:
+            # Walk up from .la to find the sysroot root (parent of usr/lib or lib)
+            p = la.parent
+            while p != install_dir and p != p.parent:
+                if (p / "usr" / "lib").is_dir() or (p / "lib").is_dir():
+                    sysroot = str(p)
+                    break
+                p = p.parent
+            if sysroot:
+                break
+        if not sysroot:
+            return
+
+        fixed = 0
+        for la_file in la_files:
+            try:
+                content = la_file.read_text(encoding="utf-8", errors="replace")
+                if "dependency_libs" not in content or "=/" not in content:
+                    continue
+                # Replace =/usr/lib/... with <sysroot>/usr/lib/...
+                new_content = content.replace(" =/", f" {sysroot}/")
+                if new_content != content:
+                    la_file.write_text(new_content, encoding="utf-8")
+                    fixed += 1
+            except Exception:
+                pass
+        if fixed:
+            self._log(f"  Fixed {fixed} .la files (sysroot={sysroot})")
 
     def _detect_toolchain(self, name: str, install_dir: Path) -> "Toolchain | None":
         """Auto-detect toolchain properties from an extracted directory."""
