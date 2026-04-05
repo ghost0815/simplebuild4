@@ -14,7 +14,7 @@ class Settings:
 
     # General
     language: str = "en"
-    update_check: bool = True
+    update_check: bool = False
     last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
@@ -25,7 +25,7 @@ class Settings:
     max_cpus: int = 16
     patch_webif: bool = True
     delete_debug: bool = True
-    save_smargo: bool = True
+    save_smargo: bool = False
 
     # Signing
     sign_cert: str = ""
