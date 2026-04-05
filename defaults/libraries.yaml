@@ -24,7 +24,7 @@ libraries:
     pc_file: openssl.pc
     version_check: github:openssl/openssl
     source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
-    configure: "./Configure linux-generic32 --prefix=@PREFIX@ --cross-compile-prefix=@CROSS@ shared no-tests no-threads"
+    configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
     make: "make -j@CPUS@"
     install: "make install_sw"
     extra:
