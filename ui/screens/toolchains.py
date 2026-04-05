@@ -1711,12 +1711,22 @@ class ToolchainsScreen(Screen):
         if linux_h:
             try:
                 content = linux_h.read_text(errors="replace")
+                linux_ver = ""
                 for line in content.splitlines():
-                    if "LINUX_VERSION_CODE" in line or "UTS_RELEASE" in line:
-                        log(fmt_ok("Linux", "version.h", line.strip()))
+                    if "LINUX_VERSION_CODE" in line and "#define" in line:
+                        try:
+                            code = int(line.split()[-1])
+                            major = code >> 16
+                            minor = (code >> 8) & 0xFF
+                            patch = code & 0xFF
+                            linux_ver = f"{major}.{minor}.{patch}"
+                        except (ValueError, IndexError):
+                            linux_ver = line.strip()
                         break
-                else:
-                    log(fmt_ok("Linux", "version.h"))
+                    elif "UTS_RELEASE" in line:
+                        linux_ver = line.strip()
+                        break
+                log(fmt_ok("Linux", "version.h", linux_ver or "found"))
             except Exception:
                 log(fmt_ok("Linux", "version.h"))
         else:
