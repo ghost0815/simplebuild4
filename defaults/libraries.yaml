@@ -136,7 +136,7 @@ libraries:
       resolve_libusb: 'export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
       fix_version: 'find . -name "configure.ac" -type f -exec sed -i "s/[0-9]\.[0-9]\.[0-9]/@VERSION@/g" {} \;'
       fix_wirecheck: 'find . -name "pcsc-wirecheck-main.c" -type f -exec sed -i "s/pcsc_assert_wire_constants ()/0/g" {} \;'
-    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=no --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers"
+    configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=@PREFIX@/lib/systemd/system --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install"
     depends: [libusb, zlib]
