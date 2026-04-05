@@ -1106,16 +1106,28 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
             return b.use_oscamname
 
         # Revision info — detect VCS type
+        # Like s3: use config.sh --oscam-revision for the revision number
         is_git = (repo_dir / ".git").exists()
         is_svn = (repo_dir / ".svn").exists()
+        config_sh = repo_dir / "config.sh"
+
         if is_git:
             vcs = "git"
             rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
             commit = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) or "unknown"
         elif is_svn:
             vcs = "svn"
-            rev = self._run_output(["svnversion"], cwd=repo_dir) or "0"
-            commit = rev
+            # Use config.sh --oscam-revision like s3 (cleaner than svnversion)
+            if config_sh.exists():
+                from core.oscam_config import _run_config_sh
+                rev = _run_config_sh(config_sh, ["--oscam-revision"]) or ""
+                if not rev:
+                    # Fallback: config.sh --oscam-version | cut revision part
+                    ver = _run_config_sh(config_sh, ["--oscam-version"]) or ""
+                    rev = ver.split("-", 1)[1] if "-" in ver else ver
+            if not rev:
+                rev = self._run_output(["svnversion"], cwd=repo_dir) or "0"
+            commit = ""
         else:
             vcs = "git"
             rev = "0"
@@ -1188,7 +1200,12 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
         # Assemble
         feat_str = "-" + "-".join(features) if features else ""
-        return f"oscam-{vcs}{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
+        # Git: oscam-git10864@6c8324e0-toolchain-features
+        # SVN: oscam-svn2039-toolchain-features (no @commit)
+        if commit:
+            return f"oscam-{vcs}{rev}@{commit}-{tc_part}{backend}{feat_str}{linking}"
+        else:
+            return f"oscam-{vcs}{rev}-{tc_part}{backend}{feat_str}{linking}"
 
     def _get_native_lib_paths(self, tc_dir: Path) -> list[str]:
         """Get library search paths for native toolchain.
