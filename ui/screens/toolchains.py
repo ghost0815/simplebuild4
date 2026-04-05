@@ -376,7 +376,9 @@ class ToolchainsScreen(Screen):
                 pass
 
         # Border titles
-        self.query_one("#tc-output", RichLog).border_title = "Output"
+        tc_output = self.query_one("#tc-output", RichLog)
+        tc_output.border_title = "Output"
+        tc_output.write("")  # Prevent IndexError on empty RichLog click
 
         # Restore log
         if ToolchainsScreen._log_history:
