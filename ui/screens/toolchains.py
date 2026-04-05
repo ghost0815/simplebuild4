@@ -711,6 +711,8 @@ class ToolchainsScreen(Screen):
 
     def _update_libraries(self) -> None:
         """Scan libraries and update pre-created rows with options."""
+        if self._building:
+            return  # Don't refresh while building — preserves status display
         try:
             name = ToolchainsScreen._selected_tc
             if not name:
