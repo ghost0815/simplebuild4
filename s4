@@ -109,43 +109,66 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-# --- Check Python modules ---
-missing=()
-$PYTHON -c "import textual" 2>/dev/null || missing+=("python3-textual")
-$PYTHON -c "import yaml" 2>/dev/null   || missing+=("python3-yaml")
+# --- Check Python modules (import + version) ---
+TEXTUAL_OK=$($PYTHON -c "
+try:
+    import textual
+    v = tuple(int(x) for x in textual.__version__.split('.')[:2])
+    print('ok' if v >= (2, 0) else 'old')
+except ImportError:
+    print('missing')
+" 2>/dev/null)
+YAML_OK=$($PYTHON -c "import yaml; print('ok')" 2>/dev/null)
 
-if [ ${#missing[@]} -gt 0 ]; then
-    echo -e "\n  s4 requires: ${missing[*]}\n"
+if [ "$TEXTUAL_OK" != "ok" ] || [ "$YAML_OK" != "ok" ]; then
+    echo ""
+    [ "$TEXTUAL_OK" == "missing" ] && echo "  textual: not installed"
+    [ "$TEXTUAL_OK" == "old" ] && echo "  textual: too old (need >= 2.0)"
+    [ "$YAML_OK" != "ok" ] && echo "  pyyaml: not installed"
+    echo ""
 
-    # Determine how to get root
-    rootuser="$(ps -jf 1 | tail -n 1 | awk '{print $1}')"
-    if [ "$EUID" -ne 0 ]; then
-        ! hash "sudo" 2>/dev/null && prefix="su $rootuser -c" || prefix="sudo sh -c"
+    # Try pip first (gets latest version, works everywhere)
+    if $PYTHON -m pip --version &>/dev/null; then
+        echo "  Installing via pip..."
+        $PYTHON -m pip install --user textual pyyaml 2>/dev/null \
+            || $PYTHON -m pip install --user --break-system-packages textual pyyaml 2>/dev/null
     else
-        prefix="sh -c"
-    fi
+        # Fallback: apt/dnf/pacman
+        rootuser="$(ps -jf 1 | tail -n 1 | awk '{print $1}')"
+        if [ "$EUID" -ne 0 ]; then
+            ! hash "sudo" 2>/dev/null && prefix="su $rootuser -c" || prefix="sudo sh -c"
+        else
+            prefix="sh -c"
+        fi
 
-    # Detect package manager
-    if [ -f /etc/debian_version ]; then
-        echo "  Installing via apt..."
-        [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "\n  Enter $rootuser password: "
-        $prefix "apt-get -y -qq install ${missing[*]}" || exit 1
-    elif [ -f /etc/redhat-release ]; then
-        echo "  Installing via dnf..."
-        $prefix "dnf -y install ${missing[*]}" || exit 1
-    elif [ -f /etc/arch-release ] || [ -f /etc/manjaro-release ]; then
-        echo "  Installing via pacman..."
-        $prefix "pacman -S --noconfirm ${missing[*]}" || exit 1
-    else
-        echo "  Please install manually: ${missing[*]}"
-        exit 1
+        if [ -f /etc/debian_version ]; then
+            echo "  Installing via apt + pip..."
+            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "\n  Enter $rootuser password: "
+            $prefix "apt-get -y -qq install python3-pip python3-yaml" 2>/dev/null
+            $PYTHON -m pip install --user textual 2>/dev/null \
+                || $PYTHON -m pip install --user --break-system-packages textual 2>/dev/null
+        elif [ -f /etc/redhat-release ]; then
+            echo "  Installing via dnf..."
+            $prefix "dnf -y install python3-pip python3-pyyaml" 2>/dev/null
+            $PYTHON -m pip install --user textual 2>/dev/null \
+                || $PYTHON -m pip install --user --break-system-packages textual 2>/dev/null
+        elif [ -f /etc/arch-release ] || [ -f /etc/manjaro-release ]; then
+            echo "  Installing via pacman..."
+            $prefix "pacman -S --noconfirm python-textual python-yaml" 2>/dev/null
+        else
+            echo "  Please install manually: pip install textual pyyaml"
+            exit 1
+        fi
     fi
 
     # Verify
-    $PYTHON -c "import textual" 2>/dev/null && $PYTHON -c "import yaml" 2>/dev/null || {
-        echo -e "\n  Installation failed. Please install manually: ${missing[*]}"
+    TEXTUAL_OK=$($PYTHON -c "import textual; v = tuple(int(x) for x in textual.__version__.split('.')[:2]); print('ok' if v >= (2, 0) else 'old')" 2>/dev/null)
+    $PYTHON -c "import yaml" 2>/dev/null
+    if [ "$TEXTUAL_OK" != "ok" ]; then
+        echo -e "\n  Installation failed. Please install manually:"
+        echo "  $PYTHON -m pip install textual pyyaml"
         exit 1
-    }
+    fi
     echo -e "  Done.\n"
 fi
 
