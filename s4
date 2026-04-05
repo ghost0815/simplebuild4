@@ -7,47 +7,84 @@ if [ "$1" == "update" ]; then
     echo -e "\n  s4 self-update"
     echo -e "  ==============\n"
 
-    if [ ! -d .git ]; then
-        echo "  Not a git repository — cannot self-update."
-        echo "  Please re-install with: git clone https://git.streamboard.tv/common/simplebuild4.git"
-        exit 1
-    fi
+    if [ -d .git ]; then
+        # --- Git repo: fetch + pull ---
+        GIT_BRANCH="$(git branch --show-current)"
+        git fetch --prune 2>&1 | sed 's/^/  /'
 
-    GIT_BRANCH="$(git branch --show-current)"
-    git fetch --prune 2>&1 | sed 's/^/  /'
+        ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
+        behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
+        local_rev=$(git rev-list HEAD --count)
+        local_commit=$(git log HEAD -n1 --oneline)
+        online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
+        online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
 
-    ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
-    behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
-    local_rev=$(git rev-list HEAD --count)
-    local_commit=$(git log HEAD -n1 --oneline)
-    online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
-    online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
-
-    if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
-        echo -e "  \033[1;32ms4 is up to date\033[0m"
-        echo "  Revision $local_rev: $local_commit"
-    else
-        echo "  Local:  r$local_rev $local_commit"
-        echo "  Online: r$online_rev $online_commit"
-        echo ""
-        git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
-        echo ""
-
-        # Discard any local changes (e.g. from manual scp deploys)
-        git checkout . 2>/dev/null
-        git clean -fd 2>/dev/null
-
-        if [ "$ahead" -gt 0 ]; then
-            echo "  Resetting to remote (forced push detected)..."
-            git reset "origin/$GIT_BRANCH" --hard 2>&1 | sed 's/^/  /'
+        if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+            echo -e "  \033[1;32ms4 is up to date\033[0m"
+            echo "  Revision $local_rev: $local_commit"
         else
-            echo "  Pulling updates..."
-            git pull 2>&1 | sed 's/^/  /'
+            echo "  Local:  r$local_rev $local_commit"
+            echo "  Online: r$online_rev $online_commit"
+            echo ""
+            git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
+            echo ""
+
+            # Discard any local changes
+            git checkout . 2>/dev/null
+            git clean -fd 2>/dev/null
+
+            if [ "$ahead" -gt 0 ]; then
+                echo "  Resetting to remote (forced push detected)..."
+                git reset "origin/$GIT_BRANCH" --hard 2>&1 | sed 's/^/  /'
+            else
+                echo "  Pulling updates..."
+                git pull 2>&1 | sed 's/^/  /'
+            fi
+
+            new_rev=$(git rev-list HEAD --count)
+            new_commit=$(git log HEAD -n1 --oneline)
+            echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
+        fi
+    else
+        # --- No git repo: clone to temp, copy files over (like s3) ---
+        S4_URL="https://git.streamboard.tv/common/simplebuild4.git"
+        # Try reading URL from settings
+        [ -f data/settings.yaml ] && _url=$(grep 's4_url:' data/settings.yaml 2>/dev/null | awk '{print $2}') && [ -n "$_url" ] && S4_URL="$_url"
+
+        echo "  No git repo — updating from $S4_URL"
+        S4_TMP="/tmp/s4_update_$$"
+        rm -rf "$S4_TMP"
+
+        echo "  Cloning..."
+        if ! git clone --depth 1 "$S4_URL" "$S4_TMP" 2>&1 | sed 's/^/  /'; then
+            echo -e "  \033[1;31mClone failed\033[0m"
+            rm -rf "$S4_TMP"
+            exit 1
         fi
 
-        new_rev=$(git rev-list HEAD --count)
-        new_commit=$(git log HEAD -n1 --oneline)
-        echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
+        echo "  Updating files..."
+        # Copy everything except data/ directory
+        for item in "$S4_TMP"/*; do
+            name="$(basename "$item")"
+            [ "$name" == "data" ] && continue
+            [ "$name" == ".git" ] && continue
+            rm -rf "./$name"
+            cp -rf "$item" "./$name"
+            echo "    $name"
+        done
+        # Hidden files (.gitignore, .gitattributes)
+        for item in "$S4_TMP"/.[!.]*; do
+            name="$(basename "$item")"
+            [ "$name" == ".git" ] && continue
+            cp -f "$item" "./$name"
+            echo "    $name"
+        done
+
+        chmod +x ./s4 2>/dev/null
+        rm -rf "$S4_TMP"
+
+        online_rev=$(cd /tmp && git ls-remote "$S4_URL" HEAD | cut -c1-8)
+        echo -e "\n  \033[1;32mUpdated to $online_rev\033[0m"
     fi
     echo ""
     exit 0
