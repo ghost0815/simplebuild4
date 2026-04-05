@@ -24,7 +24,7 @@ class S4App(App):
         Binding("ctrl+a", "select_all", show=False),
         Binding("ctrl+p", "command_palette", show=False),
         Binding("f12", "save_action", show=False),
-        Binding("f1", "command_palette", show=False),
+        Binding("f1", "s4_settings", show=False),
         Binding("f2", "open_targets", show=False),
         Binding("f3", "open_repository", show=False),
         Binding("f4", "open_toolchains", show=False),

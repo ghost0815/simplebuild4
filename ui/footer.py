@@ -6,7 +6,7 @@ from textual.containers import Horizontal
 # Left side: F-key menu items (key, label, action, available_on_screens)
 # available_on = None means available everywhere
 FOOTER_LEFT = [
-    ("F1", "Settings", "action_command_palette", None),
+    ("F1", "Settings", "action_s4_settings", None),
     ("F2", "Targets", "action_open_targets", None),
     ("F3", "Repositories", "action_open_repository", None),
     ("F4", "Toolchains", "action_open_toolchains", None),
