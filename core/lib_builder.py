@@ -361,6 +361,9 @@ def _do_build(
         script_parts.append(pre_configure)
 
     if configure:
+        # OpenSSL's Configure handles CC via --cross-compile-prefix — unset CC to avoid doubling
+        if "--cross-compile-prefix" in configure:
+            script_parts.append("unset CC RANLIB")
         script_parts.append(f"# configure")
         script_parts.append(configure)
 
