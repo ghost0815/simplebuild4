@@ -10,8 +10,8 @@ from textual.containers import Horizontal, Vertical
 
 from core.target import Target
 from core.repo import RepoState
-from ui.header import S4Header
-from ui.footer import S4Footer
+from ui.header import s4Header
+from ui.footer import s4Footer
 
 
 class MainScreen(Screen):
@@ -27,7 +27,7 @@ class MainScreen(Screen):
         self._show_tab("log")
 
     def compose(self) -> ComposeResult:
-        yield S4Header()
+        yield s4Header()
 
         with Vertical(id="content"):
             # Target selector + build options
@@ -63,7 +63,7 @@ class MainScreen(Screen):
             # Output log (always visible, grows to fill space)
             yield RichLog(id="output", highlight=False, markup=True, wrap=True)
 
-        yield S4Footer(active_screen="main")
+        yield s4Footer(active_screen="main")
 
     def on_mount(self) -> None:
         self.query_one("#output", RichLog).border_title = "Output"

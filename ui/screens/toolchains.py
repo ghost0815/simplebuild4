@@ -18,14 +18,14 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
 from core.lib_builder import build_library, sort_by_dependencies
-from ui.header import S4Header
+from ui.header import s4Header
 
 
-class S4DataTable(DataTable):
+class s4DataTable(DataTable):
     """DataTable with custom cursor colors."""
 
     DEFAULT_CSS = """
-    S4DataTable {
+    s4DataTable {
         background: $surface;
         color: $foreground;
         height: auto;
@@ -69,7 +69,7 @@ class S4DataTable(DataTable):
         }
     }
     """
-from ui.footer import S4Footer
+from ui.footer import s4Footer
 
 CATEGORIES = [
     ("local", "Local"),
@@ -241,7 +241,7 @@ class ToolchainsScreen(Screen):
     def compose(self) -> ComposeResult:
         reg = self._get_registry()
 
-        yield S4Header()
+        yield s4Header()
 
         with Horizontal(id="tc-main"):
             # Left: Toolchain browser (half screen)
@@ -268,7 +268,7 @@ class ToolchainsScreen(Screen):
 
                 # Installed toolchains (always visible)
                 yield Static(" [bold]Installed[/bold]", id="tc-installed-label")
-                yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
+                yield s4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
 
                 # PreBuild / SelfBuild tabs
                 with Horizontal(id="tc-left-tab-bar"):
@@ -283,19 +283,19 @@ class ToolchainsScreen(Screen):
                         else:
                             tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
                         with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
-                            table = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+                            table = s4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
                             yield table
 
                 # SelfBuild panel (hidden by default)
                 with VerticalScroll(id="tc-selfbuild"):
                     with Collapsible(title="OE-SDK (0)", collapsed=True, id="cat-sb-oesdk"):
-                        yield S4DataTable(id="tbl-sb-oesdk", cursor_type="row", zebra_stripes=True)
+                        yield s4DataTable(id="tbl-sb-oesdk", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="CrosstoolNG (0)", collapsed=True, id="cat-sb-ctng"):
-                        yield S4DataTable(id="tbl-sb-ctng", cursor_type="row", zebra_stripes=True)
+                        yield s4DataTable(id="tbl-sb-ctng", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="FreetzNG (0)", collapsed=True, id="cat-sb-freetz"):
-                        yield S4DataTable(id="tbl-sb-freetz", cursor_type="row", zebra_stripes=True)
+                        yield s4DataTable(id="tbl-sb-freetz", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="Android-SDK (0)", collapsed=True, id="cat-sb-android"):
-                        yield S4DataTable(id="tbl-sb-android", cursor_type="row", zebra_stripes=True)
+                        yield s4DataTable(id="tbl-sb-android", cursor_type="row", zebra_stripes=True)
 
             # Right: Details + Output
             with Vertical(id="tc-right"):
@@ -331,7 +331,7 @@ class ToolchainsScreen(Screen):
                 # Output
                 yield RichLog(highlight=False, markup=True, id="tc-output", wrap=True)
 
-        yield S4Footer(active_screen="toolchains")
+        yield s4Footer(active_screen="toolchains")
 
     def on_mount(self) -> None:
         reg = self._get_registry()

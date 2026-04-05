@@ -1,4 +1,4 @@
-"""Custom S4 footer widget — unified across all screens, clickable."""
+"""Custom s4 footer widget — unified across all screens, clickable."""
 
 from textual.widgets import Static
 from textual.containers import Horizontal
@@ -86,11 +86,11 @@ class FooterSpacer(Static):
         return ""
 
 
-class S4Footer(Horizontal):
+class s4Footer(Horizontal):
     """Unified clickable footer with left F-keys and right actions."""
 
     DEFAULT_CSS = """
-    S4Footer {
+    s4Footer {
         dock: bottom;
         width: 100%;
         height: 1;

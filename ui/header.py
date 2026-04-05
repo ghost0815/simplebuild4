@@ -1,4 +1,4 @@
-"""Custom S4 header widget."""
+"""Custom s4 header widget."""
 
 from textual.widgets import Static
 from textual.containers import Horizontal
@@ -9,18 +9,18 @@ DEDICATION = "in memory of gorgone"
 ICON = " s4 "
 
 
-class S4HeaderIcon(Static):
+class s4HeaderIcon(Static):
     """Clickable icon on the left side of the header."""
 
     DEFAULT_CSS = """
-    S4HeaderIcon {
+    s4HeaderIcon {
         width: auto;
         height: 1;
         background: $primary-darken-2;
         color: $text;
         text-style: bold;
     }
-    S4HeaderIcon:hover {
+    s4HeaderIcon:hover {
         background: $primary-lighten-1;
     }
     """
@@ -32,11 +32,11 @@ class S4HeaderIcon(Static):
         self.app.action_command_palette()
 
 
-class S4HeaderBar(Static):
+class s4HeaderBar(Static):
     """Center title and right-aligned version."""
 
     DEFAULT_CSS = """
-    S4HeaderBar {
+    s4HeaderBar {
         width: 1fr;
         height: 1;
         background: $primary;
@@ -58,11 +58,11 @@ class S4HeaderBar(Static):
         return f"{' ' * left_pad}{center}{' ' * right_pad}{version}"
 
 
-class S4Header(Horizontal):
+class s4Header(Horizontal):
     """Composite header with icon, title, and version."""
 
     DEFAULT_CSS = """
-    S4Header {
+    s4Header {
         dock: top;
         width: 100%;
         height: 1;
@@ -71,5 +71,5 @@ class S4Header(Horizontal):
     """
 
     def compose(self):
-        yield S4HeaderIcon()
-        yield S4HeaderBar()
+        yield s4HeaderIcon()
+        yield s4HeaderBar()

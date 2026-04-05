@@ -1,4 +1,4 @@
-"""Custom command palette entries for S4."""
+"""Custom command palette entries for s4."""
 
 from __future__ import annotations
 
@@ -6,12 +6,12 @@ from textual.command import Provider, Hit, Hits, DiscoveryHit
 
 S4_COMMANDS = [
     ("Update", "Online update", "action_s4_update"),
-    ("Settings", "S4 settings", "action_s4_settings"),
+    ("Settings", "s4 settings", "action_s4_settings"),
 ]
 
 
-class S4Commands(Provider):
-    """S4 commands — appear first in the command palette."""
+class s4Commands(Provider):
+    """s4 commands — appear first in the command palette."""
 
     async def discover(self) -> Hits:
         for name, help_text, action in S4_COMMANDS:

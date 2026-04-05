@@ -1,4 +1,4 @@
-"""Settings screen — S4 application settings."""
+"""Settings screen — s4 application settings."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from textual.screen import Screen
 from textual.widgets import Static, Select, Switch, Input
 from textual.containers import Horizontal, VerticalScroll
 
-from ui.header import S4Header
-from ui.footer import S4Footer
+from ui.header import s4Header
+from ui.footer import s4Footer
 
 LANGUAGES = [
     ("English", "en"),
@@ -61,7 +61,7 @@ class SettingsScreen(Screen):
 
     def compose(self) -> ComposeResult:
         s = self.app.settings
-        yield S4Header()
+        yield s4Header()
 
         with VerticalScroll(id="settings-content"):
             # General
@@ -72,7 +72,7 @@ class SettingsScreen(Screen):
                 classes="s-row-tall",
             )
             yield Horizontal(
-                Static(" S4 update URL", classes="s-label"),
+                Static(" s4 update URL", classes="s-label"),
                 Input(value=s.s4_url, id="set-s4-url"),
                 classes="s-row",
             )
@@ -121,7 +121,7 @@ class SettingsScreen(Screen):
                 classes="s-row",
             )
 
-        yield S4Footer(active_screen="settings")
+        yield s4Footer(active_screen="settings")
 
     def _save(self) -> None:
         s = self.app.settings

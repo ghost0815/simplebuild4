@@ -14,8 +14,8 @@ from core.repo import RepoConfig, RepoManager, RepoState
 from core.repos_config import load_repos, save_repos
 from core.target import Target
 from core.patches import load_patch_sources, download_patches
-from ui.header import S4Header
-from ui.footer import S4Footer
+from ui.header import s4Header
+from ui.footer import s4Footer
 
 
 class RepositoryScreen(Screen):
@@ -32,7 +32,7 @@ class RepositoryScreen(Screen):
     def compose(self) -> ComposeResult:
         self._repos = load_repos(self.app.paths.repos_config)
 
-        yield S4Header()
+        yield s4Header()
 
         with VerticalScroll(id="repo-scroll"):
             # Status box
@@ -115,7 +115,7 @@ class RepositoryScreen(Screen):
                     yield Static(" Switch to", classes="repo-label")
                     yield Input(placeholder="SHA, tag or branch (after clone)", id="edit-repo-switch")
 
-        yield S4Footer(active_screen="repository")
+        yield s4Footer(active_screen="repository")
 
     def on_mount(self) -> None:
         """Fill edit fields and restore log on mount."""

@@ -1,4 +1,4 @@
-"""S4 settings — persistent application configuration."""
+"""s4 settings — persistent application configuration."""
 
 from __future__ import annotations
 

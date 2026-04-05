@@ -12,8 +12,8 @@ def main():
     except ImportError:
         sys.exit("s4 requires textual. Install with: pip install textual pyyaml")
 
-    from ui.app import S4App
+    from ui.app import s4App
 
     paths = Paths.detect()
-    app = S4App(paths=paths)
+    app = s4App(paths=paths)
     app.run()
