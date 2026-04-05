@@ -317,7 +317,9 @@ def _do_build(
         env["CFLAGS"] = toolchain_cflags
     if toolchain_ldflags:
         env["LDFLAGS"] = toolchain_ldflags
-    env["CC"] = cc
+    # Embed CFLAGS into CC (like s3 for OE-SDK) — some build systems (OpenSSL 1.0.x)
+    # ignore CFLAGS env but respect CC
+    env["CC"] = f"{cc} {toolchain_cflags}".strip() if toolchain_cflags else cc
     env["RANLIB"] = ranlib
 
     # Auto-inject --sysroot if compiler cannot find headers (same as s3 for OE-SDK)
