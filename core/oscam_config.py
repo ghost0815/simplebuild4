@@ -116,18 +116,16 @@ def apply_config(
 
     if to_enable:
         _log(f"  Enabling {len(to_enable)} options...")
-        result = _run_config_sh(config_sh, ["-E"] + to_enable)
-        if result:
-            for line in result.splitlines():
-                if line.strip():
-                    _log(f"    {line.strip()}")
+        for opt in to_enable:
+            _log(f"    [green]Enable[/green] {opt}")
+        _run_config_sh(config_sh, ["-E"] + to_enable)
 
     # Step 4: Show final state
     for category, label in [("addons", "Addons"), ("protocols", "Protocols"),
                              ("readers", "Readers"), ("card_readers", "Card Readers")]:
         final = _run_config_sh(config_sh, ["--show-enabled", category])
         count = len(final.split()) if final else 0
-        _log(f"  {label}: {count} enabled")
+        _log(f"  [bold]{label}[/bold]: [green]{count}[/green] enabled")
 
     return True
 
