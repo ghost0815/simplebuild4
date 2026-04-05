@@ -2,10 +2,29 @@
 # SimpleBuild4 launcher
 cd "$(dirname "$(readlink -f "$0")")"
 
+# --- Find Python 3.10+ ---
+PYTHON=""
+for py in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do
+    if command -v "$py" &>/dev/null; then
+        ver=$("$py" -c "import sys; print(sys.version_info >= (3,10))" 2>/dev/null)
+        if [ "$ver" == "True" ]; then
+            PYTHON="$py"
+            break
+        fi
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo -e "\n  s4 requires Python 3.10 or newer."
+    echo "  Found: $(python3 --version 2>/dev/null || echo 'none')"
+    echo "  Install Python 3.10+ or compile from source."
+    exit 1
+fi
+
 # --- Check Python modules ---
 missing=()
-python3 -c "import textual" 2>/dev/null || missing+=("python3-textual")
-python3 -c "import yaml" 2>/dev/null   || missing+=("python3-yaml")
+$PYTHON -c "import textual" 2>/dev/null || missing+=("python3-textual")
+$PYTHON -c "import yaml" 2>/dev/null   || missing+=("python3-yaml")
 
 if [ ${#missing[@]} -gt 0 ]; then
     echo -e "\n  s4 requires: ${missing[*]}\n"
@@ -35,7 +54,7 @@ if [ ${#missing[@]} -gt 0 ]; then
     fi
 
     # Verify
-    python3 -c "import textual" 2>/dev/null && python3 -c "import yaml" 2>/dev/null || {
+    $PYTHON -c "import textual" 2>/dev/null && $PYTHON -c "import yaml" 2>/dev/null || {
         echo -e "\n  Installation failed. Please install manually: ${missing[*]}"
         exit 1
     }
@@ -49,7 +68,7 @@ if [ "$1" == "update" ]; then
 
     if [ ! -d .git ]; then
         echo "  Not a git repository — cannot self-update."
-        echo "  Please re-install with: git clone $(python3 -c "from core.settings import Settings; print(Settings.s4_url)" 2>/dev/null || echo 'https://git.streamboard.tv/common/simplebuild4.git')"
+        echo "  Please re-install with: git clone $($PYTHON -c "from core.settings import Settings; print(Settings.s4_url)" 2>/dev/null || echo 'https://git.streamboard.tv/common/simplebuild4.git')"
         exit 1
     fi
 
@@ -93,4 +112,4 @@ if [ "$1" == "update" ]; then
     exit 0
 fi
 
-exec python3 s4.py "$@"
+exec $PYTHON s4.py "$@"
