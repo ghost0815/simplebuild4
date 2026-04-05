@@ -530,7 +530,7 @@ class ToolchainRegistry:
                 stapi_lib=entry.get("stapi_lib", ""),
                 url=entry.get("url", ""),
                 checksum=entry.get("checksum", ""),
-                strip_components=entry.get("strip_components", 1),
+                strip_components=entry.get("strip_components", 0),
                 selfbuild=entry.get("selfbuild", False),
                 native=entry.get("native", False),
             )
