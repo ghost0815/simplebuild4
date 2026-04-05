@@ -335,7 +335,7 @@ def _do_build(
             )
             if test_result.returncode != 0:
                 sysroot_inject = f"--sysroot={sysroot_path}"
-                env["CC"] = f"{cc} {sysroot_inject}"
+                env["CC"] = f"{cc} {toolchain_cflags} {sysroot_inject}".strip()
                 if toolchain_cflags and "--sysroot" not in toolchain_cflags:
                     env["CFLAGS"] = f"{env.get('CFLAGS', '')} {sysroot_inject}".strip()
                 elif not toolchain_cflags:
