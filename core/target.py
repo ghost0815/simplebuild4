@@ -83,7 +83,7 @@ class BuildSettings:
 
     # USE flags — Other
     use_compress: bool = False
-    compress_level: str = "--best" # UPX compression level (--best, --ultra-brute, -1..-9)
+    compress_level: str = "--lzma" # UPX compression level (--lzma, --best, --ultra-brute, -1..-9)
     use_oscamname: str = ""        # Custom binary name (empty = default)
     stapi_lib: str = ""            # STAPI library path override
 
@@ -249,7 +249,7 @@ class Target:
             static_pcsc=build_data.get("static_pcsc", False),
             static_libdvbcsa=build_data.get("static_libdvbcsa", False),
             use_compress=build_data.get("use_compress", False),
-            compress_level=build_data.get("compress_level", "--best"),
+            compress_level=build_data.get("compress_level", "--lzma"),
             use_oscamname=build_data.get("use_oscamname", ""),
             stapi_lib=build_data.get("stapi_lib", ""),
             build_system=build_data.get("build_system", "make"),
