@@ -3,17 +3,4 @@ __pycache__/
 *.pyo
 .venv/
 .claude/
-
-# User data (created at runtime)
-data/toolchains/
-data/toolchains.local.yaml
-data/toolchains.cfg/
-data/binaries/
-data/downloads/
-data/logs/
-data/patches/
-data/targets/
-data/repos/
-data/backups/
-data/repos.yaml
-data/settings.yaml
+data/
