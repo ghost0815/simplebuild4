@@ -134,9 +134,11 @@ class RepositoryScreen(Screen):
             self._update_output()
 
     def _format_status(self, repo: RepoConfig, state: RepoState) -> str:
+        from rich.markup import escape as _esc
+        safe_url = _esc(repo.url)
         if not state.exists:
             return (
-                f"  [bold]{repo.name}[/bold]  {repo.url}\n"
+                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
                 f"  Status: [red]not checked out[/red]"
             )
         vcs = state.vcs.upper()
@@ -153,12 +155,12 @@ class RepositoryScreen(Screen):
         if state.vcs == "git":
             version = state.tag if state.tag else f"r{state.revision}"
             return (
-                f"  [bold]{repo.name}[/bold]  {repo.url}\n"
+                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
                 f"  {vcs}  {version} @ {state.commit} @ {branch}{patched}"
             )
         else:
             return (
-                f"  [bold]{repo.name}[/bold]  {repo.url}\n"
+                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
                 f"  {vcs}  r{state.revision} @ {branch}{patched}"
             )
 
