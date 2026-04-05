@@ -194,7 +194,9 @@ class MainScreen(Screen):
             self._wrap_values("  Hardware:     ", hw_flags),
         ])
         if b.use_compress:
-            lines.append(f"  Compress:     USE_COMPRESS ({b.compress_level})")
+            import shutil as _shutil
+            upx_path = b.upx_binary or _shutil.which("upx") or "not found"
+            lines.append(f"  Compress:     USE_COMPRESS ({b.compress_level})  [dim]{upx_path}[/dim]")
         lines.append(f"  Upload:       {upload_str}")
 
         info = self.query_one("#info", Static)
