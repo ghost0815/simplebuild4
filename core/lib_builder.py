@@ -307,10 +307,10 @@ def _do_build(
     try:
         gcc_path = shutil.which(cc, path=env["PATH"])
         if gcc_path:
-            # Test if gcc can actually compile — if not, it needs --sysroot
+            # Test if gcc can find system headers — if not, it needs --sysroot
             test_result = subprocess.run(
                 [gcc_path, "-c", "-x", "c", "-o", "/dev/null", "-"],
-                input="int main(){return 0;}\n", text=True,
+                input="#include <stdio.h>\nint main(){return 0;}\n", text=True,
                 capture_output=True, timeout=10, env=env,
             )
             if test_result.returncode != 0:
