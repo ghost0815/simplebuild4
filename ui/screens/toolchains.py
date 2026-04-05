@@ -71,7 +71,7 @@ class S4DataTable(DataTable):
     """
 from ui.footer import S4Footer
 
-CATEGORIES = [
+_BASE_CATEGORIES = [
     ("local", "Local"),
     ("common", "Common"),
     ("stb", "STB"),
@@ -83,6 +83,23 @@ CATEGORIES = [
     ("tv", "TV"),
     ("legacy", "Legacy"),
 ]
+
+
+def _build_categories(reg) -> list[tuple[str, str]]:
+    """Build category list: base categories + custom ones inserted after 'Local'."""
+    known_keys = {k for k, _ in _BASE_CATEGORIES}
+    custom = []
+    for tc in reg.catalog_toolchains() + reg.local_toolchains():
+        cat = tc.category
+        if cat and cat not in known_keys and cat != "native":
+            known_keys.add(cat)
+            custom.append((cat, cat.capitalize()))
+    categories = []
+    for entry in _BASE_CATEGORIES:
+        categories.append(entry)
+        if entry[0] == "local":
+            categories.extend(sorted(custom))
+    return categories
 
 
 class FilePickerScreen(ModalScreen[tuple]):
@@ -276,12 +293,15 @@ class ToolchainsScreen(Screen):
                     yield Static(" [b]S[/b]elfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
 
                 # PreBuild panel — catalog categories + local
+                self._categories = _build_categories(reg)
+                all_catalog = reg.catalog_toolchains()
+                all_local = reg.local_toolchains()
                 with VerticalScroll(id="tc-browser"):
-                    for cat_key, cat_label in CATEGORIES:
+                    for cat_key, cat_label in self._categories:
                         if cat_key == "local":
-                            tcs = reg.local_toolchains()
+                            tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
                         else:
-                            tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
+                            tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
                         with Collapsible(title=f"{cat_label} ({len(tcs)})", collapsed=True, id=f"cat-{cat_key}"):
                             table = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
                             yield table
@@ -351,11 +371,13 @@ class ToolchainsScreen(Screen):
                 tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
 
         # Populate category tables
-        for cat_key, _ in CATEGORIES:
+        all_catalog = reg.catalog_toolchains()
+        all_local = reg.local_toolchains()
+        for cat_key, _ in self._categories:
             if cat_key == "local":
-                tcs = reg.local_toolchains()
+                tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
             else:
-                tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
+                tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
             if not tcs:
                 continue
             try:
@@ -452,11 +474,13 @@ class ToolchainsScreen(Screen):
             pass
 
         # Rebuild category tables
-        for cat_key, cat_label in CATEGORIES:
+        all_catalog = reg.catalog_toolchains()
+        all_local = reg.local_toolchains()
+        for cat_key, cat_label in self._categories:
             if cat_key == "local":
-                tcs = reg.local_toolchains()
+                tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
             else:
-                tcs = [tc for tc in reg.catalog_toolchains() if tc.category == cat_key]
+                tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
             if not tcs:
                 continue
             try:
@@ -517,7 +541,7 @@ class ToolchainsScreen(Screen):
         tc = reg.get(tc_name)
         if not tc:
             return
-        for cat_key, _ in CATEGORIES:
+        for cat_key, _ in self._categories:
             try:
                 tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
                 row_keys = {k.value: k for k in tbl.rows}
@@ -1111,12 +1135,13 @@ class ToolchainsScreen(Screen):
 
             self._relocate_toolchain(install_dir, tc)
             self._fix_pc_files(install_dir)
-            # Copy entry from defaults catalog to local yaml
+            # Add entry to local yaml only if not already there (defaults → local copy)
             reg = self._get_registry()
             local_tcs = reg._load_file(reg.local_path)
-            local_tcs = [t for t in local_tcs if t.name != tc.name]
-            local_tcs.append(tc)
-            reg.save_local(local_tcs)
+            local_names = {t.name for t in local_tcs}
+            if tc.name not in local_names:
+                local_tcs.append(tc)
+                reg.save_local(local_tcs)
             self._log(f"[green]{tc.name} installed successfully[/green]")
             self.app.call_from_thread(self._set_installed_status, tc, "done")
 
