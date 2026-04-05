@@ -2,6 +2,57 @@
 # SimpleBuild4 launcher
 cd "$(dirname "$(readlink -f "$0")")"
 
+# --- Self-update (./s4 update) — no Python needed ---
+if [ "$1" == "update" ]; then
+    echo -e "\n  s4 self-update"
+    echo -e "  ==============\n"
+
+    if [ ! -d .git ]; then
+        echo "  Not a git repository — cannot self-update."
+        echo "  Please re-install with: git clone https://git.streamboard.tv/common/simplebuild4.git"
+        exit 1
+    fi
+
+    GIT_BRANCH="$(git branch --show-current)"
+    git fetch --prune 2>&1 | sed 's/^/  /'
+
+    ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
+    behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
+    local_rev=$(git rev-list HEAD --count)
+    local_commit=$(git log HEAD -n1 --oneline)
+    online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
+    online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
+
+    if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+        echo -e "  \033[1;32ms4 is up to date\033[0m"
+        echo "  Revision $local_rev: $local_commit"
+    else
+        echo "  Local:  r$local_rev $local_commit"
+        echo "  Online: r$online_rev $online_commit"
+        echo ""
+        git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
+        echo ""
+
+        # Discard any local changes (e.g. from manual scp deploys)
+        git checkout . 2>/dev/null
+        git clean -fd 2>/dev/null
+
+        if [ "$ahead" -gt 0 ]; then
+            echo "  Resetting to remote (forced push detected)..."
+            git reset "origin/$GIT_BRANCH" --hard 2>&1 | sed 's/^/  /'
+        else
+            echo "  Pulling updates..."
+            git pull 2>&1 | sed 's/^/  /'
+        fi
+
+        new_rev=$(git rev-list HEAD --count)
+        new_commit=$(git log HEAD -n1 --oneline)
+        echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
+    fi
+    echo ""
+    exit 0
+fi
+
 # --- Find Python 3.10+ ---
 PYTHON=""
 for py in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do
@@ -59,57 +110,6 @@ if [ ${#missing[@]} -gt 0 ]; then
         exit 1
     }
     echo -e "  Done.\n"
-fi
-
-# --- Self-update (./s4 update) ---
-if [ "$1" == "update" ]; then
-    echo -e "\n  s4 self-update"
-    echo -e "  ==============\n"
-
-    if [ ! -d .git ]; then
-        echo "  Not a git repository — cannot self-update."
-        echo "  Please re-install with: git clone $($PYTHON -c "from core.settings import Settings; print(Settings.s4_url)" 2>/dev/null || echo 'https://git.streamboard.tv/common/simplebuild4.git')"
-        exit 1
-    fi
-
-    GIT_BRANCH="$(git branch --show-current)"
-    git fetch --prune 2>&1 | sed 's/^/  /'
-
-    ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
-    behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
-    local_rev=$(git rev-list HEAD --count)
-    local_commit=$(git log HEAD -n1 --oneline)
-    online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
-    online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
-
-    if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
-        echo -e "  \033[1;32ms4 is up to date\033[0m"
-        echo "  Revision $local_rev: $local_commit"
-    else
-        echo "  Local:  r$local_rev $local_commit"
-        echo "  Online: r$online_rev $online_commit"
-        echo ""
-        git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
-        echo ""
-
-        # Discard any local changes (e.g. from manual scp deploys)
-        git checkout . 2>/dev/null
-        git clean -fd 2>/dev/null
-
-        if [ "$ahead" -gt 0 ]; then
-            echo "  Resetting to remote (forced push detected)..."
-            git reset "origin/$GIT_BRANCH" --hard 2>&1 | sed 's/^/  /'
-        else
-            echo "  Pulling updates..."
-            git pull 2>&1 | sed 's/^/  /'
-        fi
-
-        new_rev=$(git rev-list HEAD --count)
-        new_commit=$(git log HEAD -n1 --oneline)
-        echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
-    fi
-    echo ""
-    exit 0
 fi
 
 exec $PYTHON s4.py "$@"
