@@ -823,6 +823,9 @@ class TargetEditScreen(Screen):
             return ""
         path = self.save_path or (self.app.paths.targets_dir / f"{target.name}.yaml")
         target.save(path)
+        self.save_path = path
+        # Remember for main screen to select after returning
+        self.app._last_saved_target = str(path)
         return f"Target '{target.name}' saved"
 
     def action_go_back(self) -> None:

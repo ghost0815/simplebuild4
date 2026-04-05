@@ -193,11 +193,15 @@ class MainScreen(Screen):
     def on_screen_resume(self) -> None:
         """Refresh target list when returning from another screen."""
         sel = self.query_one("#target-select", Select)
-        previous = sel.value if isinstance(sel.value, str) else None
+        # Prefer last saved target (from target editor), then previous selection
+        select_path = getattr(self.app, "_last_saved_target", None)
+        if not select_path:
+            select_path = sel.value if isinstance(sel.value, str) else None
+        self.app._last_saved_target = None
         self._refresh_targets()
-        if previous:
+        if select_path:
             try:
-                sel.value = previous
+                sel.value = select_path
             except Exception:
                 pass
 
