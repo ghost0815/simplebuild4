@@ -122,13 +122,16 @@ class BuildEngine:
         self._log(f"[bold]Building {self.target.name}: {len(sources)} source(s) x {len(toolchains)} toolchain(s) = {total} build(s)[/bold]")
         self._log("")
 
-        # Resolve repo directories
+        # Resolve repo directories — auto-clone if missing
         repo_dirs: dict[str, Path] = {}
         for src in sources:
             repo_dir = self._find_repo_dir(src.name)
             if not repo_dir:
-                self._log(f"[red]Repository '{src.name}' not found — skipping[/red]")
-            else:
+                # Try to clone the repo
+                repo_dir = self._auto_clone_repo(src.name)
+                if not repo_dir:
+                    self._log(f"[red]Repository '{src.name}' not found — skipping[/red]")
+            if repo_dir:
                 repo_dirs[src.name] = repo_dir
 
         if not repo_dirs:
@@ -412,6 +415,23 @@ class BuildEngine:
             self._log_file.close()
         except Exception:
             pass
+
+    def _auto_clone_repo(self, source_name: str) -> Optional[Path]:
+        """Auto-clone a repository if it doesn't exist yet."""
+        try:
+            from core.repos_config import load_repos
+            from core.repo import RepoManager
+            repos = load_repos(self.repos_config)
+            for rc in repos:
+                if rc.name == source_name:
+                    mgr = RepoManager(rc, self.repos_dir, self.backup_dir)
+                    self._log(f"[cyan]Cloning repository '{source_name}' from {rc.url}...[/cyan]")
+                    if mgr.clone(log=self._log):
+                        return mgr.repo_path
+                    return None
+        except Exception as e:
+            self._log(f"[red]Auto-clone failed: {e}[/red]")
+        return None
 
     # -------------------------------------------------------------------------
     # PHASE 1: Prepare Repository
