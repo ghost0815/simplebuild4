@@ -1796,8 +1796,12 @@ class ToolchainsScreen(Screen):
             short = alternatives[0].split("/")[-1]
             found = False
             found_name = ""
+            inc_dirs = [sysroot_path / "usr" / "include", sysroot_path / "include"]
+            # Native: add multiarch include path (e.g. /usr/include/x86_64-linux-gnu)
+            if tc.native and target_arch:
+                inc_dirs.append(Path(f"/usr/include/{target_arch}"))
             for header in alternatives:
-                for inc_dir in [sysroot_path / "usr" / "include", sysroot_path / "include"]:
+                for inc_dir in inc_dirs:
                     if (inc_dir / header).exists():
                         found = True
                         found_name = header.split("/")[-1]
