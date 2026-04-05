@@ -211,9 +211,9 @@ class FilePickerScreen(ModalScreen[tuple]):
 
 class ToolchainsScreen(Screen):
     BINDINGS = [
-        ("1", "switch_right_tab('details')", "Details"),
-        ("2", "switch_right_tab('libs')", "Libraries"),
-        ("3", "switch_right_tab('log')", "Log"),
+        ("d", "switch_right_tab('details')", "Details"),
+        ("l", "switch_right_tab('libs')", "Libraries"),
+        ("o", "switch_right_tab('log')", "Output"),
         ("p", "switch_left_tab('prebuild')", "PreBuild"),
         ("s", "switch_left_tab('selfbuild')", "SelfBuild"),
     ]
@@ -272,8 +272,8 @@ class ToolchainsScreen(Screen):
 
                 # PreBuild / SelfBuild tabs
                 with Horizontal(id="tc-left-tab-bar"):
-                    yield Static(" PreBuild ", id="btn-ltab-prebuild", classes="tab-active")
-                    yield Static(" SelfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
+                    yield Static(" [b]P[/b]reBuild ", id="btn-ltab-prebuild", classes="tab-active")
+                    yield Static(" [b]S[/b]elfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
 
                 # PreBuild panel — catalog categories + local
                 with VerticalScroll(id="tc-browser"):
@@ -301,9 +301,9 @@ class ToolchainsScreen(Screen):
             with Vertical(id="tc-right"):
                 # Detail/Libraries/Log tab buttons
                 with Horizontal(id="tc-tab-bar"):
-                    yield Static(" Details ", id="btn-tab-details", classes="tab-active")
-                    yield Static(" Libraries ", id="btn-tab-libs", classes="tab-inactive")
-                    yield Static(" Log ", id="btn-tab-log", classes="tab-inactive")
+                    yield Static(" [b]D[/b]etails ", id="btn-tab-details", classes="tab-active")
+                    yield Static(" [b]L[/b]ibraries ", id="btn-tab-libs", classes="tab-inactive")
+                    yield Static(" [b]O[/b]utput ", id="btn-tab-log", classes="tab-inactive")
 
                 # Details panel
                 detail = Static("", id="tc-detail")

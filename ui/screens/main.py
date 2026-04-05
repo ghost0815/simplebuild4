@@ -16,8 +16,8 @@ from ui.footer import S4Footer
 
 class MainScreen(Screen):
     BINDINGS = [
-        Binding("1", "tab_compact", "Compact", show=False),
-        Binding("2", "tab_log", "Log", show=False),
+        Binding("c", "tab_compact", "Compact", show=False),
+        Binding("o", "tab_log", "Output", show=False),
     ]
 
     def action_tab_compact(self) -> None:
@@ -48,8 +48,8 @@ class MainScreen(Screen):
 
             # Tabs
             with Horizontal(id="main-tab-bar"):
-                yield Static(" Compact ", id="main-tab-compact", classes="tab-active")
-                yield Static(" Log ", id="main-tab-log", classes="tab-inactive")
+                yield Static(" [b]C[/b]ompact ", id="main-tab-compact", classes="tab-active")
+                yield Static(" [b]O[/b]utput ", id="main-tab-log", classes="tab-inactive")
 
             # Info panel (hidden in Log tab)
             info = Static(

@@ -44,10 +44,10 @@ class TargetEditScreen(Screen):
     """Edit or create a target configuration."""
 
     BINDINGS = [
-        ("1", "switch_tab('general')", "General"),
-        ("2", "switch_tab('source')", "Repo/Toolchain"),
-        ("3", "switch_tab('oscam')", "Options"),
-        ("4", "switch_tab('upload')", "Upload"),
+        ("g", "switch_tab('general')", "General"),
+        ("r", "switch_tab('source')", "Repo/Toolchain"),
+        ("o", "switch_tab('oscam')", "Options"),
+        ("u", "switch_tab('upload')", "Upload"),
     ]
 
     _collapsible_states: dict[str, bool] = {}  # class-level: id → collapsed
@@ -115,10 +115,10 @@ class TargetEditScreen(Screen):
 
         # Tab bar
         with Horizontal(id="te-tab-bar"):
-            yield Static(" General ", id="te-tab-general", classes="tab-active")
-            yield Static(" Repo/Toolchain", id="te-tab-source", classes="tab-inactive")
-            yield Static(" Options", id="te-tab-oscam", classes="tab-inactive")
-            yield Static(" Upload ", id="te-tab-upload", classes="tab-inactive")
+            yield Static(" [b]G[/b]eneral ", id="te-tab-general", classes="tab-active")
+            yield Static(" [b]R[/b]epo/Toolchain", id="te-tab-source", classes="tab-inactive")
+            yield Static(" [b]O[/b]ptions", id="te-tab-oscam", classes="tab-inactive")
+            yield Static(" [b]U[/b]pload ", id="te-tab-upload", classes="tab-inactive")
 
         # === Tab 1: General ===
         # UPX detection (once)
