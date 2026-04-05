@@ -48,6 +48,47 @@ class S4App(App):
         from ui.screens.main import MainScreen
         self.push_screen(MainScreen())
 
+        # Check for updates in background
+        if self.settings.update_check:
+            import threading
+            threading.Thread(target=self._check_for_updates, daemon=True).start()
+
+    def _check_for_updates(self) -> None:
+        """Background check: git fetch and compare local vs remote."""
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        if not (root / ".git").exists():
+            return
+        try:
+            subprocess.run(
+                ["git", "fetch", "--prune"], cwd=str(root),
+                capture_output=True, text=True, timeout=15,
+            )
+            result = subprocess.run(
+                ["git", "rev-list", "HEAD..origin/" + subprocess.run(
+                    ["git", "branch", "--show-current"], cwd=str(root),
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip(), "--count"],
+                cwd=str(root), capture_output=True, text=True, timeout=5,
+            )
+            behind = int(result.stdout.strip() or "0")
+            if behind > 0:
+                self.call_from_thread(
+                    self.notify,
+                    f"s4 update available ({behind} new commit{'s' if behind > 1 else ''}) — run ./s4 update",
+                    severity="information",
+                    timeout=10,
+                )
+            else:
+                self.call_from_thread(
+                    self.notify,
+                    "s4 is up to date",
+                    timeout=3,
+                )
+        except Exception:
+            pass
+
     def action_copy_text(self) -> None:
         """Copy selected text to clipboard via Ctrl+C."""
         selection = self.screen.get_selected_text()
@@ -121,4 +162,24 @@ class S4App(App):
             screen.do_remove()
 
     def action_s4_update(self) -> None:
-        self.notify("Update: not yet implemented", severity="warning")
+        """Self-update s4 via git pull, then restart."""
+        import subprocess
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        if not (root / ".git").exists():
+            self.notify("Not a git repository — use './s4 update' from shell", severity="warning")
+            return
+        try:
+            result = subprocess.run(
+                ["git", "pull"], cwd=str(root),
+                capture_output=True, text=True, timeout=30,
+            )
+            output = result.stdout.strip()
+            if "Already up to date" in output:
+                self.notify("s4 is already up to date")
+            elif result.returncode == 0:
+                self.notify("s4 updated — please restart", severity="warning")
+            else:
+                self.notify(f"Update failed: {result.stderr.strip()}", severity="error")
+        except Exception as e:
+            self.notify(f"Update failed: {e}", severity="error")
