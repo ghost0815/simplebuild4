@@ -794,9 +794,11 @@ class ToolchainsScreen(Screen):
                     if self._building:
                         item._label = "Cancel"
                         item._disabled = False
+                        item._active = True
                         item.remove_class("disabled")
                     else:
                         item._label = "Update"
+                        item._active = False
                         libs_active = self._is_libs_tab_active()
                         item._disabled = not libs_active
                         if libs_active:
@@ -1415,21 +1417,41 @@ class ToolchainsScreen(Screen):
         self._run_in_thread(do_restore)
 
     def _fix_pc_files(self, install_dir: Path) -> None:
-        """Fix prefix= paths in .pc files after import from a backup."""
+        """Fix prefix= paths in .pc files after import/install.
+
+        .pc files from backups or OE-SDK installs contain stale absolute paths
+        from the original build/install location. We replace the old prefix with
+        the correct current absolute path.
+
+        We keep absolute paths (not ${pcfiledir} relative) because:
+        - OE-SDK itself uses absolute paths + PKG_CONFIG_SYSROOT_DIR
+        - configure scripts do string comparisons on include paths
+        - Relative ../../ paths cause issues with some build systems
+
+        Typical .pc layout:  <sysroot>/usr/lib/pkgconfig/foo.pc
+        prefix should be:    <sysroot>/usr  (= pkgconfig dir / ../../)
+        """
         pc_files = list(install_dir.glob("**/pkgconfig/*.pc"))
         self._log(f"  Checking {len(pc_files)} .pc files...")
         for pc_file in pc_files:
             try:
                 content = pc_file.read_text(encoding="utf-8", errors="replace")
+                old_prefix = ""
                 for line in content.splitlines():
                     if line.startswith("prefix="):
                         old_prefix = line.split("=", 1)[1].strip()
-                        new_prefix = str(pc_file.parent.parent.parent)
-                        if old_prefix != new_prefix:
-                            content = content.replace(old_prefix, new_prefix)
-                            pc_file.write_text(content, encoding="utf-8")
-                            self._log(f"  Fixed {pc_file.name}")
                         break
+                if not old_prefix:
+                    continue
+
+                # New prefix = two levels up from pkgconfig dir
+                # e.g. .../sysroot/usr/lib/pkgconfig → .../sysroot/usr
+                new_prefix = str(pc_file.parent.parent.parent)
+
+                if old_prefix != new_prefix:
+                    content = content.replace(old_prefix, new_prefix)
+                    pc_file.write_text(content, encoding="utf-8")
+                    self._log(f"  Fixed {pc_file.name}")
             except Exception:
                 pass
 
