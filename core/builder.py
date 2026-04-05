@@ -1113,7 +1113,16 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 
         if is_git:
             vcs = "git"
-            rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
+            # Use config.sh --oscam-revision like s3
+            rev = ""
+            if config_sh.exists():
+                from core.oscam_config import _run_config_sh
+                rev = _run_config_sh(config_sh, ["--oscam-revision"]) or ""
+                if not rev:
+                    ver = _run_config_sh(config_sh, ["--oscam-version"]) or ""
+                    rev = ver.split("-", 1)[1] if "-" in ver else ver
+            if not rev:
+                rev = self._run_output(["git", "rev-list", "--count", "HEAD"], cwd=repo_dir) or "0"
             commit = self._run_output(["git", "rev-parse", "--short", "HEAD"], cwd=repo_dir) or "unknown"
         elif is_svn:
             vcs = "svn"
