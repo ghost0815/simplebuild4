@@ -2,8 +2,12 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.claude/
+
+# User data (created at runtime)
 data/toolchains/
 data/toolchains.local.yaml
+data/toolchains.cfg/
 data/binaries/
 data/downloads/
 data/logs/
