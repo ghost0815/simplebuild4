@@ -812,14 +812,15 @@ class TargetEditScreen(Screen):
         # Collect USE_* and STATIC_* flags dynamically from switches
         mk_flags = self._load_makefile_flags()
         all_use = mk_flags.get("use", [])
-        all_static = mk_flags.get("static", [])
 
         use_flags = {}
         for flag in all_use:
             if self._switch_on(f"f-use-{flag}"):
                 use_flags[flag] = True
+        # STATIC flags: rendered for _STATIC_CAPABLE libs, not from Makefile
+        _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
         static_flags = {}
-        for flag in all_static:
+        for flag in _STATIC_CAPABLE:
             if self._switch_on(f"f-static-{flag}"):
                 static_flags[flag] = True
 
