@@ -57,41 +57,19 @@ class BuildSettings:
     readers: list[str] = field(default_factory=list)
     card_readers: list[str] = field(default_factory=list)
 
-    # USE flags — Library
-    use_libcrypto: bool = True
-    use_ssl: bool = False
-    use_libusb: bool = False
-    use_pcsc: bool = False
-    use_libdvbcsa: bool = False
+    # USE/STATIC flags — dynamically parsed from Makefile
+    use_flags: dict = field(default_factory=lambda: {"LIBCRYPTO": True})
+    static_flags: dict = field(default_factory=dict)
 
-    # USE flags — Hardware
-    use_stapi: bool = False
-    use_stapi5: bool = False
-    use_coolapi: bool = False
-    use_coolapi2: bool = False
-    use_su980: bool = False
-    use_azbox: bool = False
-    use_amsmc: bool = False
-    use_mca: bool = False
-
-    # USE flags — Static linking
-    static_libcrypto: bool = False
-    static_ssl: bool = False
-    static_libusb: bool = False
-    static_pcsc: bool = False
-    static_libdvbcsa: bool = False
-
-    # USE flags — Other
+    # Other build settings
     use_compress: bool = False
-    compress_level: str = "--lzma" # UPX compression level (--lzma, --best, --ultra-brute, -1..-9)
-    upx_binary: str = ""           # Path to UPX binary (empty = system default)
-    use_oscamname: str = ""        # Custom binary name (empty = default)
-    stapi_lib: str = ""            # STAPI library path override
-
-    # Build options
-    build_system: str = "make"         # "make" or "cmake"
+    compress_level: str = "--lzma"
+    upx_binary: str = ""
+    use_oscamname: str = ""
+    stapi_lib: str = ""
+    build_system: str = "make"
     confdir: str = "/etc/tuxbox/config"
-    make_vars: str = ""            # Raw make variable assignments
+    make_vars: str = ""
 
 
 def _load_sources(raw: list) -> list[SourceConfig]:
@@ -169,24 +147,8 @@ class Target:
                 "protocols": self.build.protocols,
                 "readers": self.build.readers,
                 "card_readers": self.build.card_readers,
-                "use_libcrypto": self.build.use_libcrypto,
-                "use_ssl": self.build.use_ssl,
-                "use_libusb": self.build.use_libusb,
-                "use_pcsc": self.build.use_pcsc,
-                "use_libdvbcsa": self.build.use_libdvbcsa,
-                "use_stapi": self.build.use_stapi,
-                "use_stapi5": self.build.use_stapi5,
-                "use_coolapi": self.build.use_coolapi,
-                "use_coolapi2": self.build.use_coolapi2,
-                "use_su980": self.build.use_su980,
-                "use_azbox": self.build.use_azbox,
-                "use_amsmc": self.build.use_amsmc,
-                "use_mca": self.build.use_mca,
-                "static_libcrypto": self.build.static_libcrypto,
-                "static_ssl": self.build.static_ssl,
-                "static_libusb": self.build.static_libusb,
-                "static_pcsc": self.build.static_pcsc,
-                "static_libdvbcsa": self.build.static_libdvbcsa,
+                "use_flags": {k: v for k, v in self.build.use_flags.items()},
+                "static_flags": {k: v for k, v in self.build.static_flags.items()},
                 "use_compress": self.build.use_compress,
                 "compress_level": self.build.compress_level,
                 "upx_binary": self.build.upx_binary,
@@ -227,29 +189,56 @@ class Target:
             return cls()
 
         build_data = data.get("build", {})
+
+        # Load use_flags/static_flags — support both new dict format and old field format
+        use_flags = build_data.get("use_flags", {})
+        static_flags = build_data.get("static_flags", {})
+
+        # Backward compat: migrate old individual fields into dicts
+        if not use_flags:
+            _old_use = {
+                "LIBCRYPTO": ("use_libcrypto", True),
+                "SSL": ("use_ssl", False),
+                "OPENSSL": ("use_openssl", False),
+                "LIBUSB": ("use_libusb", False),
+                "PCSC": ("use_pcsc", False),
+                "LIBDVBCSA": ("use_libdvbcsa", False),
+                "STAPI": ("use_stapi", False),
+                "STAPI5": ("use_stapi5", False),
+                "COOLAPI": ("use_coolapi", False),
+                "COOLAPI2": ("use_coolapi2", False),
+                "SU980": ("use_su980", False),
+                "AZBOX": ("use_azbox", False),
+                "AMSMC": ("use_amsmc", False),
+                "MCA": ("use_mca", False),
+            }
+            for flag, (field_name, default) in _old_use.items():
+                val = build_data.get(field_name, default)
+                if val:
+                    use_flags[flag] = True
+            # Ensure LIBCRYPTO default
+            if not use_flags:
+                use_flags["LIBCRYPTO"] = True
+        if not static_flags:
+            _old_static = {
+                "LIBCRYPTO": ("static_libcrypto", False),
+                "SSL": ("static_ssl", False),
+                "LIBUSB": ("static_libusb", False),
+                "PCSC": ("static_pcsc", False),
+                "LIBDVBCSA": ("static_libdvbcsa", False),
+            }
+            for flag, (field_name, default) in _old_static.items():
+                val = build_data.get(field_name, default)
+                if val:
+                    static_flags[flag] = True
+
         build = BuildSettings(
             modules=build_data.get("modules", []),
             protocols=build_data.get("protocols", []),
             readers=build_data.get("readers", []),
             card_readers=build_data.get("card_readers", []),
-            use_libcrypto=build_data.get("use_libcrypto", True),
-            use_ssl=build_data.get("use_ssl", False),
-            use_libusb=build_data.get("use_libusb", False),
-            use_pcsc=build_data.get("use_pcsc", False),
-            use_libdvbcsa=build_data.get("use_libdvbcsa", False),
-            use_stapi=build_data.get("use_stapi", False),
-            use_stapi5=build_data.get("use_stapi5", False),
-            use_coolapi=build_data.get("use_coolapi", False),
-            use_coolapi2=build_data.get("use_coolapi2", False),
-            use_su980=build_data.get("use_su980", False),
-            use_azbox=build_data.get("use_azbox", False),
-            use_amsmc=build_data.get("use_amsmc", False),
-            use_mca=build_data.get("use_mca", False),
-            static_libcrypto=build_data.get("static_libcrypto", False),
-            static_ssl=build_data.get("static_ssl", False),
-            static_libusb=build_data.get("static_libusb", False),
-            static_pcsc=build_data.get("static_pcsc", False),
-            static_libdvbcsa=build_data.get("static_libdvbcsa", False),
+            use_flags=use_flags,
+            static_flags=static_flags,
             use_compress=build_data.get("use_compress", False),
             compress_level=build_data.get("compress_level", "--lzma"),
             upx_binary=build_data.get("upx_binary", ""),

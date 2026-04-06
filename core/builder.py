@@ -813,21 +813,11 @@ class BuildEngine:
         ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
         extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
 
-        # --- USE_FLAGS ---
+        # --- USE_FLAGS (dynamic from dict) ---
         use_flags = []
-        if b.use_libcrypto: use_flags.append("USE_LIBCRYPTO=1")
-        if b.use_ssl: use_flags.append("USE_SSL=1")
-        if b.use_libusb: use_flags.append("USE_LIBUSB=1")
-        if b.use_pcsc: use_flags.append("USE_PCSC=1")
-        if b.use_libdvbcsa: use_flags.append("USE_LIBDVBCSA=1")
-        if b.use_stapi: use_flags.append("USE_STAPI=1")
-        if b.use_stapi5: use_flags.append("USE_STAPI5=1")
-        if b.use_coolapi: use_flags.append("USE_COOLAPI=1")
-        if b.use_coolapi2: use_flags.append("USE_COOLAPI2=1")
-        if b.use_su980: use_flags.append("USE_SU980=1")
-        if b.use_azbox: use_flags.append("USE_AZBOX=1")
-        if b.use_amsmc: use_flags.append("USE_AMSMC=1")
-        if b.use_mca: use_flags.append("USE_MCA=1")
+        for flag, enabled in b.use_flags.items():
+            if enabled:
+                use_flags.append(f"USE_{flag}=1")
         if b.use_compress:
             use_flags.append("USE_COMPRESS=1")
             if b.compress_level and b.compress_level != "--best":
@@ -855,14 +845,17 @@ class BuildEngine:
         else:
             search_dirs = [sysroot] if sysroot else [str(tc_dir)]
 
-        lib_map = {
-            "LIBCRYPTO": ("libcrypto.a", b.use_libcrypto, b.static_libcrypto),
-            "SSL": ("libssl.a", b.use_ssl, b.static_ssl),
-            "LIBUSB": ("libusb-1.0.a", b.use_libusb, b.static_libusb),
-            "PCSC": ("libpcsclite.a", b.use_pcsc, b.static_pcsc),
-            "LIBDVBCSA": ("libdvbcsa.a", b.use_libdvbcsa, b.static_libdvbcsa),
+        # Map flag names to static library filenames
+        _STATIC_LIB_FILES = {
+            "LIBCRYPTO": "libcrypto.a",
+            "SSL": "libssl.a",
+            "LIBUSB": "libusb-1.0.a",
+            "PCSC": "libpcsclite.a",
+            "LIBDVBCSA": "libdvbcsa.a",
         }
-        for key, (lib_file, use_flag, static_flag) in lib_map.items():
+        for key, lib_file in _STATIC_LIB_FILES.items():
+            use_flag = b.use_flags.get(key, False)
+            static_flag = b.static_flags.get(key, False)
             if use_flag and static_flag:
                 found = self._find_static_lib(lib_file, search_dirs)
                 if found:
@@ -873,12 +866,12 @@ class BuildEngine:
 
         # --- STAPI library ---
         stapi_lib = ""
-        if b.use_stapi or b.use_stapi5:
+        if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
             stapi_val = b.stapi_lib if b.stapi_lib else (tc.stapi_lib or "")
             # Fallback: use shipped stapi libs (like s3's support/stapi/)
             if not stapi_val:
                 stapi_dir = self.repos_dir.parent.parent / "support" / "stapi"
-                if b.use_stapi5:
+                if b.use_flags.get("STAPI5"):
                     # STAPI5: try platform-specific libs
                     for candidate in ("liboscam_stapi5_UFS916.a", "liboscam_stapi5_OPENBOX.a"):
                         if (stapi_dir / candidate).exists():
@@ -889,7 +882,7 @@ class BuildEngine:
                     if default_lib.exists():
                         stapi_val = str(default_lib)
             if stapi_val:
-                stapi_key = "STAPI5_LIB" if b.use_stapi5 else "STAPI_LIB"
+                stapi_key = "STAPI5_LIB" if b.use_flags.get("STAPI5") else "STAPI_LIB"
                 stapi_lib = f"{stapi_key}={stapi_val}"
                 self._log(f"  {stapi_lib}")
             else:
@@ -1079,12 +1072,12 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         # Static libraries — cmake variable names differ from make
         b = self.target.build
         # OpenSSL static: set OPENSSL_*_LIBRARY (singular = cache hint for find_package)
-        if b.static_ssl and "SSL_LIB" in static_libs:
+        if b.static_flags.get("SSL") and "SSL_LIB" in static_libs:
             cmake_cmd.append(f"-DOPENSSL_SSL_LIBRARY={static_libs['SSL_LIB']}")
-        if b.static_libcrypto and "LIBCRYPTO_LIB" in static_libs:
+        if b.static_flags.get("LIBCRYPTO") and "LIBCRYPTO_LIB" in static_libs:
             cmake_cmd.append(f"-DOPENSSL_CRYPTO_LIBRARY={static_libs['LIBCRYPTO_LIB']}")
-        if b.static_libusb: cmake_cmd.append("-DSTATIC_LIBUSB=1")
-        if b.static_libdvbcsa: cmake_cmd.append("-DSTATIC_LIBDVBCSA=1")
+        if b.static_flags.get("LIBUSB"): cmake_cmd.append("-DSTATIC_LIBUSB=1")
+        if b.static_flags.get("LIBDVBCSA"): cmake_cmd.append("-DSTATIC_LIBDVBCSA=1")
         # Note: STATIC_PCSC not supported by oscam's CMakeLists.txt
 
         # STAPI
@@ -1180,14 +1173,18 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
             tc_part = tc_name
 
         # SSL backend (openssl vs mbedtls) — only if Makefile supports USE_OPENSSL
+        # New oscam has dual backend: USE_OPENSSL=1 → openssl, otherwise → mbedtls
         backend = ""
         makefile = repo_dir / "Makefile"
         if makefile.exists():
             try:
                 mk_content = makefile.read_text(encoding="utf-8", errors="replace")
                 if "USE_OPENSSL" in mk_content:
-                    # New oscam with dual backend support
-                    backend = "-openssl"  # TODO: add USE_OPENSSL flag to target config
+                    # Check if USE_OPENSSL=1 is in the active build flags
+                    if "USE_OPENSSL=1" in use_flags:
+                        backend = "-openssl"
+                    else:
+                        backend = "-mbedtls"
             except Exception:
                 pass
 
@@ -1213,24 +1210,22 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
                     features.append(suffix)
 
         # USE_FLAGS based features
-        if b.use_libdvbcsa:
-            features.append("libdvbcsa") if "libdvbcsa" not in features else None
-        if b.use_libusb:
-            features.append("libusb")
-        if b.use_pcsc:
-            features.append("pcsc")
-        if b.use_stapi:
-            features.append("stapi")
-        if b.use_stapi5:
-            features.append("stapi5")
+        _feature_map = {
+            "LIBDVBCSA": "libdvbcsa", "LIBUSB": "libusb", "PCSC": "pcsc",
+            "STAPI": "stapi", "STAPI5": "stapi5",
+        }
+        for flag, suffix in _feature_map.items():
+            if b.use_flags.get(flag) and suffix not in features:
+                features.append(suffix)
         if b.use_compress:
             features.append("upx")
 
         features.sort()
 
         # Linking type
-        lib_count = sum(1 for x in [b.use_libcrypto, b.use_ssl, b.use_libusb, b.use_pcsc, b.use_libdvbcsa] if x)
-        stat_count = sum(1 for x in [b.static_libcrypto, b.static_ssl, b.static_libusb, b.static_pcsc, b.static_libdvbcsa] if x)
+        _linkable = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
+        lib_count = sum(1 for f in _linkable if b.use_flags.get(f))
+        stat_count = sum(1 for f in _linkable if b.static_flags.get(f))
         if stat_count > 0 and stat_count >= lib_count:
             linking = "-static"
         elif stat_count > 0:

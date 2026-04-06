@@ -173,6 +173,48 @@ def get_version(repo_dir: Path) -> str:
     return result.strip() if result else ""
 
 
+# Internal Makefile flags that are NOT user-settable
+_INTERNAL_FLAGS = frozenset({
+    "CFLAGS", "FLAGS", "LDFLAGS", "LIBS", "COMPRESS",
+})
+
+
+def parse_makefile_flags(repo_dirs: list[Path]) -> dict:
+    """Parse USE_* and STATIC_* flags from oscam Makefile(s).
+
+    Returns dict with:
+        "use": sorted list of flag names (e.g. ["LIBCRYPTO", "SSL", "OPENSSL", ...])
+        "static": sorted list of flag names (e.g. ["LIBDVBCSA"])
+    Merges flags from multiple repos (union).
+    Filters out internal flags (USE_CFLAGS, USE_FLAGS, etc.).
+    """
+    import re
+    use_set: set[str] = set()
+    static_set: set[str] = set()
+    pattern = re.compile(r'\bUSE_([A-Z0-9_]+)\b|\bSTATIC_([A-Z0-9_]+)\b')
+
+    for repo_dir in repo_dirs:
+        makefile = repo_dir / "Makefile"
+        if not makefile.exists():
+            continue
+        try:
+            content = makefile.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for m in pattern.finditer(content):
+            use_name = m.group(1)
+            static_name = m.group(2)
+            if use_name and use_name not in _INTERNAL_FLAGS:
+                use_set.add(use_name)
+            if static_name and static_name not in _INTERNAL_FLAGS:
+                static_set.add(static_name)
+
+    return {
+        "use": sorted(use_set),
+        "static": sorted(static_set),
+    }
+
+
 def _run_config_sh(config_sh: Path, args: list[str]) -> str | None:
     """Run config.sh with arguments and return stdout."""
     try:

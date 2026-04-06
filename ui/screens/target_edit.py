@@ -12,7 +12,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 from core.target import Target, BuildSettings, UploadConfig, SourceConfig, ToolchainConfig
 from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
-from core.oscam_config import read_options, merge_options, OscamOptions
+from core.oscam_config import read_options, merge_options, OscamOptions, parse_makefile_flags
 from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
@@ -81,6 +81,27 @@ class TargetEditScreen(Screen):
         self._oscam_opts = merge_options(repo_dirs) if repo_dirs else OscamOptions()
         return self._oscam_opts
 
+    # Hardware flags — everything else goes into Library section
+    _HARDWARE_FLAGS = frozenset({
+        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA",
+    })
+
+    def _load_makefile_flags(self) -> dict:
+        """Load USE_*/STATIC_* flags from Makefiles of assigned repos."""
+        if hasattr(self, "_makefile_flags") and self._makefile_flags is not None:
+            return self._makefile_flags
+        repos = load_repos(self.app.paths.repos_config)
+        repo_dirs = []
+        src_names = [s.name for s in self.target.sources]
+        for src_name in src_names:
+            for r in repos:
+                if r.name == src_name:
+                    for d in self._find_repo_dirs(r.name):
+                        if d not in repo_dirs:
+                            repo_dirs.append(d)
+        self._makefile_flags = parse_makefile_flags(repo_dirs) if repo_dirs else {"use": [], "static": []}
+        return self._makefile_flags
+
     def _find_repo_dirs(self, name: str) -> list[Path]:
         """Find possible repo directories for a given repo name."""
         repos_dir = self.app.paths.repos_dir
@@ -139,12 +160,12 @@ class TargetEditScreen(Screen):
         with VerticalScroll(id="te-panel-general"):
             with Collapsible(title=t("section_common"), collapsed=False, id="col-common"):
                 yield Horizontal(
-                    Static(f" {t("te_name")}", classes="s-label-tall"),
+                    Static(f" {t('te_name')}", classes="s-label-tall"),
                     Input(value=tgt.name, placeholder=t("ph_target_name"), id="t-name"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(f" {t("te_description")}", classes="s-label-tall"),
+                    Static(f" {t('te_description')}", classes="s-label-tall"),
                     Input(value=tgt.description, placeholder=t("ph_target_desc"), id="t-desc"),
                     classes="s-row",
                 )
@@ -162,9 +183,9 @@ class TargetEditScreen(Screen):
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
                         upx_switch,
-                        Static(f" {t("te_binary")}", classes="src-opt-label"),
+                        Static(f" {t('te_binary')}", classes="src-opt-label"),
                         upx_path_inp,
-                        Static(f" {t("te_compression_level")}", classes="src-opt-label"),
+                        Static(f" {t('te_compression_level')}", classes="src-opt-label"),
                         lvl_inp,
                         classes="flag-row",
                     )
@@ -175,7 +196,7 @@ class TargetEditScreen(Screen):
                         classes="flag-row",
                     )
                 yield Horizontal(
-                    Static(f" {t("te_build_system")}", classes="s-label-tall"),
+                    Static(f" {t('te_build_system')}", classes="s-label-tall"),
                     Select(
                         options=[("make", "make"), ("cmake", "cmake")],
                         value=b.build_system or "make",
@@ -185,87 +206,98 @@ class TargetEditScreen(Screen):
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(f" {t("te_binary_name")}", classes="s-label-tall"),
+                    Static(f" {t('te_binary_name')}", classes="s-label-tall"),
                     Input(value=b.use_oscamname, placeholder=t("ph_empty_default"), id="t-oscamname"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(f" {t("te_config_directory")}", classes="s-label-tall"),
+                    Static(f" {t('te_config_directory')}", classes="s-label-tall"),
                     Input(value=b.confdir, id="t-confdir"),
                     classes="s-row",
                 )
             if has_source:
+                mk_flags = self._load_makefile_flags()
+                mk_use = mk_flags.get("use", [])
+                has_dual_backend = "MBEDTLS" in mk_use and "OPENSSL" in mk_use
+
+                # Known flags that support STATIC_ linking (not in Makefile, passed as make vars)
+                _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
+
+                # Split into library and hardware flags
+                lib_flags = [f for f in mk_use if f not in self._HARDWARE_FLAGS and f not in ("MBEDTLS", "OPENSSL")]
+                hw_flags = [f for f in mk_use if f in self._HARDWARE_FLAGS]
+
                 with Collapsible(title=t("section_library_flags"), collapsed=True, id="col-lib-flags"):
-                    yield Horizontal(
-                        Static(" USE_LIBCRYPTO", classes="flag-label"), Switch(value=b.use_libcrypto, id="f-use-libcrypto"),
-                        Static(" STATIC_LIBCRYPTO", classes="flag-label"), Switch(value=b.static_libcrypto, id="f-static-libcrypto"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_SSL", classes="flag-label"), Switch(value=b.use_ssl, id="f-use-ssl"),
-                        Static(" STATIC_SSL", classes="flag-label"), Switch(value=b.static_ssl, id="f-static-ssl"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_LIBUSB", classes="flag-label"), Switch(value=b.use_libusb, id="f-use-libusb"),
-                        Static(" STATIC_LIBUSB", classes="flag-label"), Switch(value=b.static_libusb, id="f-static-libusb"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_PCSC", classes="flag-label"), Switch(value=b.use_pcsc, id="f-use-pcsc"),
-                        Static(" STATIC_PCSC", classes="flag-label"), Switch(value=b.static_pcsc, id="f-static-pcsc"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_LIBDVBCSA", classes="flag-label"), Switch(value=b.use_libdvbcsa, id="f-use-libdvbcsa"),
-                        Static(" STATIC_LIBDVBCSA", classes="flag-label"), Switch(value=b.static_libdvbcsa, id="f-static-libdvbcsa"),
-                        classes="flag-row",
-                    )
+                    # Exclusive MBEDTLS ↔ OPENSSL pair (only if repo supports it)
+                    if has_dual_backend:
+                        openssl_on = b.use_flags.get("OPENSSL", False)
+                        mbedtls_on = b.use_flags.get("MBEDTLS", not openssl_on)
+                        yield Horizontal(
+                            Static(" USE_MBEDTLS", classes="flag-label"),
+                            Switch(value=mbedtls_on, id="f-use-MBEDTLS"),
+                            Static(" USE_OPENSSL", classes="flag-label"),
+                            Switch(value=openssl_on, id="f-use-OPENSSL"),
+                            classes="flag-row",
+                        )
+                    # Dynamic library flags with STATIC_ partner for known libs
+                    for flag in lib_flags:
+                        widgets = [
+                            Static(f" USE_{flag}", classes="flag-label"),
+                            Switch(value=b.use_flags.get(flag, False), id=f"f-use-{flag}"),
+                        ]
+                        if flag in _STATIC_CAPABLE:
+                            widgets += [
+                                Static(f" STATIC_{flag}", classes="flag-label"),
+                                Switch(value=b.static_flags.get(flag, False), id=f"f-static-{flag}"),
+                            ]
+                        yield Horizontal(*widgets, classes="flag-row")
 
                 with Collapsible(title=t("section_hardware_flags"), collapsed=True, id="col-hw-flags"):
                     # STAPI row — with optional STAPI_LIB field inline
-                    _stapi5_sw = Switch(value=b.use_stapi5, id="f-use-stapi5")
-                    _stapi_widgets = [
-                        Static(" USE_STAPI", classes="flag-label"), Switch(value=b.use_stapi, id="f-use-stapi"),
-                        Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
-                    ]
-                    if b.use_stapi or b.use_stapi5:
-                        _stapi5_sw.styles.margin = (0, 1, 0, 0)
-                        _stapi_default = ""
-                        for _tc in installed:
-                            if _tc.name in tc_names:
-                                _stapi_default = _tc.stapi_lib or ""
-                                if _stapi_default:
-                                    break
-                        _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
-                        _stapi_is_default = (_stapi_val == _stapi_default)
-                        from textual.widgets import Button as _Btn
-                        _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
-                        _stapi_inp.styles.max_width = 25
-                        if _stapi_is_default:
-                            _stapi_inp.add_class("tc-default")
-                        _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
-                        _stapi_lbl.tooltip = "Path to precompiled STAPI library. Passed as STAPI_LIB= or STAPI5_LIB= to make."
-                        _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
-                        _stapi_rst.tooltip = "Load toolchain default"
-                        self._stapi_default = _stapi_default
-                        _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
-                    yield Horizontal(*_stapi_widgets, classes="flag-row")
-                    yield Horizontal(
-                        Static(" USE_COOLAPI", classes="flag-label"), Switch(value=b.use_coolapi, id="f-use-coolapi"),
-                        Static(" USE_COOLAPI2", classes="flag-label"), Switch(value=b.use_coolapi2, id="f-use-coolapi2"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_SU980", classes="flag-label"), Switch(value=b.use_su980, id="f-use-su980"),
-                        Static(" USE_AZBOX", classes="flag-label"), Switch(value=b.use_azbox, id="f-use-azbox"),
-                        classes="flag-row",
-                    )
-                    yield Horizontal(
-                        Static(" USE_AMSMC", classes="flag-label"), Switch(value=b.use_amsmc, id="f-use-amsmc"),
-                        Static(" USE_MCA", classes="flag-label"), Switch(value=b.use_mca, id="f-use-mca"),
-                        classes="flag-row",
-                    )
+                    if "STAPI" in hw_flags or "STAPI5" in hw_flags:
+                        _stapi_widgets = []
+                        if "STAPI" in hw_flags:
+                            _stapi_widgets += [
+                                Static(" USE_STAPI", classes="flag-label"),
+                                Switch(value=b.use_flags.get("STAPI", False), id="f-use-STAPI"),
+                            ]
+                        if "STAPI5" in hw_flags:
+                            _stapi5_sw = Switch(value=b.use_flags.get("STAPI5", False), id="f-use-STAPI5")
+                            _stapi_widgets += [
+                                Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
+                            ]
+                        if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
+                            _stapi_default = ""
+                            for _tc in installed:
+                                if _tc.name in tc_names:
+                                    _stapi_default = _tc.stapi_lib or ""
+                                    if _stapi_default:
+                                        break
+                            _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
+                            _stapi_is_default = (_stapi_val == _stapi_default)
+                            from textual.widgets import Button as _Btn
+                            _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
+                            _stapi_inp.styles.max_width = 25
+                            if _stapi_is_default:
+                                _stapi_inp.add_class("tc-default")
+                            _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
+                            _stapi_lbl.tooltip = "Path to precompiled STAPI library"
+                            _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
+                            _stapi_rst.tooltip = t("te_load_default")
+                            self._stapi_default = _stapi_default
+                            _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
+                        yield Horizontal(*_stapi_widgets, classes="flag-row")
+
+                    # Other hardware flags (2 per row)
+                    other_hw = [f for f in hw_flags if f not in ("STAPI", "STAPI5")]
+                    for i in range(0, len(other_hw), 2):
+                        widgets = []
+                        for f in other_hw[i:i+2]:
+                            widgets += [
+                                Static(f" USE_{f}", classes="flag-label"),
+                                Switch(value=b.use_flags.get(f, False), id=f"f-use-{f}"),
+                            ]
+                        yield Horizontal(*widgets, classes="flag-row")
             else:
                 yield Static(f"  [dim]{t('te_select_source_flags')}[/dim]")
 
@@ -289,9 +321,9 @@ class TargetEditScreen(Screen):
                         src_label,
                         Switch(value=enabled, id=f"src-{rid}"),
                         *([
-                            Static(f" [dim]{t("te_update_before_build")}[/dim]", classes="src-opt-label"),
+                            Static(f" [dim]{t('te_update_before_build')}[/dim]", classes="src-opt-label"),
                             Switch(value=sc.update_before_build, id=f"src-upd-{rid}"),
-                            Static(f" [dim]{t("te_patch_before_build")}[/dim]", classes="src-opt-label"),
+                            Static(f" [dim]{t('te_patch_before_build')}[/dim]", classes="src-opt-label"),
                             Switch(value=sc.patch_before_build, id=f"src-patch-{rid}"),
                         ] if enabled else []),
                         classes="src-row",
@@ -556,32 +588,38 @@ class TargetEditScreen(Screen):
             self._refresh_screen(self._collect(), "source", sid)
             return
 
-        # Library + Static flag dependencies
-        _lib_pairs = {
-            "f-use-libcrypto": "f-static-libcrypto",
-            "f-use-ssl": "f-static-ssl",
-            "f-use-libusb": "f-static-libusb",
-            "f-use-pcsc": "f-static-pcsc",
-            "f-use-libdvbcsa": "f-static-libdvbcsa",
-        }
-        _static_to_use = {v: k for k, v in _lib_pairs.items()}
-
-        # USE deactivated → also deactivate STATIC
-        if sid in _lib_pairs and not event.value:
+        # Dynamic USE ↔ STATIC dependencies
+        if sid.startswith("f-use-") and not event.value:
+            # USE deactivated → also deactivate matching STATIC
+            flag = sid.replace("f-use-", "")
             try:
-                self.query_one(f"#{_lib_pairs[sid]}", Switch).value = False
+                self.query_one(f"#f-static-{flag}", Switch).value = False
+            except Exception:
+                pass
+        if sid.startswith("f-static-") and event.value:
+            # STATIC activated → also activate matching USE
+            flag = sid.replace("f-static-", "")
+            try:
+                self.query_one(f"#f-use-{flag}", Switch).value = True
             except Exception:
                 pass
 
-        # STATIC activated → also activate USE
-        if sid in _static_to_use and event.value:
+        # Exclusive MBEDTLS ↔ OPENSSL toggle
+        if sid == "f-use-OPENSSL" and event.value:
             try:
-                self.query_one(f"#{_static_to_use[sid]}", Switch).value = True
+                self.query_one("#f-use-MBEDTLS", Switch).value = False
+                # USE_OPENSSL requires USE_LIBCRYPTO
+                self.query_one("#f-use-LIBCRYPTO", Switch).value = True
+            except Exception:
+                pass
+        if sid == "f-use-MBEDTLS" and event.value:
+            try:
+                self.query_one("#f-use-OPENSSL", Switch).value = False
             except Exception:
                 pass
 
         # STAPI toggle — refresh to show/hide stapi_lib field
-        if sid in ("f-use-stapi", "f-use-stapi5"):
+        if sid in ("f-use-STAPI", "f-use-STAPI5"):
             self._refresh_screen(self._collect(), "general", sid)
             return
 
@@ -771,29 +809,27 @@ class TargetEditScreen(Screen):
         readers = [m for m in all_readers if self._switch_on(f"m-{m}")]
         card_readers = [m for m in all_crs if self._switch_on(f"m-{m}")]
 
+        # Collect USE_* and STATIC_* flags dynamically from switches
+        mk_flags = self._load_makefile_flags()
+        all_use = mk_flags.get("use", [])
+        all_static = mk_flags.get("static", [])
+
+        use_flags = {}
+        for flag in all_use:
+            if self._switch_on(f"f-use-{flag}"):
+                use_flags[flag] = True
+        static_flags = {}
+        for flag in all_static:
+            if self._switch_on(f"f-static-{flag}"):
+                static_flags[flag] = True
+
         build = BuildSettings(
             modules=modules,
             protocols=protocols,
             readers=readers,
             card_readers=card_readers,
-            use_libcrypto=self._switch_on("f-use-libcrypto"),
-            use_ssl=self._switch_on("f-use-ssl"),
-            use_libusb=self._switch_on("f-use-libusb"),
-            use_pcsc=self._switch_on("f-use-pcsc"),
-            use_libdvbcsa=self._switch_on("f-use-libdvbcsa"),
-            use_stapi=self._switch_on("f-use-stapi"),
-            use_stapi5=self._switch_on("f-use-stapi5"),
-            use_coolapi=self._switch_on("f-use-coolapi"),
-            use_coolapi2=self._switch_on("f-use-coolapi2"),
-            use_su980=self._switch_on("f-use-su980"),
-            use_azbox=self._switch_on("f-use-azbox"),
-            use_amsmc=self._switch_on("f-use-amsmc"),
-            use_mca=self._switch_on("f-use-mca"),
-            static_libcrypto=self._switch_on("f-static-libcrypto"),
-            static_ssl=self._switch_on("f-static-ssl"),
-            static_libusb=self._switch_on("f-static-libusb"),
-            static_pcsc=self._switch_on("f-static-pcsc"),
-            static_libdvbcsa=self._switch_on("f-static-libdvbcsa"),
+            use_flags=use_flags,
+            static_flags=static_flags,
             use_compress=self._switch_on("f-use-compress"),
             compress_level=self._input_val("t-compress-level") or "--lzma",
             upx_binary=self._input_val("t-upx-binary"),

@@ -131,35 +131,12 @@ class MainScreen(Screen):
         # Options: modules + protocols + readers + card_readers
         all_opts = b.modules + b.protocols + b.readers + b.card_readers
 
-        # Library flags
-        lib_flags = []
-        if b.use_libcrypto: lib_flags.append("USE_LIBCRYPTO")
-        if b.use_ssl: lib_flags.append("USE_SSL")
-        if b.use_libusb: lib_flags.append("USE_LIBUSB")
-        if b.use_pcsc: lib_flags.append("USE_PCSC")
-        if b.use_libdvbcsa: lib_flags.append("USE_LIBDVBCSA")
-        lib_str = " ".join(lib_flags) if lib_flags else "none"
-
-        # Static linking
-        static_flags = []
-        if b.static_libcrypto: static_flags.append("STATIC_LIBCRYPTO")
-        if b.static_ssl: static_flags.append("STATIC_SSL")
-        if b.static_libusb: static_flags.append("STATIC_LIBUSB")
-        if b.static_pcsc: static_flags.append("STATIC_PCSC")
-        if b.static_libdvbcsa: static_flags.append("STATIC_LIBDVBCSA")
+        # Categorize flags from dicts
+        _hw_names = {"STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA"}
+        lib_flags = [f"USE_{f}" for f, v in sorted(b.use_flags.items()) if v and f not in _hw_names]
+        hw_flags = [f"USE_{f}" for f, v in sorted(b.use_flags.items()) if v and f in _hw_names]
+        static_flags = [f"STATIC_{f}" for f, v in sorted(b.static_flags.items()) if v]
         static_str = " ".join(static_flags) if static_flags else ""
-
-        # Hardware flags
-        hw_flags = []
-        if b.use_stapi: hw_flags.append("USE_STAPI")
-        if b.use_stapi5: hw_flags.append("USE_STAPI5")
-        if b.use_coolapi: hw_flags.append("USE_COOLAPI")
-        if b.use_coolapi2: hw_flags.append("USE_COOLAPI2")
-        if b.use_su980: hw_flags.append("USE_SU980")
-        if b.use_azbox: hw_flags.append("USE_AZBOX")
-        if b.use_amsmc: hw_flags.append("USE_AMSMC")
-        if b.use_mca: hw_flags.append("USE_MCA")
-        hw_str = " ".join(hw_flags) if hw_flags else "none"
 
         # Check if source repo still exists
         from core.repos_config import load_repos
