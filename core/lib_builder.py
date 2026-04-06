@@ -344,6 +344,11 @@ def _do_build(
     except Exception:
         pass
 
+    # Update replacements with sysroot-injected CC so extra scripts (auto_bitslice) work
+    replacements["@CC@"] = env["CC"]
+    if env.get("CFLAGS"):
+        replacements["@CFLAGS@"] = env["CFLAGS"]
+
     # Set PKG_CONFIG_PATH so libraries can find each other (e.g. ccid needs pcsclite)
     pkg_dirs = []
     for pc_dir in toolchain_dir.glob("**/pkgconfig"):
