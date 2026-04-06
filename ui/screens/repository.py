@@ -87,7 +87,7 @@ class RepositoryScreen(Screen):
                     patch_btn = Button("Patch", id="btn-patch", variant="success")
                     patch_btn.tooltip = "Apply selected patches to the repository"
                     yield patch_btn
-                    dl_btn = Button("Download", id="btn-download", variant="success", disabled=not has_sources)
+                    dl_btn = Button("Download", id="btn-download", variant="success")
                     dl_btn.tooltip = dl_tooltip
                     yield dl_btn
                     restore_btn = Button("Restore", id="btn-restore")
