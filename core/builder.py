@@ -1049,7 +1049,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         # USE_FLAGS as cmake -D variables (translated to cmake names)
         _CMAKE_FLAG_MAP = {
             "USE_SSL": "WITH_SSL",
-            "USE_LIBCRYPTO": None,         # auto via WITH_SSL in cmake
+            "USE_LIBCRYPTO": "WITH_LIBCRYPTO",
             "USE_LIBUSB": "HAVE_LIBUSB",
             "USE_PCSC": "HAVE_PCSC",
             "USE_LIBDVBCSA": "HAVE_LIBDVBCSA",
