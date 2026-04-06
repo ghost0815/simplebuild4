@@ -69,14 +69,13 @@ libraries:
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
         configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
         make: "make -j@CPUS@ || make"
-        install: "make install"
-      - version: "1.0.2u"
-        label: "1.0.2 as 1.0.0 (Fritzbox)"
+        install: "make install SHLIB_VERSION_NUMBER=1.0.2 SHLIB_MINOR=0.2"
+      - version: "1.0.2u-100"
+        label: "1.0.2 as 1.0.0 (very old)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
         configure: "./Configure --prefix=@PREFIX@ linux-generic32 shared"
         make: "make -j@CPUS@ || make"
         install: "make install"
-        extra: {}
       - version: "1.0.0t"
         label: "1.0.0 (ancient)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_0t.tar.gz
