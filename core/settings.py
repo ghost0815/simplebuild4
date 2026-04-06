@@ -15,7 +15,7 @@ class Settings:
     # General
     language: str = "en"
     theme: str = "textual-dark"    # Textual theme name (auto-saved)
-    update_check: bool = False
+    update_check: bool = True
     last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
