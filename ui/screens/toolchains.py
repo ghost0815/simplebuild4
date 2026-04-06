@@ -425,6 +425,7 @@ class ToolchainsScreen(Screen):
             ToolchainsScreen._selected_tc = first_key.value
 
         self._update_detail()
+        self._update_f9_state()
         # Focus the installed table, not the filter field
         tbl.focus()
         # Delay enabling event handling — tables fire RowHighlighted during render
@@ -814,11 +815,11 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
-    def _update_f10_state(self) -> None:
+    def _update_f9_state(self) -> None:
         """Update F10 button: Update/Cancel based on build state."""
         try:
             for item in self.query("FooterItem"):
-                if item._key == "F10":
+                if item._key == "F9":
                     if self._building:
                         item._label = "Cancel"
                         item._disabled = False
@@ -838,8 +839,8 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
-    def do_add(self) -> None:
-        """F10 — execute library actions or cancel running build."""
+    def do_tc_update(self) -> None:
+        """F9 — execute library actions or cancel running build."""
         if self._building:
             # Cancel running build
             self._cancel_requested = True
@@ -881,7 +882,7 @@ class ToolchainsScreen(Screen):
 
         self._building = True
         self._cancel_requested = False
-        self._update_f10_state()
+        self._update_f9_state()
         order = ", ".join(name for name, _ in actions)
         self._log_sync(f"[bold]Building {len(actions)} libraries for {tc.name}:[/bold] {order}")
 
@@ -944,7 +945,7 @@ class ToolchainsScreen(Screen):
             finally:
                 self._building = False
                 self._cancel_requested = False
-                self.app.call_from_thread(self._update_f10_state)
+                self.app.call_from_thread(self._update_f9_state)
                 # Refresh library info (stay on Libraries tab)
                 self.app.call_from_thread(self._update_libraries)
 
@@ -1023,7 +1024,7 @@ class ToolchainsScreen(Screen):
             output.styles.height = "1fr"
 
         # Update F10 button state in footer
-        self._update_f10_state()
+        self._update_f9_state()
 
     def _check_c11(self, install_dir: Path, prefix: str) -> bool:
         """Check if toolchain's gcc supports C11 (>= GCC 4.9)."""
@@ -2096,7 +2097,7 @@ class ToolchainsScreen(Screen):
 
     def action_go_back(self) -> None:
         if self._building:
-            self.notify("Build in progress — cancel first with F10", severity="warning")
+            self.notify("Build in progress — cancel first with F9", severity="warning")
             return
         ToolchainsScreen._log_history.clear()
         ToolchainsScreen._selected_tc = ""

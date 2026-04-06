@@ -29,6 +29,7 @@ class S4App(App):
         Binding("f3", "open_repository", show=False),
         Binding("f4", "open_toolchains", show=False),
         Binding("f5", "build", show=False),
+        Binding("f9", "tc_update", show=False),
         Binding("f10", "add", show=False),
         Binding("f11", "remove", show=False),
     ]
@@ -105,6 +106,105 @@ class S4App(App):
             self.copy_to_clipboard(selection)
             self.notify("Copied to clipboard")
 
+    def action_show_help_panel(self) -> None:
+        """Override Textual's default Keys to show our keyboard reference."""
+        self.action_show_keys()
+
+    def action_show_keys(self) -> None:
+        """Show keyboard shortcuts help."""
+        from textual.screen import ModalScreen
+        from textual.widgets import Static
+        from textual.containers import VerticalScroll
+        from textual.binding import Binding
+
+        class KeysScreen(ModalScreen):
+            BINDINGS = [
+                Binding("escape", "dismiss", show=False),
+                Binding("ctrl+p", "dismiss", show=False),
+            ]
+            DEFAULT_CSS = """
+            KeysScreen {
+                align: center middle;
+            }
+            KeysScreen > VerticalScroll {
+                width: 80;
+                height: 85%;
+                border: solid $primary;
+                background: $surface;
+                padding: 1 2;
+            }
+            """
+            def compose(self):
+                with VerticalScroll():
+                    yield Static(HELP_TEXT)
+
+        HELP_TEXT = """\
+[bold]s4 Keyboard Reference[/bold]  [dim](Esc to close)[/dim]
+
+[bold]Navigation[/bold]
+  Tab / Shift+Tab     Next / previous widget
+  Arrow Up/Down       Navigate lists, tables, dropdowns
+  Enter               Activate button, confirm selection
+  Space               Toggle switch, open dropdown
+  Escape              Close dropdown, go back, quit
+
+[bold]Text Input[/bold]
+  Backspace           Delete character
+  Ctrl+A              Select all text
+  Ctrl+C              Copy selected text
+  Home / End          Jump to start / end of field
+
+[bold]Dropdowns[/bold]
+  Space / Enter       Open dropdown list
+  Arrow Up/Down       Navigate options
+  Enter               Select option
+  Escape              Close without selecting
+
+[bold]Switches[/bold]
+  Space / Enter       Toggle on/off
+
+[bold]Tables[/bold]
+  Arrow Up/Down       Select row
+  Home / End          First / last row
+  Page Up/Down        Scroll page
+
+[bold]Collapsible Sections[/bold]
+  Enter / Space       Expand / collapse section
+
+[bold]Scrolling[/bold]
+  Arrow Up/Down       Scroll content
+  Page Up/Down        Scroll page
+  Mouse wheel         Scroll
+
+[bold]Screens[/bold]
+  F1                  Settings
+  F2                  Targets (Main)
+  F3                  Repositories
+  F4                  Toolchains
+  Esc                 Back (Quit on Main)
+
+[bold]Tabs[/bold]
+  Main                [bold]C[/bold]ompact  [bold]O[/bold]utput
+  Target              [bold]G[/bold]eneral  [bold]R[/bold]epo/Toolchain  [bold]O[/bold]ptions  [bold]U[/bold]pload
+  Toolchain left      [bold]P[/bold]reBuild  [bold]S[/bold]elfBuild
+  Toolchain right     [bold]D[/bold]etails  [bold]L[/bold]ibraries  [bold]O[/bold]utput
+
+[bold]Actions[/bold]
+  F5                  Build / Cancel (Main)
+  F9                  Update / Cancel (Toolchains libraries)
+  F10                 Add
+  F11                 Remove (double-press to confirm)
+  F12                 Save
+  Ctrl+P              Command palette (Keys, Theme, Update)
+
+[bold]CLI[/bold]
+  ./s4 build <target> [--make|--cmake] [OPTION_FLAG OPTION_FLAG_off ...]
+  ./s4 targets        List targets
+  ./s4 version        Show version
+  ./s4 update         Self-update"""
+
+        self.push_screen(KeysScreen())
+
     def action_select_all(self) -> None:
         """Select all text in focused widget via Ctrl+A."""
         widget = self.focused
@@ -157,6 +257,12 @@ class S4App(App):
         from ui.screens.toolchains import ToolchainsScreen
         if not isinstance(self.screen, ToolchainsScreen):
             self.push_screen(ToolchainsScreen())
+
+    def action_tc_update(self) -> None:
+        """Dispatch F9 Update to toolchains screen."""
+        screen = self.screen
+        if hasattr(screen, 'do_tc_update'):
+            screen.do_tc_update()
 
     def action_add(self) -> None:
         """Dispatch F10 Add to the current screen."""

@@ -120,14 +120,15 @@ class S4Footer(Horizontal):
         # Spacer
         yield FooterSpacer()
 
-        # Right: F10 Add/Update, F11 Remove
-        if self._active_screen in UPDATE_SCREENS:
-            yield FooterItem(key="F10", label="Update", action="action_add", disabled=True)
-            yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=True)
-        else:
-            add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
-            yield FooterItem(key="F10", label="Add", action="action_add", disabled=add_disabled)
-            yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=add_disabled)
+        # Right: F9 Update, F10 Add, F11 Remove
+        f9_disabled = self._active_screen not in UPDATE_SCREENS
+        yield FooterItem(key="F9", label="Update", action="action_tc_update", disabled=f9_disabled)
+
+        add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
+        yield FooterItem(key="F10", label="Add", action="action_add", disabled=add_disabled)
+
+        remove_disabled = self._active_screen not in ADD_REMOVE_SCREENS
+        yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=remove_disabled)
 
         # Right: Save
         save_screens = {"settings", "repository", "target_edit"}
