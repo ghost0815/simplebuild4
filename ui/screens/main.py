@@ -10,6 +10,7 @@ from textual.containers import Horizontal, Vertical
 
 from core.target import Target
 from core.repo import RepoState
+from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -37,14 +38,14 @@ class MainScreen(Screen):
                 yield Select(
                     options=targets if targets else [("(no targets)", None)],
                     id="target-select",
-                    prompt="select target",
+                    prompt=t("select_prompt"),
                 )
                 yield Input(
-                    placeholder="build overrides, e.g. USE_SSL USE_PCSC_off",
+                    placeholder=t("ph_build_overrides"),
                     id="build-opts",
                 )
-                yield Button("Edit", id="btn-edit")
-                yield Button("Duplicate", id="btn-dup")
+                yield Button(t("edit"), id="btn-edit")
+                yield Button(t("duplicate"), id="btn-dup")
 
             # Tabs
             with Horizontal(id="main-tab-bar"):
@@ -57,7 +58,7 @@ class MainScreen(Screen):
                 "  Create a new target to get started.",
                 id="info",
             )
-            info.border_title = "Settings"
+            info.border_title = t("settings_title")
             yield info
 
             # Output log (always visible, grows to fill space)
@@ -66,7 +67,7 @@ class MainScreen(Screen):
         yield S4Footer(active_screen="main")
 
     def on_mount(self) -> None:
-        self.query_one("#output", RichLog).border_title = "Output"
+        self.query_one("#output", RichLog).border_title = t("output_title")
         # Restore last selected target
         last = self.app.settings.last_target
         if last:
@@ -175,35 +176,51 @@ class MainScreen(Screen):
         tc_str = ", ".join(tc.name if hasattr(tc, 'name') else tc for tc in target.toolchains) or "none"
 
         # Build info text
+        pad = 16  # label width for alignment
         lines = [
             f"  [bold]{target.name}[/bold] — {target.description}",
-            f"  Repositories: {repo_str}",
-            f"  Toolchains:   {tc_str}",
+            f"  {t('repositories') + ':':<{pad}} {repo_str}",
+            f"  {t('toolchains') + ':':<{pad}} {tc_str}",
         ]
         # Options per category
         if b.modules:
-            lines.append(self._wrap_values("  Addons:       ", b.modules))
+            lines.append(self._wrap_values(f"  {t('addons') + ':':<{pad}} ", b.modules))
         if b.protocols:
-            lines.append(self._wrap_values("  Protocols:    ", b.protocols))
+            lines.append(self._wrap_values(f"  {t('protocols') + ':':<{pad}} ", b.protocols))
         if b.readers:
-            lines.append(self._wrap_values("  Readers:      ", b.readers))
+            lines.append(self._wrap_values(f"  {t('readers') + ':':<{pad}} ", b.readers))
         if b.card_readers:
-            lines.append(self._wrap_values("  Card Readers: ", b.card_readers))
+            lines.append(self._wrap_values(f"  {t('card_readers') + ':':<{pad}} ", b.card_readers))
         lines.extend([
-            self._wrap_values("  Libraries:    ", lib_flags) + (f"  [dim]Static: {static_str}[/dim]" if static_str else ""),
-            self._wrap_values("  Hardware:     ", hw_flags),
+            self._wrap_values(f"  {t('libraries') + ':':<{pad}} ", lib_flags) + (f"  [dim]Static: {static_str}[/dim]" if static_str else ""),
+            self._wrap_values(f"  {t('hardware') + ':':<{pad}} ", hw_flags),
         ])
         if b.use_compress:
             import shutil as _shutil
-            upx_path = b.upx_binary or _shutil.which("upx") or "not found"
-            lines.append(f"  Compress:     USE_COMPRESS ({b.compress_level})  [dim]{upx_path}[/dim]")
-        lines.append(f"  Upload:       {upload_str}")
+            upx_path = b.upx_binary or _shutil.which("upx") or t("none")
+            lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_path}[/dim]")
+        lines.append(f"  {t('upload') + ':':<{pad}} {upload_str}")
 
         info = self.query_one("#info", Static)
         info.update("\n".join(lines))
 
     def on_screen_resume(self) -> None:
-        """Refresh target list when returning from another screen."""
+        """Refresh target list and translations when returning from another screen."""
+        # Update translated widgets (language may have changed in settings)
+        try:
+            self.query_one("#info", Static).border_title = t("settings_title")
+            self.query_one("#output", RichLog).border_title = t("output_title")
+            self.query_one("#btn-edit", Button).label = t("edit")
+            self.query_one("#btn-dup", Button).label = t("duplicate")
+            # Rebuild footer with new language
+            from ui.footer import S4Footer
+            old_footer = self.query_one(S4Footer)
+            new_footer = S4Footer(active_screen="main")
+            old_footer.remove()
+            self.mount(new_footer)
+        except Exception:
+            pass
+
         sel = self.query_one("#target-select", Select)
         # Prefer last saved target (from target editor), then previous selection
         select_path = getattr(self.app, "_last_saved_target", None)
@@ -251,7 +268,7 @@ class MainScreen(Screen):
                 target, path = result
                 self.app.push_screen(TargetEditScreen(target=target, save_path=path))
             else:
-                self.notify("No target selected", severity="warning")
+                self.notify(t("no_target_selected"), severity="warning")
         elif btn == "btn-dup":
             result = self._get_selected_target()
             if result:
@@ -260,7 +277,7 @@ class MainScreen(Screen):
                 target.description = f"Copy of {target.description}"
                 self.app.push_screen(TargetEditScreen(target=target))
             else:
-                self.notify("No target selected", severity="warning")
+                self.notify(t("no_target_selected"), severity="warning")
 
     def do_add(self) -> None:
         """F10 Add — create new target."""
@@ -274,7 +291,7 @@ class MainScreen(Screen):
         import time
         result = self._get_selected_target()
         if not result:
-            self.notify("No target selected", severity="warning")
+            self.notify(t("no_target_selected"), severity="warning")
             return
         target, path = result
         now = time.time()
@@ -285,11 +302,11 @@ class MainScreen(Screen):
                 "  [bold]No target selected[/bold]\n"
                 "  Create a new target to get started."
             )
-            self.notify(f"Target '{target.name}' deleted")
+            self.notify(t("target_deleted", name=target.name))
             self._remove_confirm_time = 0
             return
         self._remove_confirm_time = now
-        self.notify(f"Press F11 again to delete '{target.name}'", severity="warning", timeout=3)
+        self.notify(t("confirm_remove_target", name=target.name), severity="warning", timeout=3)
 
     _building = False
     _cancel_requested = False
@@ -304,7 +321,7 @@ class MainScreen(Screen):
         import threading
         result = self._get_selected_target()
         if not result:
-            self.notify("No target selected", severity="warning")
+            self.notify(t("no_target_selected"), severity="warning")
             return
         target, path = result
 
@@ -315,7 +332,7 @@ class MainScreen(Screen):
         self.query_one("#output", RichLog).clear()
         self._building = True
         self._cancel_requested = False
-        self._update_build_button()
+        self.call_later(self._update_build_button)
 
         def log(msg: str):
             try:
@@ -368,11 +385,12 @@ class MainScreen(Screen):
         """Update F5 footer label and highlight: Build or Cancel."""
         try:
             from ui.footer import FooterItem
+            found = False
             for item in self.query(FooterItem):
                 if item._key == "F5":
-                    item._label = "Cancel" if self._building else "Build"
+                    item._label = t("cancel") if self._building else t("build")
                     item._active = self._building
-                    item.refresh()
+                    item.refresh(layout=True)
                     break
         except Exception:
             pass

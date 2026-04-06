@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 from textual.command import Provider, Hit, Hits, DiscoveryHit
+from translation import t
 
-S4_COMMANDS = [
-    ("Update", "Online update", "action_s4_update"),
-    ("Settings", "s4 settings", "action_s4_settings"),
-    ("License", "Show license (COPYING)", "action_show_license"),
-]
+
+def _s4_commands():
+    """Return translated command list (called at runtime so language is current)."""
+    return [
+        (t("cmd_update"), t("cmd_update_help"), "action_s4_update"),
+        (t("cmd_settings"), t("cmd_settings_help"), "action_s4_settings"),
+        (t("cmd_license"), t("cmd_license_help"), "action_show_license"),
+    ]
 
 
 class S4Commands(Provider):
     """s4 commands — appear first in the command palette."""
 
     async def discover(self) -> Hits:
-        for name, help_text, action in S4_COMMANDS:
+        for name, help_text, action in _s4_commands():
             yield DiscoveryHit(
                 display=name,
                 command=self._make_callback(action),
@@ -24,7 +28,7 @@ class S4Commands(Provider):
 
     async def search(self, query: str) -> Hits:
         matcher = self.matcher(query)
-        for name, help_text, action in S4_COMMANDS:
+        for name, help_text, action in _s4_commands():
             score = matcher.match(name)
             if score > 0:
                 yield Hit(

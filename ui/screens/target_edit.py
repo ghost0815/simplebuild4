@@ -13,6 +13,7 @@ from core.target import Target, BuildSettings, UploadConfig, SourceConfig, Toolc
 from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
 from core.oscam_config import read_options, merge_options, OscamOptions
+from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -95,9 +96,9 @@ class TargetEditScreen(Screen):
         return [d for d in candidates if d.is_dir()]
 
     def compose(self) -> ComposeResult:
-        t = self.target
-        b = t.build
-        u = t.upload[0] if t.upload else UploadConfig()
+        tgt = self.target
+        b = tgt.build
+        u = tgt.upload[0] if tgt.upload else UploadConfig()
 
         repos = load_repos(self.app.paths.repos_config)
         registry = ToolchainRegistry(
@@ -107,8 +108,8 @@ class TargetEditScreen(Screen):
         )
         registry.load()
         installed = registry.installed_toolchains()
-        tc_names = [tc.name for tc in t.toolchains]
-        tc_map = {tc.name: tc for tc in t.toolchains}
+        tc_names = [tc.name for tc in tgt.toolchains]
+        tc_map = {tc.name: tc for tc in tgt.toolchains}
         oscam = self._load_oscam_options()
 
         yield S4Header()
@@ -136,15 +137,15 @@ class TargetEditScreen(Screen):
         has_source = bool(oscam.addons)  # True if any source repo is assigned and cloned
 
         with VerticalScroll(id="te-panel-general"):
-            with Collapsible(title="Common", collapsed=False, id="col-common"):
+            with Collapsible(title=t("section_common"), collapsed=False, id="col-common"):
                 yield Horizontal(
-                    Static(" Name", classes="s-label-tall"),
-                    Input(value=t.name, placeholder="e.g. DM920", id="t-name"),
+                    Static(f" {t("te_name")}", classes="s-label-tall"),
+                    Input(value=tgt.name, placeholder=t("ph_target_name"), id="t-name"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Description", classes="s-label-tall"),
-                    Input(value=t.description, placeholder="e.g. Dreambox 920 living room", id="t-desc"),
+                    Static(f" {t("te_description")}", classes="s-label-tall"),
+                    Input(value=tgt.description, placeholder=t("ph_target_desc"), id="t-desc"),
                     classes="s-row",
                 )
                 compress_enabled = b.use_compress and bool(self._upx_path)
@@ -153,7 +154,7 @@ class TargetEditScreen(Screen):
                 upx_tooltip = _re.sub(r'\[/?[a-z_ ]+\]', '', self._upx_info).strip() if self._upx_path else "upx not found"
                 upx_switch.tooltip = upx_tooltip
                 upx_binary_val = b.upx_binary or self._upx_path or ""
-                upx_path_inp = Input(value=upx_binary_val, placeholder="system default", id="t-upx-binary")
+                upx_path_inp = Input(value=upx_binary_val, placeholder=t("ph_system_default"), id="t-upx-binary")
                 upx_path_inp.styles.width = "1fr"
                 if compress_enabled:
                     lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
@@ -161,9 +162,9 @@ class TargetEditScreen(Screen):
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
                         upx_switch,
-                        Static(" Binary", classes="src-opt-label"),
+                        Static(f" {t("te_binary")}", classes="src-opt-label"),
                         upx_path_inp,
-                        Static(" Compression level", classes="src-opt-label"),
+                        Static(f" {t("te_compression_level")}", classes="src-opt-label"),
                         lvl_inp,
                         classes="flag-row",
                     )
@@ -174,26 +175,27 @@ class TargetEditScreen(Screen):
                         classes="flag-row",
                     )
                 yield Horizontal(
-                    Static(" Build system", classes="s-label-tall"),
+                    Static(f" {t("te_build_system")}", classes="s-label-tall"),
                     Select(
                         options=[("make", "make"), ("cmake", "cmake")],
                         value=b.build_system or "make",
                         id="t-build-system",
+                        prompt=t("select_prompt"),
                     ),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Binary name", classes="s-label-tall"),
-                    Input(value=b.use_oscamname, placeholder="empty = default", id="t-oscamname"),
+                    Static(f" {t("te_binary_name")}", classes="s-label-tall"),
+                    Input(value=b.use_oscamname, placeholder=t("ph_empty_default"), id="t-oscamname"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Config directory", classes="s-label-tall"),
+                    Static(f" {t("te_config_directory")}", classes="s-label-tall"),
                     Input(value=b.confdir, id="t-confdir"),
                     classes="s-row",
                 )
             if has_source:
-                with Collapsible(title="Library + Static Flags", collapsed=True, id="col-lib-flags"):
+                with Collapsible(title=t("section_library_flags"), collapsed=True, id="col-lib-flags"):
                     yield Horizontal(
                         Static(" USE_LIBCRYPTO", classes="flag-label"), Switch(value=b.use_libcrypto, id="f-use-libcrypto"),
                         Static(" STATIC_LIBCRYPTO", classes="flag-label"), Switch(value=b.static_libcrypto, id="f-static-libcrypto"),
@@ -220,7 +222,7 @@ class TargetEditScreen(Screen):
                         classes="flag-row",
                     )
 
-                with Collapsible(title="Hardware Flags", collapsed=True, id="col-hw-flags"):
+                with Collapsible(title=t("section_hardware_flags"), collapsed=True, id="col-hw-flags"):
                     # STAPI row — with optional STAPI_LIB field inline
                     _stapi5_sw = Switch(value=b.use_stapi5, id="f-use-stapi5")
                     _stapi_widgets = [
@@ -238,7 +240,7 @@ class TargetEditScreen(Screen):
                         _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
                         _stapi_is_default = (_stapi_val == _stapi_default)
                         from textual.widgets import Button as _Btn
-                        _stapi_inp = Input(value=_stapi_val, placeholder="e.g. liboscam_stapi.a", id="f-stapi-lib")
+                        _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
                         _stapi_inp.styles.max_width = 25
                         if _stapi_is_default:
                             _stapi_inp.add_class("tc-default")
@@ -265,19 +267,19 @@ class TargetEditScreen(Screen):
                         classes="flag-row",
                     )
             else:
-                yield Static("  [dim]Select a source repository to configure build flags[/dim]")
+                yield Static(f"  [dim]{t('te_select_source_flags')}[/dim]")
 
         # === Tab 2: Repo/Toolchain===
         with VerticalScroll(id="te-panel-source"):
             # Sources
-            src_names = [s.name for s in t.sources]
-            src_map = {s.name: s for s in t.sources}
-            src_count = len(t.sources)
+            src_names = [s.name for s in tgt.sources]
+            src_map = {s.name: s for s in tgt.sources}
+            src_count = len(tgt.sources)
             # Available patches
             patches_dir = self.app.paths.patches_dir
             available_patches = sorted(p.name for p in patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
 
-            with Collapsible(title=f"Repositories ({src_count} selected)", collapsed=False, id="col-sources"):
+            with Collapsible(title=f"Repositories ({src_count} {t('te_selected')})", collapsed=False, id="col-sources"):
                 for r in repos:
                     enabled = r.name in src_names
                     sc = src_map.get(r.name, SourceConfig(name=r.name))
@@ -287,9 +289,9 @@ class TargetEditScreen(Screen):
                         src_label,
                         Switch(value=enabled, id=f"src-{rid}"),
                         *([
-                            Static(" [dim]Update before build[/dim]", classes="src-opt-label"),
+                            Static(f" [dim]{t("te_update_before_build")}[/dim]", classes="src-opt-label"),
                             Switch(value=sc.update_before_build, id=f"src-upd-{rid}"),
-                            Static(" [dim]Patch before build[/dim]", classes="src-opt-label"),
+                            Static(f" [dim]{t("te_patch_before_build")}[/dim]", classes="src-opt-label"),
                             Switch(value=sc.patch_before_build, id=f"src-patch-{rid}"),
                         ] if enabled else []),
                         classes="src-row",
@@ -301,11 +303,11 @@ class TargetEditScreen(Screen):
                                 selected = patch in sc.patches
                                 yield _switch_compact(patch, selected, f"p-{rid}-{pid}")
                 if not repos:
-                    yield Static("  [dim]No repositories configured — use F3 Repositories first[/dim]")
+                    yield Static(f"  [dim]{t('te_no_repos_hint')}[/dim]")
 
             # Toolchains
-            tc_count = len(t.toolchains)
-            with Collapsible(title=f"Toolchains ({tc_count} selected)", collapsed=False, id="col-toolchains"):
+            tc_count = len(tgt.toolchains)
+            with Collapsible(title=f"Toolchains ({tc_count} {t('te_selected')})", collapsed=False, id="col-toolchains"):
                 for tc in installed:
                     enabled = tc.name in tc_names
                     tcc = tc_map.get(tc.name, ToolchainConfig(name=tc.name))
@@ -348,7 +350,7 @@ class TargetEditScreen(Screen):
                         lbl_mv.tooltip = "Additional make variable assignments (e.g. LIB_RT= EXTRA_TARGET=-mybox)"
                         def _rst_btn(bid: str) -> "Btn":
                             b = Btn("↺", id=bid, classes="tc-reset-btn")
-                            b.tooltip = "Load toolchain default"
+                            b.tooltip = t("te_load_default")
                             return b
 
                         yield Horizontal(
@@ -372,7 +374,7 @@ class TargetEditScreen(Screen):
                         # Store defaults for reset
                         self._tc_defaults[sid] = {"cc": def_cc, "cf": def_cf, "ld": def_ld, "mv": def_mv}
                 if not installed:
-                    yield Static("  [dim]No toolchains installed — use F4 Toolchains first[/dim]")
+                    yield Static(f"  [dim]{t('te_no_tc_hint')}[/dim]")
 
         # === Tab 2: Options (oscam modules) ===
         # Merge target config with oscam options:
@@ -418,7 +420,7 @@ class TargetEditScreen(Screen):
                         for mod in removed_addons:
                             yield _switch_compact(mod, True, f"m-{mod}", removed=True)
                 else:
-                    yield Static("  [dim]Select a source repository first[/dim]")
+                    yield Static(f"  [dim]{t('te_select_source_first')}[/dim]")
 
             protos_sorted = sorted(oscam.protocols)
             removed_protos = sorted(self._removed_opts.get("protocols", []))
@@ -455,47 +457,47 @@ class TargetEditScreen(Screen):
                 from textual.widgets import Button
                 yield Horizontal(
                     Static("", classes="spacer"),
-                    Button("Cleanup", id="btn-cleanup", variant="primary"),
+                    Button(t("te_cleanup"), id="btn-cleanup", variant="primary"),
                     classes="s-row",
                 )
 
         # === Tab 3: Upload ===
         with VerticalScroll(id="te-panel-upload"):
-            upload_count = len(t.upload)
-            with Collapsible(title=f"Destination ({upload_count})", collapsed=False, id="col-upload"):
+            upload_count = len(tgt.upload)
+            with Collapsible(title=f"{t('te_destination')} ({upload_count})", collapsed=False, id="col-upload"):
                 yield Horizontal(
-                    Static(" Host", classes="s-label-tall"),
-                    Input(value=u.host, placeholder="e.g. 192.168.1.50", id="t-up-host"),
+                    Static(f" {t('te_host')}", classes="s-label-tall"),
+                    Input(value=u.host, placeholder=t("ph_host"), id="t-up-host"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" User", classes="s-label-tall"),
+                    Static(f" {t('te_user')}", classes="s-label-tall"),
                     Input(value=u.user, id="t-up-user"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Port", classes="s-label-tall"),
+                    Static(f" {t('te_port')}", classes="s-label-tall"),
                     Input(value=str(u.port), id="t-up-port", type="integer"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" SSH key", classes="s-label-tall"),
-                    Input(value=u.key, placeholder="~/.ssh/id_rsa", id="t-up-key"),
+                    Static(f" {t('te_ssh_key')}", classes="s-label-tall"),
+                    Input(value=u.key, placeholder=t("ph_ssh_key"), id="t-up-key"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Target path", classes="s-label-tall"),
+                    Static(f" {t('te_target_path')}", classes="s-label-tall"),
                     Input(value=u.target_path, id="t-up-path"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Pre command", classes="s-label-tall"),
-                    Input(value=u.pre_cmd, placeholder="e.g. killall oscam", id="t-up-pre"),
+                    Static(f" {t('te_pre_command')}", classes="s-label-tall"),
+                    Input(value=u.pre_cmd, placeholder=t("ph_pre_cmd"), id="t-up-pre"),
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(" Post command", classes="s-label-tall"),
-                    Input(value=u.post_cmd, placeholder="e.g. /usr/bin/oscam -b", id="t-up-post"),
+                    Static(f" {t('te_post_command')}", classes="s-label-tall"),
+                    Input(value=u.post_cmd, placeholder=t("ph_post_cmd"), id="t-up-post"),
                     classes="s-row",
                 )
 
@@ -511,6 +513,8 @@ class TargetEditScreen(Screen):
                 pass
         if self._focus_id:
             self.set_timer(0.1, self._restore_focus)
+        else:
+            self.set_timer(0.1, lambda: self.query_one("#t-name", Input).focus())
 
     def _restore_focus(self) -> None:
         try:
@@ -648,7 +652,7 @@ class TargetEditScreen(Screen):
                     switch.tooltip = f"{upx_path} — {upx_ver}"
                 elif upx_path:
                     switch.tooltip = f"{upx_path} — not found!"
-                    self.notify(f"UPX binary not found: {upx_path}", severity="warning", timeout=3)
+                    self.notify(t("upx_not_found", path=upx_path), severity="warning", timeout=3)
                 else:
                     switch.tooltip = "upx not configured"
             except Exception:
@@ -842,14 +846,14 @@ class TargetEditScreen(Screen):
         """Save target (called by App)."""
         target = self._collect()
         if not target.name:
-            self.notify("Target name is required", severity="error")
+            self.notify(t("target_name_required"), severity="error")
             return ""
         path = self.save_path or (self.app.paths.targets_dir / f"{target.name}.yaml")
         target.save(path)
         self.save_path = path
         # Remember for main screen to select after returning
         self.app._last_saved_target = str(path)
-        return f"Target '{target.name}' saved"
+        return t("target_saved", name=target.name)
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

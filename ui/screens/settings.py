@@ -8,21 +8,9 @@ from textual.screen import Screen
 from textual.widgets import Static, Select, Switch, Input
 from textual.containers import Horizontal, VerticalScroll
 
+from translation import t, available_languages
 from ui.header import S4Header
 from ui.footer import S4Footer
-
-LANGUAGES = [
-    ("English", "en"),
-    ("Deutsch", "de"),
-    ("Español", "es"),
-    ("Français", "fr"),
-    ("Italiano", "it"),
-    ("Nederlands", "nl"),
-    ("Polski", "pl"),
-    ("Português", "pt"),
-    ("Türkçe", "tr"),
-    ("Български", "bg"),
-]
 
 SWITCH_MAP = {
     "set-update-check": "update_check",
@@ -65,63 +53,66 @@ class SettingsScreen(Screen):
 
         with VerticalScroll(id="settings-content"):
             # General
-            yield Static(" [bold]General[/bold]", classes="section-title")
+            yield Static(f" [bold]{t('section_general')}[/bold]", classes="section-title")
             yield Horizontal(
-                Static(" Language", classes="s-label-tall"),
-                Select(options=LANGUAGES, value=s.language, id="set-language"),
+                Static(f" {t('language')}", classes="s-label-tall"),
+                Select(options=available_languages(), value=s.language, id="set-language", prompt=t("select_prompt")),
                 classes="s-row-tall",
             )
             yield Horizontal(
-                Static(" s4 update URL", classes="s-label"),
+                Static(f" {t('s4_update_url')}", classes="s-label"),
                 Input(value=s.s4_url, id="set-s4-url"),
                 classes="s-row",
             )
-            yield _switch_row("Check for updates on start", s.update_check, "set-update-check")
+            yield _switch_row(t("check_updates_start"), s.update_check, "set-update-check")
 
             # Build
-            yield Static(" [bold]Build[/bold]", classes="section-title")
+            yield Static(f" [bold]{t('section_build')}[/bold]", classes="section-title")
             yield Horizontal(
-                Static(" Compiler flags", classes="s-label"),
+                Static(f" {t('compiler_flags')}", classes="s-label"),
                 Input(value=s.compiler_opt, id="set-compiler-opt"),
                 classes="s-row",
             )
             yield Horizontal(
-                Static(" Max CPU threads", classes="s-label"),
+                Static(f" {t('max_cpu_threads')}", classes="s-label"),
                 Input(value=str(s.max_cpus), id="set-max-cpus", type="integer"),
                 classes="s-row",
             )
-            yield _switch_row("Patch WebIf with build info", s.patch_webif, "set-patch-webif")
-            yield _switch_row("Delete debug binary after build", s.delete_debug, "set-delete-debug")
-            yield _switch_row("Save list_smargo", s.save_smargo, "set-save-smargo")
+            yield _switch_row(t("patch_webif_info"), s.patch_webif, "set-patch-webif")
+            yield _switch_row(t("delete_debug_binary"), s.delete_debug, "set-delete-debug")
+            yield _switch_row(t("save_list_smargo"), s.save_smargo, "set-save-smargo")
 
             # Signing
-            yield Static(" [bold]Binary Signing[/bold]", classes="section-title")
+            yield Static(f" [bold]{t('section_signing')}[/bold]", classes="section-title")
             yield Horizontal(
-                Static(" X.509 certificate", classes="s-label"),
-                Input(value=s.sign_cert, placeholder="/path/to/certificate.crt", id="set-sign-cert"),
+                Static(f" {t('signing_certificate')}", classes="s-label"),
+                Input(value=s.sign_cert, placeholder=t("ph_sign_cert"), id="set-sign-cert"),
                 classes="s-row",
             )
             yield Horizontal(
-                Static(" Private key", classes="s-label"),
-                Input(value=s.sign_key, placeholder="/path/to/private.key", id="set-sign-key"),
+                Static(f" {t('private_key')}", classes="s-label"),
+                Input(value=s.sign_key, placeholder=t("ph_sign_key"), id="set-sign-key"),
                 classes="s-row",
             )
 
             # QEMU
-            yield Static(" [bold]QEMU Post-Build Test[/bold]", classes="section-title")
-            yield _switch_row("Enable QEMU smoke test", s.qemu_test, "set-qemu-test")
+            yield Static(f" [bold]{t('section_qemu')}[/bold]", classes="section-title")
+            yield _switch_row(t("enable_qemu_test"), s.qemu_test, "set-qemu-test")
             yield Horizontal(
-                Static(" Timeout (seconds)", classes="s-label"),
+                Static(f" {t('timeout_seconds')}", classes="s-label"),
                 Input(value=str(s.qemu_timeout), id="set-qemu-timeout", type="integer"),
                 classes="s-row",
             )
             yield Horizontal(
-                Static(" Expected output", classes="s-label"),
+                Static(f" {t('expected_output')}", classes="s-label"),
                 Input(value=s.qemu_expect, id="set-qemu-expect"),
                 classes="s-row",
             )
 
         yield S4Footer(active_screen="settings")
+
+    def on_mount(self) -> None:
+        self.query_one("#set-language", Select).focus()
 
     def _save(self) -> None:
         s = self.app.settings
@@ -142,10 +133,20 @@ class SettingsScreen(Screen):
                 setattr(s, attr, val)
         s.save(self.app.settings_path)
 
+        # Track if language changed
+        import translation
+        self._language_changed = s.language != translation._current_lang
+        if self._language_changed:
+            translation.load(s.language)
+
+    _language_changed: bool = False
+
     def do_save(self) -> str:
         """Save settings (called by App)."""
         self._save()
-        return "Settings saved"
+        if self._language_changed:
+            self.notify(t("language_changed"), severity="warning", timeout=5)
+        return t("settings_saved")
 
     def action_go_back(self) -> None:
         self._save()

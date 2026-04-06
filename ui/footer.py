@@ -2,15 +2,16 @@
 
 from textual.widgets import Static
 from textual.containers import Horizontal
+from translation import t
 
 # Left side: F-key menu items (key, label, action, available_on_screens)
 # available_on = None means available everywhere
 FOOTER_LEFT = [
-    ("F1", "Settings", "action_s4_settings", None),
-    ("F2", "Targets", "action_open_targets", None),
-    ("F3", "Repositories", "action_open_repository", None),
-    ("F4", "Toolchains", "action_open_toolchains", None),
-    ("F5", "Build", "action_build", {"main"}),
+    ("F1", "settings_nav", "action_s4_settings", None),
+    ("F2", "targets_nav", "action_open_targets", None),
+    ("F3", "repositories_nav", "action_open_repository", None),
+    ("F4", "toolchains_nav", "action_open_toolchains", None),
+    ("F5", "build", "action_build", {"main"}),
 ]
 
 # Which screen each F-key navigates to (for highlighting)
@@ -106,12 +107,12 @@ class S4Footer(Horizontal):
 
     def compose(self):
         # Left: F-keys
-        for key, label, action, available_on in FOOTER_LEFT:
+        for key, label_key, action, available_on in FOOTER_LEFT:
             is_active = SCREEN_MAP.get(key) == self._active_screen
             is_available = available_on is None or self._active_screen in available_on
             yield FooterItem(
                 key=key,
-                label=label,
+                label=t(label_key),
                 action=action,
                 disabled=not is_available,
                 active=is_active,
@@ -122,19 +123,19 @@ class S4Footer(Horizontal):
 
         # Right: F9 Update, F10 Add, F11 Remove
         f9_disabled = self._active_screen not in UPDATE_SCREENS
-        yield FooterItem(key="F9", label="Update", action="action_tc_update", disabled=f9_disabled)
+        yield FooterItem(key="F9", label=t("update"), action="action_tc_update", disabled=f9_disabled)
 
         add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
-        yield FooterItem(key="F10", label="Add", action="action_add", disabled=add_disabled)
+        yield FooterItem(key="F10", label=t("add"), action="action_add", disabled=add_disabled)
 
         remove_disabled = self._active_screen not in ADD_REMOVE_SCREENS
-        yield FooterItem(key="F11", label="Remove", action="action_remove", disabled=remove_disabled)
+        yield FooterItem(key="F11", label=t("remove"), action="action_remove", disabled=remove_disabled)
 
         # Right: Save
         save_screens = {"settings", "repository", "target_edit"}
         save_disabled = self._active_screen not in save_screens
-        yield FooterItem(key="F12", label="Save", action="action_save_action", disabled=save_disabled)
+        yield FooterItem(key="F12", label=t("save"), action="action_save_action", disabled=save_disabled)
 
         # Right: Esc Quit/Back
-        esc_label = "Quit" if self._active_screen == "main" else "Back"
+        esc_label = t("quit") if self._active_screen == "main" else t("back")
         yield FooterItem(key="Esc", label=esc_label, action="action_esc")

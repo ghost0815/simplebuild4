@@ -5,6 +5,7 @@ from textual.binding import Binding
 
 from core.paths import Paths
 from core.settings import Settings
+from translation import t
 from ui.commands import S4Commands
 
 
@@ -52,6 +53,9 @@ class S4App(App):
 
     def on_mount(self) -> None:
         self.paths.ensure_dirs()
+        # Load translations
+        from translation import load as load_translations
+        load_translations(self.settings.language)
         # Restore saved theme
         if self.settings.theme:
             self.theme = self.settings.theme
@@ -86,14 +90,14 @@ class S4App(App):
             if behind > 0:
                 self.call_from_thread(
                     self.notify,
-                    f"s4 update available ({behind} new commit{'s' if behind > 1 else ''}) — press F1 → s4 update",
+                    t("s4_update_available", count=behind, s="s" if behind > 1 else ""),
                     severity="information",
                     timeout=10,
                 )
             else:
                 self.call_from_thread(
                     self.notify,
-                    "s4 is up to date",
+                    t("s4_up_to_date"),
                     timeout=3,
                 )
         except Exception:
@@ -173,70 +177,76 @@ class S4App(App):
                 with VerticalScroll():
                     yield Static(HELP_TEXT)
 
-        HELP_TEXT = """\
-[bold]s4 Keyboard Reference[/bold]  [dim](Esc to close)[/dim]
+        from translation import t as _t
+        K = 20  # key column width
+        D = 40  # description column width
+        def _r(key, desc):
+            return f"  {key:<{K}}{desc}"
 
-[bold]Navigation[/bold]
-  Tab / Shift+Tab     Next / previous widget
-  Arrow Up/Down       Navigate lists, tables, dropdowns
-  Enter               Activate button, confirm selection
-  Space               Toggle switch, open dropdown
-  Escape              Close dropdown, go back, quit
+        HELP_TEXT = f"""\
+[bold]{_t('keys_title')}[/bold]  [dim]({_t('keys_esc_close')})[/dim]
 
-[bold]Text Input[/bold]
-  Backspace           Delete character
-  Ctrl+A              Select all text
-  Ctrl+C              Copy selected text
-  Home / End          Jump to start / end of field
+[bold]{_t('keys_navigation')}[/bold]
+{_r('Tab / Shift+Tab', _t('keys_next_prev'))}
+{_r('Arrow Up/Down', _t('keys_nav_lists'))}
+{_r('Enter', _t('keys_activate'))}
+{_r('Space', _t('keys_toggle_open'))}
+{_r('Escape', _t('keys_close_back'))}
 
-[bold]Dropdowns[/bold]
-  Space / Enter       Open dropdown list
-  Arrow Up/Down       Navigate options
-  Enter               Select option
-  Escape              Close without selecting
+[bold]{_t('keys_text_input')}[/bold]
+{_r('Backspace', _t('keys_delete_char'))}
+{_r('Ctrl+A', _t('keys_select_all'))}
+{_r('Ctrl+C', _t('keys_copy'))}
+{_r('Home / End', _t('keys_jump_field'))}
 
-[bold]Switches[/bold]
-  Space / Enter       Toggle on/off
+[bold]{_t('keys_dropdowns')}[/bold]
+{_r('Space / Enter', _t('keys_open_dropdown'))}
+{_r('Arrow Up/Down', _t('keys_nav_options'))}
+{_r('Enter', _t('keys_select_option'))}
+{_r('Escape', _t('keys_close_no_select'))}
 
-[bold]Tables[/bold]
-  Arrow Up/Down       Select row
-  Home / End          First / last row
-  Page Up/Down        Scroll page
+[bold]{_t('keys_switches')}[/bold]
+{_r('Space / Enter', _t('keys_toggle'))}
 
-[bold]Collapsible Sections[/bold]
-  Enter / Space       Expand / collapse section
+[bold]{_t('keys_tables')}[/bold]
+{_r('Arrow Up/Down', _t('keys_select_row'))}
+{_r('Home / End', _t('keys_first_last'))}
+{_r('Page Up/Down', _t('keys_scroll_page'))}
 
-[bold]Scrolling[/bold]
-  Arrow Up/Down       Scroll content
-  Page Up/Down        Scroll page
-  Mouse wheel         Scroll
+[bold]{_t('keys_collapsible')}[/bold]
+{_r('Enter / Space', _t('keys_expand_collapse'))}
 
-[bold]Screens[/bold]
-  F1                  Settings
-  F2                  Targets (Main)
-  F3                  Repositories
-  F4                  Toolchains
-  Esc                 Back (Quit on Main)
+[bold]{_t('keys_scrolling')}[/bold]
+{_r('Arrow Up/Down', _t('keys_scroll_content'))}
+{_r('Page Up/Down', _t('keys_scroll_page'))}
+{_r('Mouse wheel', _t('keys_scroll'))}
 
-[bold]Tabs[/bold]
+[bold]{_t('keys_screens')}[/bold]
+{_r('F1', _t('settings_nav'))}
+{_r('F2', _t('targets_nav') + ' (Main)')}
+{_r('F3', _t('repositories_nav'))}
+{_r('F4', _t('toolchains_nav'))}
+{_r('Esc', _t('keys_back_quit'))}
+
+[bold]{_t('keys_tabs')}[/bold]
   Main                [bold]C[/bold]ompact  [bold]O[/bold]utput
   Target              [bold]G[/bold]eneral  [bold]R[/bold]epo/Toolchain  [bold]O[/bold]ptions  [bold]U[/bold]pload
   Toolchain left      [bold]P[/bold]reBuild  [bold]S[/bold]elfBuild
   Toolchain right     [bold]D[/bold]etails  [bold]L[/bold]ibraries  [bold]O[/bold]utput
 
-[bold]Actions[/bold]
-  F5                  Build / Cancel (Main)
-  F9                  Update / Cancel (Toolchains libraries)
-  F10                 Add
-  F11                 Remove (double-press to confirm)
-  F12                 Save
-  Ctrl+P              Command palette (Keys, Theme, Update)
+[bold]{_t('keys_actions')}[/bold]
+{_r('F5', _t('keys_build_cancel'))}
+{_r('F9', _t('keys_update_cancel'))}
+{_r('F10', _t('keys_add'))}
+{_r('F11', _t('keys_remove'))}
+{_r('F12', _t('keys_save'))}
+{_r('Ctrl+P', _t('keys_cmd_palette'))}
 
-[bold]CLI[/bold]
+[bold]{_t('keys_cli')}[/bold]
   ./s4 build <target> [--make|--cmake] [OPTION_FLAG OPTION_FLAG_off ...]
-  ./s4 targets        List targets
-  ./s4 version        Show version
-  ./s4 update         Self-update"""
+{_r('./s4 targets', _t('keys_list_targets'))}
+{_r('./s4 version', _t('keys_show_version'))}
+{_r('./s4 update', _t('keys_self_update'))}"""
 
         self.push_screen(KeysScreen())
 
@@ -380,7 +390,7 @@ class S4App(App):
 
                 if behind == 0 and ahead == 0:
                     _log("[green]s4 is up to date[/green]")
-                    self.notify("s4 is already up to date")
+                    self.notify(t("s4_up_to_date"))
                     return
 
                 online_rev = subprocess.run(

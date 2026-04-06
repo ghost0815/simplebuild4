@@ -14,6 +14,7 @@ from core.repo import RepoConfig, RepoManager, RepoState
 from core.repos_config import load_repos, save_repos
 from core.target import Target
 from core.patches import load_patch_sources, download_patches
+from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -43,7 +44,7 @@ class RepositoryScreen(Screen):
                 status_lines.append(self._format_status(repo, state))
             status_text = "\n".join(status_lines)
             info = Static(status_text, id="repo-info")
-            info.border_title = "Status"
+            info.border_title = t("re_status")
             yield info
 
             # Output box
@@ -73,47 +74,47 @@ class RepositoryScreen(Screen):
             with Vertical(id="repo-box"):
                 with Horizontal(classes="repo-actions-row"):
                     repo_names = [(r.name, r.name) for r in self._repos]
-                    yield Select(options=repo_names, value=self._repos[0].name if self._repos else None, id="repo-select")
+                    yield Select(options=repo_names, value=self._repos[0].name if self._repos else None, id="repo-select", prompt=t("select_prompt"))
                     yield Static("", classes="spacer")
                     # Dynamic label: Clone for git, Checkout for svn
                     repo = self._get_selected_repo_from_list()
-                    clone_label = "Clone" if (not repo or RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir).is_git) else "Checkout"
+                    clone_label = t("clone") if (not repo or RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir).is_git) else t("checkout")
                     clone_btn = Button(clone_label, id="btn-clone", variant="primary")
                     clone_btn.tooltip = "Clone/checkout the selected repository from its URL"
                     yield clone_btn
-                    update_btn = Button("Update", id="btn-update")
+                    update_btn = Button(t("update"), id="btn-update")
                     update_btn.tooltip = "Pull latest changes from remote (git pull / svn update)"
                     yield update_btn
-                    patch_btn = Button("Patch", id="btn-patch", variant="success")
+                    patch_btn = Button(t("patch"), id="btn-patch", variant="success")
                     patch_btn.tooltip = "Apply selected patches to the repository"
                     yield patch_btn
-                    dl_btn = Button("Download", id="btn-download", variant="success")
+                    dl_btn = Button(t("download"), id="btn-download", variant="success")
                     dl_btn.tooltip = dl_tooltip
                     yield dl_btn
-                    restore_btn = Button("Restore", id="btn-restore")
+                    restore_btn = Button(t("restore"), id="btn-restore")
                     restore_btn.tooltip = "Restore repository from last backup (removes patches)"
                     yield restore_btn
-                    clean_btn = Button("Clean", id="btn-clean", variant="error")
+                    clean_btn = Button(t("clean"), id="btn-clean", variant="error")
                     clean_btn.tooltip = "Delete the checked-out repository from disk"
                     yield clean_btn
 
             # Edit / Add
             with Vertical(id="edit-box"):
                 with Horizontal(classes="repo-row"):
-                    yield Static(" Name", classes="repo-label")
-                    yield Input(placeholder="e.g. emu", id="edit-repo-name")
+                    yield Static(f" {t('re_name')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_repo_name"), id="edit-repo-name")
 
                 with Horizontal(classes="repo-row"):
-                    yield Static(" URL", classes="repo-label")
-                    yield Input(placeholder="https://github.com/.../oscam.git", id="edit-repo-url")
+                    yield Static(f" {t('re_url')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_repo_url"), id="edit-repo-url")
 
                 with Horizontal(classes="repo-row"):
-                    yield Static(" Branch", classes="repo-label")
-                    yield Input(placeholder="(default branch)", id="edit-repo-branch")
+                    yield Static(f" {t('re_branch')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_repo_branch"), id="edit-repo-branch")
 
                 with Horizontal(classes="repo-row"):
-                    yield Static(" Switch to", classes="repo-label")
-                    yield Input(placeholder="SHA, tag or branch (after clone)", id="edit-repo-switch")
+                    yield Static(f" {t('re_switch_to')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_repo_switch"), id="edit-repo-switch")
 
         yield S4Footer(active_screen="repository")
 
@@ -122,16 +123,17 @@ class RepositoryScreen(Screen):
         if self._repos:
             self._fill_edit_fields(self._repos[0])
         # Set border titles
-        self.query_one("#repo-output", VerticalScroll).border_title = "Output"
+        self.query_one("#repo-output", VerticalScroll).border_title = t("output_title")
         try:
             self.query_one("#patch-grid", Grid).border_title = "Patches"
         except Exception:
             pass
-        self.query_one("#repo-box", Vertical).border_title = "Repositories"
-        self.query_one("#edit-box", Vertical).border_title = "Edit / Add"
+        self.query_one("#repo-box", Vertical).border_title = t("repositories")
+        self.query_one("#edit-box", Vertical).border_title = t("re_edit_add")
         # Restore log history
         if RepositoryScreen._log_history:
             self._update_output()
+        self.query_one("#repo-select", Select).focus()
 
     def _format_status(self, repo: RepoConfig, state: RepoState) -> str:
         from rich.markup import escape as _esc
@@ -385,10 +387,10 @@ class RepositoryScreen(Screen):
         import time
         repo = self._get_selected_repo()
         if not repo:
-            self.notify("No repo selected", severity="warning")
+            self.notify(t("no_repo_selected"), severity="warning")
             return
         if repo.name == "default":
-            self.notify("Cannot remove default repo", severity="error")
+            self.notify(t("cannot_remove_default"), severity="error")
             return
         now = time.time()
         if now - self._remove_confirm_time < 3:
@@ -399,7 +401,7 @@ class RepositoryScreen(Screen):
             self._remove_confirm_time = 0
             return
         self._remove_confirm_time = now
-        self.notify(f"Press F11 again to remove '{repo.name}'", severity="warning", timeout=3)
+        self.notify(t("confirm_remove_repo", name=repo.name), severity="warning", timeout=3)
 
     def _handle_save_repo(self, notify=True) -> None:
         """Save edits to the currently selected repo."""

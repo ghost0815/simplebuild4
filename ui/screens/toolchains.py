@@ -18,6 +18,7 @@ from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
 from core.lib_builder import build_library, sort_by_dependencies
+from translation import t
 from ui.header import S4Header
 
 
@@ -170,10 +171,10 @@ class FilePickerScreen(ModalScreen[tuple]):
                 yield Button("⌂ Home", id="fp-home", classes="fp-nav-btn")
                 yield Button("/ Root", id="fp-root", classes="fp-nav-btn")
             yield DirectoryTree(self._start_path, id="fp-tree")
-            yield Input(placeholder="Or enter path directly...", id="fp-path")
+            yield Input(placeholder=t("ph_enter_path"), id="fp-path")
             with Horizontal(id="fp-name-row"):
                 yield Static(" Name: ", id="fp-name-label")
-                yield Input(placeholder="toolchain name", id="fp-name")
+                yield Input(placeholder=t("ph_tc_name"), id="fp-name")
             with Horizontal(id="fp-buttons"):
                 yield Button("Cancel", id="fp-cancel")
                 yield Button("Import", id="fp-select", variant="primary")
@@ -265,21 +266,21 @@ class ToolchainsScreen(Screen):
             with Vertical(id="tc-browser-wrap"):
                 # Filter + Actions
                 with Horizontal(id="tc-actions"):
-                    yield Input(placeholder="Filter...", id="tc-filter")
+                    yield Input(placeholder=t("ph_filter"), id="tc-filter")
                     yield Static("", classes="spacer")
-                    install_btn = Button("Install", id="btn-install", variant="primary")
+                    install_btn = Button(t("install"), id="btn-install", variant="primary")
                     install_btn.tooltip = "Download and install the selected toolchain"
                     yield install_btn
-                    check_btn = Button("Check", id="btn-check")
+                    check_btn = Button(t("check"), id="btn-check")
                     check_btn.tooltip = "Verify the selected toolchain is working"
                     yield check_btn
-                    backup_btn = Button("Backup", id="btn-backup")
+                    backup_btn = Button(t("backup"), id="btn-backup")
                     backup_btn.tooltip = "Backup the selected installed toolchain to .tar.xz"
                     yield backup_btn
-                    restore_btn = Button("Restore", id="btn-restore")
+                    restore_btn = Button(t("restore"), id="btn-restore")
                     restore_btn.tooltip = "Restore a toolchain from a .tar.xz backup"
                     yield restore_btn
-                    remove_btn = Button("Remove", id="btn-remove", variant="error")
+                    remove_btn = Button(t("remove"), id="btn-remove", variant="error")
                     remove_btn.tooltip = "Delete the selected toolchain from disk"
                     yield remove_btn
 
@@ -334,18 +335,19 @@ class ToolchainsScreen(Screen):
                 with VerticalScroll(id="tc-libs"):
                     yield Static("", id="tc-libs-header")
                     with Horizontal(classes="lib-action-row", id="lib-header-row"):
-                        yield Static(f"  [dim]{'Library':<15s} {'Installed':<12s}[/dim]", classes="lib-status")
-                        yield Static(" [dim]Action[/dim] ([dim]skip all[/dim])", id="btn-skip-all", classes="lib-skip-all")
+                        yield Static(f"  [dim]{t('lib_col_library'):<15s} {t('lib_col_installed'):<12s}[/dim]", classes="lib-status")
+                        yield Static(f" [dim]{t('lib_col_action')}[/dim] ([dim]{t('lib_skip_all')}[/dim])", id="btn-skip-all", classes="lib-skip-all")
                     # Pre-create rows for all known libraries
                     for lib_name, _, _ in KNOWN_LIBS:
                         safe_id = lib_name.replace(".", "-").replace(" ", "-")
                         with Horizontal(classes="lib-action-row", id=f"lib-row-{safe_id}"):
                             yield Static(f"  {lib_name:<15s} {'—':<12s}", id=f"lib-status-{safe_id}", classes="lib-status")
                             yield Select(
-                                options=[("skip", "skip")],
+                                options=[(t("lib_skip"), "skip")],
                                 value="skip",
                                 id=f"lib-action-{safe_id}",
                                 classes="lib-select",
+                                prompt=t("select_prompt"),
                             )
 
                 # Output
@@ -769,23 +771,23 @@ class ToolchainsScreen(Screen):
                 options: list[tuple[str, str]] = []
 
                 if lib.found and lib.up_to_date:
-                    options.append(("skip (up-to-date)", "skip"))
-                    options.append((f"reinstall {lib.version}", f"reinstall:{lib.version}"))
+                    options.append((t("lib_skip_uptodate"), "skip"))
+                    options.append((f"{t('lib_reinstall')} {lib.version}", f"reinstall:{lib.version}"))
                 elif lib.found and lib.update_version:
-                    options.append(("skip", "skip"))
-                    options.append((f"→ {lib.update_version} (recommended)", f"update:{lib.update_version}"))
+                    options.append((t("lib_skip"), "skip"))
+                    options.append((f"→ {lib.update_version} ({t('lib_recommended')})", f"update:{lib.update_version}"))
                 elif not lib.found and lib.update_version:
-                    options.append(("skip", "skip"))
-                    options.append((f"install {lib.update_version} (recommended)", f"install:{lib.update_version}"))
+                    options.append((t("lib_skip"), "skip"))
+                    options.append((f"{t('lib_install')} {lib.update_version} ({t('lib_recommended')})", f"install:{lib.update_version}"))
                 else:
-                    options.append(("skip", "skip"))
+                    options.append((t("lib_skip"), "skip"))
 
                 for v in variants:
                     ver = v.get("version", "")
                     label = v.get("label", ver)
                     needs_c11 = v.get("requires") == "c11"
                     if needs_c11 and not has_c11:
-                        req = " (needs c11)"
+                        req = f" ({t('lib_needs_c11')})"
                     elif needs_c11:
                         req = " [c11]"
                     else:
@@ -793,7 +795,8 @@ class ToolchainsScreen(Screen):
                     action = "install" if not lib.found else "update"
                     opt_value = f"{action}:{ver}"
                     if opt_value not in [o[1] for o in options]:
-                        options.append((f"{action} {ver} — {label}{req}", opt_value))
+                        action_label = t("lib_install") if action == "install" else t("lib_update")
+                        options.append((f"{action_label} {ver} — {label}{req}", opt_value))
 
                 # Default
                 if lib.found and lib.up_to_date:
@@ -821,12 +824,12 @@ class ToolchainsScreen(Screen):
             for item in self.query("FooterItem"):
                 if item._key == "F9":
                     if self._building:
-                        item._label = "Cancel"
+                        item._label = t("cancel")
                         item._disabled = False
                         item._active = True
                         item.remove_class("disabled")
                     else:
-                        item._label = "Update"
+                        item._label = t("update")
                         item._active = False
                         libs_active = self._is_libs_tab_active()
                         item._disabled = not libs_active
@@ -852,7 +855,7 @@ class ToolchainsScreen(Screen):
 
         name = ToolchainsScreen._selected_tc
         if not name:
-            self.notify("No toolchain selected", severity="warning")
+            self.notify(t("no_toolchain_selected"), severity="warning")
             return
 
         reg = self._get_registry()
@@ -1048,17 +1051,17 @@ class ToolchainsScreen(Screen):
     def _handle_install(self) -> None:
         name = ToolchainsScreen._selected_tc
         if not name:
-            self.notify("No toolchain selected", severity="warning")
+            self.notify(t("no_toolchain_selected"), severity="warning")
             return
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
         if tc.installed:
-            self.notify(f"{tc.name} is already installed", severity="warning")
+            self.notify(t("already_installed", name=tc.name), severity="warning")
             return
         if not tc.url:
-            self.notify(f"{tc.name} has no download URL", severity="error")
+            self.notify(t("no_download_url", name=tc.name), severity="error")
             return
 
         self._log_sync(f"[bold]Installing {tc.name}...[/bold]")
@@ -1156,7 +1159,7 @@ class ToolchainsScreen(Screen):
         """Backup the selected installed toolchain to a .tar.xz archive."""
         name = ToolchainsScreen._selected_tc
         if not name:
-            self.notify("No toolchain selected", severity="warning")
+            self.notify(t("no_toolchain_selected"), severity="warning")
             return
         reg = self._get_registry()
         tc = reg.get(name)
@@ -1166,7 +1169,7 @@ class ToolchainsScreen(Screen):
             self.notify("Native toolchain cannot be backed up", severity="warning")
             return
         if not tc.installed:
-            self.notify(f"{tc.name} is not installed", severity="warning")
+            self.notify(t("not_installed", name=tc.name), severity="warning")
             return
 
         install_dir = self.app.paths.toolchains_dir / tc.name
@@ -1625,14 +1628,14 @@ class ToolchainsScreen(Screen):
         """Comprehensive toolchain check like s3: compiler, sysroot, headers, libraries."""
         name = ToolchainsScreen._selected_tc
         if not name:
-            self.notify("No toolchain selected", severity="warning")
+            self.notify(t("no_toolchain_selected"), severity="warning")
             return
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
         if not tc.installed:
-            self.notify(f"{tc.name} is not installed", severity="warning")
+            self.notify(t("not_installed", name=tc.name), severity="warning")
             return
 
         install_dir = self.app.paths.toolchains_dir / tc.name
@@ -1953,14 +1956,14 @@ class ToolchainsScreen(Screen):
         import time
         name = ToolchainsScreen._selected_tc
         if not name:
-            self.notify("No toolchain selected", severity="warning")
+            self.notify(t("no_toolchain_selected"), severity="warning")
             return
         reg = self._get_registry()
         tc = reg.get(name)
         if not tc:
             return
         if not tc.installed and not tc.native:
-            self.notify(f"{tc.name} is not installed", severity="warning")
+            self.notify(t("not_installed", name=tc.name), severity="warning")
             return
 
         now = time.time()
@@ -1988,7 +1991,7 @@ class ToolchainsScreen(Screen):
 
         self._remove_confirm_time = now
         self._remove_confirm_name = name
-        self.notify(f"Press Remove again to delete '{tc.name}'", severity="warning", timeout=3)
+        self.notify(t("confirm_remove_tc", name=tc.name), severity="warning", timeout=3)
 
     def _relocate_toolchain(self, install_dir: Path, tc: Toolchain) -> None:
         relocate_sh = install_dir / "relocate-sdk.sh"
