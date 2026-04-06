@@ -1417,6 +1417,7 @@ class ToolchainsScreen(Screen):
             # Fix .pc files with wrong prefix paths from backup
             self._fix_pc_files(install_dir)
             self._fix_la_files(install_dir)
+            self._relocate_toolchain(install_dir, temp_tc)
 
             # Check if this toolchain exists in defaults catalog (use its config)
             reg = self._get_registry()
@@ -1550,33 +1551,100 @@ class ToolchainsScreen(Screen):
         gcc_name = gcc.name  # e.g. "arm-linux-gnueabihf-gcc"
         prefix = gcc_name[:-3]  # strip "gcc" → "arm-linux-gnueabihf-"
 
-        # Get arch from dumpmachine
+        # Get arch — try OE-SDK environment-setup file first (most reliable)
         arch = ""
-        try:
-            dumpmachine = subprocess.check_output(
-                [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.DEVNULL, timeout=5,
-            ).strip()
-            # Derive arch: arm-linux-gnueabihf → armv7, aarch64-... → aarch64, mipsel-... → mipsel
-            if dumpmachine.startswith("aarch64"):
+        detected_cflags = ""
+        detected_ldflags = ""
+        env_setups = list(install_dir.glob("environment-setup-*"))
+        if env_setups:
+            # Extract arch from filename: environment-setup-cortexa15hf-neon-vfpv4-oe-linux-gnueabi
+            env_name = env_setups[0].stem.replace("environment-setup-", "")
+            # Trim the -oe-linux-* suffix to get the raw arch part
+            raw_arch = ""
+            for suffix in ("-oe-linux-gnueabi", "-oe-linux-musl", "-oe-linux"):
+                if suffix in env_name:
+                    raw_arch = env_name[:env_name.index(suffix)]
+                    break
+            if not raw_arch:
+                raw_arch = env_name.split("-oe-")[0] if "-oe-" in env_name else ""
+            # Map to generic arch names
+            ra = raw_arch.lower()
+            if ra.startswith("aarch64") or ra.startswith("cortexa53") or ra.startswith("cortexa72"):
                 arch = "aarch64"
-            elif dumpmachine.startswith("arm"):
+            elif ra.startswith("cortexa") or ra.startswith("armv7") or ra.startswith("arm"):
                 arch = "armv7"
-            elif dumpmachine.startswith("mipsel"):
+            elif ra.startswith("mips32el") or ra.startswith("mipsel"):
                 arch = "mipsel"
-            elif dumpmachine.startswith("mips"):
+            elif ra.startswith("mips"):
                 arch = "mips"
-            elif dumpmachine.startswith("sh4"):
+            elif ra.startswith("sh4"):
                 arch = "sh4"
-            elif dumpmachine.startswith("x86_64"):
+            elif ra.startswith("x86_64") or ra.startswith("x86-64"):
                 arch = "x86_64"
-            elif dumpmachine.startswith("i686") or dumpmachine.startswith("i386"):
+            elif ra.startswith("i686") or ra.startswith("i386"):
                 arch = "x86"
-            elif dumpmachine.startswith("powerpc"):
+            elif ra.startswith("powerpc"):
                 arch = "ppc"
             else:
-                arch = dumpmachine.split("-")[0]
-        except Exception:
-            arch = "unknown"
+                arch = raw_arch
+
+            # Extract CFLAGS and LDFLAGS from environment-setup
+            try:
+                env_text = env_setups[0].read_text(encoding="utf-8", errors="ignore")
+                import re as _re
+                tune_ccargs = ""
+                raw_ldflags = ""
+                for line in env_text.splitlines():
+                    # Best source: OECORE_TUNE_CCARGS (pure arch flags)
+                    m = _re.match(r'^export\s+OECORE_TUNE_CCARGS="(.+)"', line)
+                    if m:
+                        tune_ccargs = m.group(1).strip()
+                    # LDFLAGS
+                    m = _re.match(r'^export\s+LDFLAGS="(.+)"', line)
+                    if m:
+                        raw_ldflags = m.group(1).strip()
+                # Use TUNE_CCARGS if available (cleanest), otherwise extract from CC=
+                if tune_ccargs:
+                    detected_cflags = tune_ccargs
+                else:
+                    # Try extracting arch flags from CC= line
+                    for line in env_text.splitlines():
+                        m = _re.match(r'^export\s+CC="(.+)"', line)
+                        if m:
+                            cc_parts = m.group(1).split()
+                            arch_flags = [p for p in cc_parts if p.startswith("-m") or p.startswith("-march")]
+                            detected_cflags = " ".join(arch_flags)
+                            break
+                detected_ldflags = raw_ldflags
+            except Exception:
+                pass
+
+        # Fallback: gcc -dumpmachine
+        if not arch:
+            try:
+                dumpmachine = subprocess.check_output(
+                    [str(gcc), "-dumpmachine"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+                ).strip()
+                if dumpmachine.startswith("aarch64"):
+                    arch = "aarch64"
+                elif dumpmachine.startswith("arm"):
+                    arch = "armv7"
+                elif dumpmachine.startswith("mipsel"):
+                    arch = "mipsel"
+                elif dumpmachine.startswith("mips"):
+                    arch = "mips"
+                elif dumpmachine.startswith("sh4"):
+                    arch = "sh4"
+                elif dumpmachine.startswith("x86_64"):
+                    arch = "x86_64"
+                elif dumpmachine.startswith("i686") or dumpmachine.startswith("i386"):
+                    arch = "x86"
+                elif dumpmachine.startswith("powerpc"):
+                    arch = "ppc"
+                else:
+                    arch = dumpmachine.split("-")[0]
+            except Exception:
+                arch = "unknown"
 
         # Detect sysroot
         sysroot = ""
@@ -1585,10 +1653,9 @@ class ToolchainsScreen(Screen):
                         "sysroot", "sys-root"):
             matches = list(install_dir.glob(pattern))
             if matches:
-                sr = matches[0]
-                # If sysroot contains usr/, include it (needed for _find_prefix)
-                if (sr / "usr").is_dir():
-                    sr = sr / "usr"
+                # OE-SDK: filter out the host sysroot (x86_64-*), pick the target one
+                target_matches = [m for m in matches if "x86_64" not in m.name and "x86-64" not in m.name]
+                sr = target_matches[0] if target_matches else matches[0]
                 sysroot = str(sr.relative_to(install_dir))
                 break
         # Try gcc -print-sysroot
@@ -1622,6 +1689,8 @@ class ToolchainsScreen(Screen):
             arch=arch,
             prefix=prefix,
             sysroot=sysroot,
+            cflags=detected_cflags,
+            ldflags=detected_ldflags,
         )
 
     def _handle_check(self) -> None:
