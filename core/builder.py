@@ -1088,9 +1088,6 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
             key, val = stapi_lib.split("=", 1)
             cmake_cmd.append(f"-D{key}={val}")
 
-        # Build type
-        cmake_cmd.append("-DCMAKE_BUILD_TYPE=Release")
-
         self._log("  Configuring (cmake)...")
         ok = self._run(cmake_cmd, cwd=build_dir)
         if not ok:
