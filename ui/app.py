@@ -110,6 +110,41 @@ class S4App(App):
         """Override Textual's default Keys to show our keyboard reference."""
         self.action_show_keys()
 
+    def action_show_license(self) -> None:
+        """Show COPYING license file in a modal."""
+        from textual.screen import ModalScreen
+        from textual.widgets import Static
+        from textual.containers import VerticalScroll
+        from textual.binding import Binding
+        from pathlib import Path
+
+        copying = Path(__file__).resolve().parent.parent / "COPYING"
+        try:
+            content = copying.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            self.notify("COPYING file not found", severity="error")
+            return
+
+        class LicenseScreen(ModalScreen):
+            BINDINGS = [Binding("escape", "dismiss", show=False)]
+            DEFAULT_CSS = """
+            LicenseScreen {
+                align: center middle;
+            }
+            LicenseScreen > VerticalScroll {
+                width: 80;
+                height: 85%;
+                border: solid $primary;
+                background: $surface;
+                padding: 1 2;
+            }
+            """
+            def compose(self):
+                with VerticalScroll():
+                    yield Static(f"[bold]License[/bold]  [dim](Esc to close)[/dim]\n\n{content}")
+
+        self.push_screen(LicenseScreen())
+
     def action_show_keys(self) -> None:
         """Show keyboard shortcuts help."""
         from textual.screen import ModalScreen

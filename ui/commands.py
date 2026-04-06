@@ -7,6 +7,7 @@ from textual.command import Provider, Hit, Hits, DiscoveryHit
 S4_COMMANDS = [
     ("Update", "Online update", "action_s4_update"),
     ("Settings", "s4 settings", "action_s4_settings"),
+    ("License", "Show license (COPYING)", "action_show_license"),
 ]
 
 
