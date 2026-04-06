@@ -130,8 +130,8 @@ if [ "$TEXTUAL_OK" != "ok" ] || [ "$YAML_OK" != "ok" ]; then
     # Try pip first (gets latest version, works everywhere)
     if $PYTHON -m pip --version &>/dev/null; then
         echo "  Installing via pip..."
-        $PYTHON -m pip install --user textual pyyaml 2>/dev/null \
-            || $PYTHON -m pip install --user --break-system-packages textual pyyaml 2>/dev/null
+        $PYTHON -m pip install --user --upgrade textual pyyaml 2>/dev/null \
+            || $PYTHON -m pip install --user --upgrade --break-system-packages textual pyyaml 2>/dev/null
     else
         # Fallback: apt/dnf/pacman
         rootuser="$(ps -jf 1 | tail -n 1 | awk '{print $1}')"
@@ -145,13 +145,13 @@ if [ "$TEXTUAL_OK" != "ok" ] || [ "$YAML_OK" != "ok" ]; then
             echo "  Installing via apt + pip..."
             [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "\n  Enter $rootuser password: "
             $prefix "apt-get -y -qq install python3-pip python3-yaml" 2>/dev/null
-            $PYTHON -m pip install --user textual 2>/dev/null \
-                || $PYTHON -m pip install --user --break-system-packages textual 2>/dev/null
+            $PYTHON -m pip install --user --upgrade textual 2>/dev/null \
+                || $PYTHON -m pip install --user --upgrade --break-system-packages textual 2>/dev/null
         elif [ -f /etc/redhat-release ]; then
             echo "  Installing via dnf..."
             $prefix "dnf -y install python3-pip python3-pyyaml" 2>/dev/null
-            $PYTHON -m pip install --user textual 2>/dev/null \
-                || $PYTHON -m pip install --user --break-system-packages textual 2>/dev/null
+            $PYTHON -m pip install --user --upgrade textual 2>/dev/null \
+                || $PYTHON -m pip install --user --upgrade --break-system-packages textual 2>/dev/null
         elif [ -f /etc/arch-release ] || [ -f /etc/manjaro-release ]; then
             echo "  Installing via pacman..."
             $prefix "pacman -S --noconfirm python-textual python-yaml" 2>/dev/null
