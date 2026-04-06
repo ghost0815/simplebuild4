@@ -252,7 +252,7 @@ all_checks_passed: "{name} — all checks passed"
 some_checks_failed: "{name} — some checks failed"
 
 # Self-updater
-s4_update_available: "s4 update available ({count} new commit{s}) — press F1 → s4 update"
+s4_update_available: "s4 update available ({count} new commit{s}) — Ctrl+p → Update"
 s4_up_to_date: "s4 is up to date"
 s4_updated_restart: "s4 updated ({count} new commits) — please restart"
 update_failed: "Update failed: {error}"

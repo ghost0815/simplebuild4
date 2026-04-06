@@ -252,7 +252,7 @@ all_checks_passed: "{name} — alle Prüfungen bestanden"
 some_checks_failed: "{name} — einige Prüfungen fehlgeschlagen"
 
 # Self-updater
-s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — F1 → s4 update"
+s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — Strg+p → Aktualisieren"
 s4_up_to_date: "s4 ist aktuell"
 s4_updated_restart: "s4 aktualisiert ({count} neue Änderungen) — bitte neu starten"
 update_failed: "Aktualisierung fehlgeschlagen: {error}"
