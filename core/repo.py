@@ -172,7 +172,7 @@ class RepoManager:
             return False
 
     def _svn_checkout(self, log: Optional[Callable[[str], None]] = None) -> bool:
-        cmd = ["svn", "checkout", self.config.url, str(self.repo_path)]
+        cmd = ["svn", "checkout", "--non-interactive", self.config.url, str(self.repo_path)]
         if log:
             log(f"$ {' '.join(cmd)}")
         try:
@@ -220,10 +220,18 @@ class RepoManager:
 
     def _svn_update(self, log: Optional[Callable[[str], None]] = None) -> bool:
         try:
+            # Revert local changes (patches) before update to avoid conflicts
+            if log:
+                log("$ svn revert -R .")
+            subprocess.run(
+                ["svn", "revert", "-R", "."],
+                cwd=self.repo_path, capture_output=True, text=True, timeout=120,
+            )
             if log:
                 log("$ svn update")
             output = subprocess.check_output(
-                ["svn", "update"], cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
+                ["svn", "update", "--non-interactive"],
+                cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
             )
             if log and output:
                 log(output)
@@ -260,8 +268,8 @@ class RepoManager:
                 if log:
                     log(f"$ svn update -r {rev}")
                 output = subprocess.check_output(
-                    ["svn", "update", f"-r{rev}"], cwd=self.repo_path,
-                    text=True, stderr=subprocess.STDOUT,
+                    ["svn", "update", "--non-interactive", "--accept", "postpone", f"-r{rev}"],
+                    cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
                 )
                 if log and output:
                     log(output)
