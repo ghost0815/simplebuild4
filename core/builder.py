@@ -1019,6 +1019,7 @@ set(CMAKE_FIND_ROOT_PATH "{sysroot}")
 set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
 set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
 set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+set(OSCAM_SYSTEM_NAME "Tuxbox")
 """
             if cross_sysroot:
                 tc_content += f'set(CMAKE_SYSROOT "{sysroot}")\n'
@@ -1061,6 +1062,8 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
             "USE_AZBOX": "WITH_AZBOX",
             "USE_AMSMC": "WITH_AMSMC",
             "USE_MCA": "WITH_MCA",
+            "USE_OPENSSL": "USE_OPENSSL",  # same name in cmake
+            "USE_MBEDTLS": None,           # mbedtls is cmake default, no flag needed
         }
         for flag in use_flags:
             if "=" in flag:
@@ -1172,16 +1175,14 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
         else:
             tc_part = tc_name
 
-        # SSL backend (openssl vs mbedtls) — only if Makefile supports USE_OPENSSL
-        # New oscam has dual backend: USE_OPENSSL=1 → openssl, otherwise → mbedtls
+        # SSL backend (openssl vs mbedtls) — check Makefile for dual backend support
         backend = ""
         makefile = repo_dir / "Makefile"
         if makefile.exists():
             try:
                 mk_content = makefile.read_text(encoding="utf-8", errors="replace")
                 if "USE_OPENSSL" in mk_content:
-                    # Check if USE_OPENSSL=1 is in the active build flags
-                    if "USE_OPENSSL=1" in use_flags:
+                    if b.use_flags.get("OPENSSL"):
                         backend = "-openssl"
                     else:
                         backend = "-mbedtls"
