@@ -1,0 +1,24 @@
+stages:
+  - update
+
+update-libraries:
+  stage: update
+  tags:
+    - build
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+    - if: $CI_PIPELINE_SOURCE == "web"
+  script:
+    - git config user.name "pipeline-user"
+    - git config user.email "pipeline-user@users.noreply.git.streamboard.tv"
+    - git checkout ${CI_COMMIT_BRANCH}
+    - python3 .gitlab/update_libraries.py
+    - |
+      if git diff --quiet defaults/libraries.yaml; then
+        echo "No changes"
+      else
+        git add defaults/libraries.yaml
+        git commit -m "auto: update library versions [skip ci]"
+        git push "${API_PROTOCOL}://pipeline-user:${GIT_PUSH_TOKEN}@${CI_REPOSITORY_URL#*@}" HEAD:${CI_COMMIT_BRANCH}
+      fi
+  allow_failure: true
