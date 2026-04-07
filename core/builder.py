@@ -671,11 +671,15 @@ class BuildEngine:
             # Remove previous S4PATCHED if exists
             content = "\n".join(line for line in content.splitlines() if "S4PATCHED" not in line)
             # Add before final #endif
-            content = content.replace(
-                "#endif //OSCAM_CONFIG_H_",
-                f'#define S4PATCHED "{patch_str}"\n#endif //OSCAM_CONFIG_H_',
+            config_h_marker = "#endif //OSCAM_CONFIG_H_"
+            new_content = content.replace(
+                config_h_marker,
+                f'#define S4PATCHED "{patch_str}"\n{config_h_marker}',
             )
-            config_h.write_text(content, encoding="utf-8")
+            if new_content == content:
+                self._log(f"  [yellow]WebIF patch failed: marker '{config_h_marker}' not found in config.h[/yellow]")
+                return
+            config_h.write_text(new_content, encoding="utf-8")
 
             # Modify oscam.c: add fprintf for patch info after WebifPort line
             content = oscam_c.read_text(encoding="utf-8", errors="replace")
@@ -696,16 +700,20 @@ class BuildEngine:
             content = "\n".join(filtered)
 
             # Insert after WebifPort fprintf
-            content = content.replace(
-                'fprintf(fp, "WebifPort:\\t%s\\n", WebifPort);',
-                'fprintf(fp, "WebifPort:\\t%s\\n", WebifPort);\n'
+            oscam_c_marker = 'fprintf(fp, "WebifPort:      %d\\n", cfg.http_port);'
+            new_content = content.replace(
+                oscam_c_marker,
+                oscam_c_marker + '\n'
                 '#ifdef S4PATCHED\n'
-                '\tfprintf(fp, "Patched:\\t%s\\n", S4PATCHED);\n'
+                '\tfprintf(fp, "Patched:        %s\\n", S4PATCHED);\n'
                 '#endif',
             )
-            oscam_c.write_text(content, encoding="utf-8")
+            if new_content == content:
+                self._log(f"  [yellow]WebIF patch failed: WebifPort fprintf not found in oscam.c[/yellow]")
+                return
+            oscam_c.write_text(new_content, encoding="utf-8")
 
-            self._log(f"  WebIF patched with build info")
+            self._log(f"  [green]WebIF patched with build info[/green]")
         except Exception as e:
             self._log(f"  [yellow]WebIF patch failed: {e}[/yellow]")
 
