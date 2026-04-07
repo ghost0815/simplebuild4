@@ -2558,17 +2558,23 @@ class ToolchainsScreen(Screen):
         self._run_in_thread(do_build)
 
     def _register_built_toolchain(self, tpl) -> None:
-        """Add the built toolchain to toolchains.local.yaml.
+        """Add or update the built toolchain in toolchains.local.yaml.
 
         Auto-detects the compiler prefix and sysroot from the actual built
         toolchain directory; the template values are kept as fallback when
         detection fails.
+
+        If an entry with the same name already exists in the local yaml
+        (e.g. because the toolchain was previously installed via PreBuild
+        Install), it is merged in place: the SelfBuild-relevant fields
+        (category, selfbuild, prefix, sysroot, cflags, ldflags, arch,
+        machines, description) are overwritten with the fresh values,
+        while download metadata (url, checksum) and any custom fields
+        carried by the existing entry are preserved.
         """
         reg = self._get_registry()
         local_tcs = reg._load_file(reg.local_path)
-        # Skip if already present
-        if any(tc.name == tpl.name for tc in local_tcs):
-            return
+
         from core.toolchain import detect_toolchain_props
         install_dir = self.app.paths.toolchains_dir / tpl.name
         det_prefix, det_sysroot = detect_toolchain_props(install_dir)
@@ -2578,19 +2584,32 @@ class ToolchainsScreen(Screen):
             self._log_sync(
                 f"  [green]Auto-detected:[/green] prefix=[dim]{prefix or '-'}[/dim] sysroot=[dim]{sysroot or '-'}[/dim]"
             )
-        new_tc = Toolchain(
-            name=tpl.name,
-            description=tpl.description or tpl.name,
-            category="selfbuild",
-            arch=tpl.arch,
-            machines=tpl.machines,
-            prefix=prefix,
-            sysroot=sysroot,
-            cflags=tpl.cflags,
-            ldflags=tpl.ldflags,
-            selfbuild=True,
-        )
-        local_tcs.append(new_tc)
+
+        existing = next((tc for tc in local_tcs if tc.name == tpl.name), None)
+        if existing is not None:
+            existing.description = tpl.description or existing.description or tpl.name
+            existing.category = "selfbuild"
+            existing.arch = tpl.arch or existing.arch
+            existing.machines = tpl.machines or existing.machines
+            existing.prefix = prefix
+            existing.sysroot = sysroot
+            existing.cflags = tpl.cflags or existing.cflags
+            existing.ldflags = tpl.ldflags or existing.ldflags
+            existing.selfbuild = True
+            self._log_sync(f"  [green]Merged into existing local entry → category=selfbuild[/green]")
+        else:
+            local_tcs.append(Toolchain(
+                name=tpl.name,
+                description=tpl.description or tpl.name,
+                category="selfbuild",
+                arch=tpl.arch,
+                machines=tpl.machines,
+                prefix=prefix,
+                sysroot=sysroot,
+                cflags=tpl.cflags,
+                ldflags=tpl.ldflags,
+                selfbuild=True,
+            ))
         reg.save_local(local_tcs)
 
     def _handle_backup(self) -> None:
