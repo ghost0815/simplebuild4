@@ -1241,8 +1241,138 @@ class ToolchainsScreen(Screen):
                     else:
                         item.add_class("disabled")
                     item.refresh()
+                elif item._key == "F11":
+                    # Enabled only when the selection is a removable local
+                    # entry/template that isn't installed.
+                    f11_enabled = self._is_local_removable() and not self._building
+                    item._disabled = not f11_enabled
+                    if f11_enabled:
+                        item.remove_class("disabled")
+                    else:
+                        item.add_class("disabled")
+                    item.refresh()
         except Exception:
             pass
+
+    def _is_local_removable(self) -> bool:
+        """True when the current selection is a removable local entry.
+
+        Removable means: from data/templates/ (SelfBuild local) OR from
+        toolchains.local.yaml (PreBuild local), AND not currently
+        installed (no data/toolchains/<name>/ directory).
+        """
+        name = ToolchainsScreen._selected_tc
+        if not name:
+            return False
+        # Template case (SelfBuild local)
+        if self._is_template_selected():
+            if ToolchainsScreen._selected_tpl_source != "local":
+                return False
+            install_dir = self.app.paths.toolchains_dir / name
+            return not install_dir.exists()
+        # PreBuild case — check if entry exists in toolchains.local.yaml
+        try:
+            reg = self._get_registry()
+            local_tcs = reg._load_file(reg.local_path)
+            in_local = any(tc.name == name for tc in local_tcs)
+            if not in_local:
+                return False
+            tc = reg.get(name)
+            if tc and tc.installed:
+                return False
+            return True
+        except Exception:
+            return False
+
+    _pending_local_remove: str = ""
+
+    def do_remove(self) -> None:
+        """F11 Remove — delete a local catalog entry or local template.
+
+        Only acts when the current selection is a removable local item
+        (see _is_local_removable). Two-press confirmation: the first
+        press shows a warning, a second press within 5 s actually
+        removes the entry.
+        """
+        if self._building:
+            return
+        if not self._is_local_removable():
+            return
+        name = ToolchainsScreen._selected_tc
+        if ToolchainsScreen._pending_local_remove != name:
+            ToolchainsScreen._pending_local_remove = name
+            self.notify(t("local_remove_confirm", name=name), severity="warning", timeout=5)
+            self.set_timer(5.0, self._clear_pending_local_remove)
+            return
+        ToolchainsScreen._pending_local_remove = ""
+
+        if self._is_template_selected():
+            self._remove_local_template(name)
+        else:
+            self._remove_local_toolchain_entry(name)
+
+    def _clear_pending_local_remove(self) -> None:
+        ToolchainsScreen._pending_local_remove = ""
+
+    def _remove_local_template(self, name: str) -> None:
+        """Delete data/templates/<name>.yaml + corresponding .config."""
+        local_dir = self.app.paths.templates_local
+        yaml_path = local_dir / f"{name}.yaml"
+        if not yaml_path.exists():
+            self.notify(t("template_not_found", name=name), severity="error")
+            return
+        # Determine config filename from the yaml before unlinking
+        cfg_name = ""
+        try:
+            from core.template import load_template
+            tpl = load_template(yaml_path)
+            if tpl:
+                cfg_name = tpl.config or ""
+        except Exception:
+            pass
+        try:
+            yaml_path.unlink()
+            self._log_sync(f"  [green]Deleted {yaml_path.name}[/green]")
+            if cfg_name:
+                cfg_path = local_dir / cfg_name
+                if cfg_path.exists():
+                    cfg_path.unlink()
+                    self._log_sync(f"  [green]Deleted {cfg_name}[/green]")
+        except Exception as e:
+            self.notify(t("template_remove_failed", err=str(e)), severity="error")
+            return
+        self.notify(t("local_remove_done", name=name))
+        # Clear selection and refresh
+        ToolchainsScreen._selected_tc = ""
+        ToolchainsScreen._selected_tpl_source = ""
+        try:
+            self._mounted = False
+            self._refresh_selfbuild_tables()
+            self._update_detail()
+            self._update_editor()
+        finally:
+            self._mounted = True
+        self._update_f9_state()
+
+    def _remove_local_toolchain_entry(self, name: str) -> None:
+        """Delete a single entry from toolchains.local.yaml by name."""
+        reg = self._get_registry()
+        try:
+            local_tcs = reg._load_file(reg.local_path)
+            new_tcs = [tc for tc in local_tcs if tc.name != name]
+            if len(new_tcs) == len(local_tcs):
+                self.notify(t("local_remove_not_found", name=name), severity="error")
+                return
+            reg.save_local(new_tcs)
+            self._log_sync(f"  [green]Removed {name} from toolchains.local.yaml[/green]")
+        except Exception as e:
+            self.notify(t("local_remove_failed", err=str(e)), severity="error")
+            return
+        self.notify(t("local_remove_done", name=name))
+        # Force a registry reload + screen refresh
+        self._registry = None
+        self.app.pop_screen()
+        self.app.push_screen(ToolchainsScreen())
 
     def do_tc_update(self) -> None:
         """F9 — execute library actions or cancel running build."""

@@ -25,6 +25,8 @@ SCREEN_MAP = {
 
 # Screens where Add/Remove are available
 ADD_REMOVE_SCREENS = {"main", "repository"}
+ADD_SCREENS = {"main", "repository"}
+REMOVE_SCREENS = {"main", "repository", "toolchains"}
 UPDATE_SCREENS = {"toolchains"}
 
 
@@ -187,10 +189,14 @@ class S4Footer(Horizontal):
         f9_disabled = self._active_screen not in UPDATE_SCREENS
         yield FooterItem(key="F9", label=t("update"), action="action_tc_update", disabled=f9_disabled)
 
-        add_disabled = self._active_screen not in ADD_REMOVE_SCREENS
+        add_disabled = self._active_screen not in ADD_SCREENS
         yield FooterItem(key="F10", label=t("add"), action="action_add", disabled=add_disabled)
 
-        remove_disabled = self._active_screen not in ADD_REMOVE_SCREENS
+        # F11 Remove starts disabled on toolchains; the screen flips it on
+        # via _update_f9_state when the selection is a removable local entry.
+        remove_disabled = self._active_screen not in REMOVE_SCREENS
+        if self._active_screen == "toolchains":
+            remove_disabled = True
         yield FooterItem(key="F11", label=t("remove"), action="action_remove", disabled=remove_disabled)
 
         # Right: Save
