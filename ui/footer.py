@@ -11,7 +11,8 @@ FOOTER_LEFT = [
     ("F2", "targets_nav", "action_open_targets", None),
     ("F3", "repositories_nav", "action_open_repository", None),
     ("F4", "toolchains_nav", "action_open_toolchains", None),
-    ("F5", "build", "action_build", {"main"}),
+    ("F5", "build", "action_build", {"main", "toolchains"}),
+    ("F6", "customize", "action_customize", {"toolchains"}),
 ]
 
 # Which screen each F-key navigates to (for highlighting)

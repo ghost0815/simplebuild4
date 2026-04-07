@@ -1,0 +1,12 @@
+name: qnap_x64
+description: QNAP x64 devices
+builder: crosstool-ng
+arch: x86_64
+
+prefix: x86_64-qnap-linux-gnu-
+sysroot: x86_64-qnap-linux-gnu/sysroot
+cflags: ""
+ldflags: ""
+machines: ""
+
+config: qnap_x64.config

@@ -31,6 +31,7 @@ class S4App(App):
         Binding("f3", "open_repository", show=False),
         Binding("f4", "open_toolchains", show=False),
         Binding("f5", "build", show=False),
+        Binding("f6", "customize", show=False),
         Binding("f9", "tc_update", show=False),
         Binding("f10", "add", show=False),
         Binding("f11", "remove", show=False),
@@ -274,6 +275,12 @@ class S4App(App):
         screen = self.screen
         if hasattr(screen, 'action_build'):
             screen.action_build()
+
+    def action_customize(self) -> None:
+        """Dispatch F6 Customize to the current screen (Toolchains SelfBuild)."""
+        screen = self.screen
+        if hasattr(screen, 'action_customize'):
+            screen.action_customize()
 
     def action_esc(self) -> None:
         """Esc: quit on main, back on sub-screens."""

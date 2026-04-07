@@ -28,6 +28,7 @@ INPUT_MAP = {
     "set-sign-key": "sign_key",
     "set-qemu-timeout": "qemu_timeout",
     "set-qemu-expect": "qemu_expect",
+    "set-ctng-dir": "ctng_dir",
 }
 
 SELECT_MAP = {
@@ -116,6 +117,18 @@ class SettingsScreen(Screen):
                 classes="s-row",
             )
 
+            # Toolchain Builders
+            yield Static(f" [bold]{t('section_builders')}[/bold]", classes="section-title")
+            ctng_default = str(self.app.paths.builders_dir / "crosstool-ng")
+            ctng_browse = _Btn("📂", id="btn-ctng-browse", classes="tc-reset-btn")
+            ctng_browse.tooltip = t("ph_browse_dir")
+            yield Horizontal(
+                Static(f" {t('ctng_dir')}", classes="s-label"),
+                Input(value=s.ctng_dir, placeholder=ctng_default, id="set-ctng-dir"),
+                ctng_browse,
+                classes="s-row",
+            )
+
         yield S4Footer(active_screen="settings")
 
     def on_mount(self) -> None:
@@ -153,6 +166,8 @@ class SettingsScreen(Screen):
             self._open_file_picker("set-sign-cert", t("signing_certificate"))
         elif event.button.id == "btn-key-browse":
             self._open_file_picker("set-sign-key", t("private_key"))
+        elif event.button.id == "btn-ctng-browse":
+            self._open_dir_picker("set-ctng-dir", t("ctng_dir"))
 
     def _open_file_picker(self, target_input_id: str, label: str) -> None:
         """Open file picker dialog and write the result into the given input."""
@@ -183,6 +198,32 @@ class SettingsScreen(Screen):
             self.query_one(f"#{target_id}", Input).value = path
         except Exception:
             pass
+
+    def _open_dir_picker(self, target_input_id: str, label: str) -> None:
+        """Open file picker in directory-only mode."""
+        from ui.screens.toolchains import FilePickerScreen
+        from pathlib import Path as _P
+        # Start in current value's parent or home
+        try:
+            current = self.query_one(f"#{target_input_id}", Input).value.strip()
+        except Exception:
+            current = ""
+        if current:
+            p = _P(current)
+            start = str(p if p.is_dir() else p.parent)
+        else:
+            start = str(self.app.paths.builders_dir if self.app.paths.builders_dir.exists() else _P.home())
+        self._picker_target = target_input_id
+        self.app.push_screen(
+            FilePickerScreen(
+                start_path=start,
+                title=f"{t('select_file_label')}: {label}",
+                simple=True,
+                select_label=t("select_btn"),
+                directories_only=True,
+            ),
+            callback=self._on_file_selected,
+        )
 
     def do_save(self) -> str:
         """Save settings (called by App)."""

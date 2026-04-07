@@ -24,6 +24,10 @@ class Paths:
     binaries_dir: Path
     downloads_dir: Path
     bin_dir: Path              # data/bin/ for custom tool symlinks (upx etc.)
+    builders_dir: Path         # data/builders/ for toolchain builders (crosstool-ng etc.)
+    builders_recipes: Path     # defaults/builders.yaml recipes for setting them up
+    templates_defaults: Path   # defaults/templates/ shipped toolchain templates
+    templates_local: Path      # data/templates/ user-added templates
     translation_dir: Path
 
     @classmethod
@@ -46,6 +50,10 @@ class Paths:
             binaries_dir=data / "binaries",
             downloads_dir=data / "downloads",
             bin_dir=data / "bin",
+            builders_dir=data / "builders",
+            builders_recipes=root / "defaults" / "builders.yaml",
+            templates_defaults=root / "defaults" / "templates",
+            templates_local=data / "templates",
             translation_dir=root / "translation",
         )
 
@@ -55,7 +63,7 @@ class Paths:
             self.targets_dir, self.repos_dir, self.backup_dir,
             self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
-            self.bin_dir,
+            self.bin_dir, self.builders_dir, self.templates_local,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

@@ -1,0 +1,256 @@
+"""crosstool-ng builder integration.
+
+Workflow (matches s3 behaviour):
+
+1. setup() — execute install steps from defaults/builders.yaml (clone,
+   bootstrap, configure, make) if ct-ng is not present
+2. build(template) — copy template config, patch CT_PREFIX_DIR/CT_LOCAL_TARBALLS_DIR/
+   CT_PARALLEL_JOBS, run `./ct-ng build`, leave the result in toolchains_dir/<name>/
+
+The crosstool-ng install lives at <ctng_dir> (default: data/builders/crosstool-ng).
+The setup commands themselves come from defaults/builders.yaml — see the
+BuilderRecipe class.
+"""
+
+from __future__ import annotations
+
+import os
+import re
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Callable, Optional
+
+from core.template import Template
+from core.builders import BuilderRecipe, expand_tokens
+
+
+class CrosstoolNG:
+    """crosstool-ng builder runner."""
+
+    def __init__(
+        self,
+        ctng_dir: Path,
+        toolchains_dir: Path,
+        downloads_dir: Path,
+        recipe: Optional[BuilderRecipe] = None,
+        max_cpus: int = 4,
+        log: Optional[Callable[[str], None]] = None,
+        cancel_check: Optional[Callable[[], bool]] = None,
+    ):
+        self.ctng_dir = ctng_dir
+        self.toolchains_dir = toolchains_dir
+        self.downloads_dir = downloads_dir
+        self.recipe = recipe
+        self.max_cpus = max_cpus
+        self.log = log or (lambda m: None)
+        self.cancel_check = cancel_check or (lambda: False)
+
+    @property
+    def ct_ng(self) -> Path:
+        """Path to the ct-ng executable inside the install dir."""
+        binary = (self.recipe.binary if self.recipe and self.recipe.binary else "ct-ng")
+        return self.ctng_dir / binary
+
+    def is_installed(self) -> bool:
+        """True if the builder binary is built and ready."""
+        return self.ct_ng.is_file() and os.access(self.ct_ng, os.X_OK)
+
+    # ------------------------------------------------------------------ setup
+
+    def setup(self) -> bool:
+        """Execute setup commands from the BuilderRecipe. Idempotent."""
+        if self.is_installed():
+            self.log(f"  [green]{self.ct_ng.name} already installed at {self.ctng_dir}[/green]")
+            return True
+
+        if not self.recipe or not self.recipe.setup:
+            self.log("[red]No builder recipe loaded — cannot set up crosstool-ng[/red]")
+            return False
+
+        self.ctng_dir.parent.mkdir(parents=True, exist_ok=True)
+
+        tokens = {
+            "REPO": self.recipe.repo,
+            "INSTALL_DIR": str(self.ctng_dir),
+            "CPUS": str(self.max_cpus),
+        }
+
+        self.log(f"[bold]Setting up {self.recipe.name} → {self.ctng_dir}[/bold]")
+        for raw_cmd in self.recipe.setup:
+            if not isinstance(raw_cmd, list):
+                self.log(f"[yellow]Skipping invalid step: {raw_cmd!r}[/yellow]")
+                continue
+            cmd = expand_tokens(raw_cmd, tokens)
+            # Determine cwd: if first arg is `git clone`, run from parent dir
+            # so the target dir doesn't have to exist yet. Otherwise run inside.
+            is_clone = (len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "clone")
+            cwd = self.ctng_dir.parent if is_clone else self.ctng_dir
+            if not is_clone and not self.ctng_dir.exists():
+                self.log(f"[red]Install dir missing: {self.ctng_dir}[/red]")
+                return False
+            if not self._run(cmd, cwd=cwd):
+                return False
+
+        if not self.is_installed():
+            self.log(f"[red]{self.ct_ng.name} binary not found after setup[/red]")
+            return False
+
+        self.log(f"[green]{self.recipe.name} setup complete[/green]")
+        return True
+
+    # ------------------------------------------------------------------ build
+
+    def build(self, template: Template) -> bool:
+        """Build a toolchain from a template. Result lives in toolchains_dir/<name>/."""
+        if not self.is_installed():
+            self.log("[red]ct-ng not installed — run setup first[/red]")
+            return False
+
+        cfg_src = template.config_path
+        if not cfg_src or not cfg_src.exists():
+            self.log(f"[red]Template config not found: {template.config}[/red]")
+            return False
+
+        self.log(f"[bold]Building toolchain: {template.name}[/bold]")
+        self.log(f"  Builder:    crosstool-ng")
+        self.log(f"  Source cfg: {cfg_src}")
+
+        # Clean any previous .config*
+        for stale in self.ctng_dir.glob(".config*"):
+            try:
+                stale.unlink()
+            except Exception:
+                pass
+
+        # Copy template → .config
+        target_cfg = self.ctng_dir / ".config"
+        shutil.copy2(cfg_src, target_cfg)
+        self.log(f"  Copied .config")
+
+        # Determine final install dir
+        install_dir = self.toolchains_dir / template.name
+        install_dir.parent.mkdir(parents=True, exist_ok=True)
+        # If a previous failed build left a partial dir, remove it
+        if install_dir.exists():
+            self.log(f"  Removing existing {install_dir}")
+            shutil.rmtree(install_dir, ignore_errors=True)
+
+        self.downloads_dir.mkdir(parents=True, exist_ok=True)
+
+        # Patch .config:
+        #   CT_LOCAL_TARBALLS_DIR  → downloads dir
+        #   CT_PREFIX_DIR          → final toolchain install dir
+        #   CT_TOOLCHAIN_PKGVERSION→ "simplebuild4"
+        #   CT_PARALLEL_JOBS       → max_cpus
+        try:
+            content = target_cfg.read_text(encoding="utf-8", errors="replace")
+            content = re.sub(
+                r'^\s*(?:#\s*)?CT_LOCAL_TARBALLS_DIR.*$',
+                f'CT_LOCAL_TARBALLS_DIR="{self.downloads_dir}"',
+                content, flags=re.MULTILINE,
+            )
+            content = re.sub(
+                r'^\s*(?:#\s*)?CT_PREFIX_DIR.*$',
+                f'CT_PREFIX_DIR="{install_dir}"',
+                content, flags=re.MULTILINE,
+            )
+            content = re.sub(
+                r'^\s*(?:#\s*)?CT_TOOLCHAIN_PKGVERSION.*$',
+                'CT_TOOLCHAIN_PKGVERSION="simplebuild4"',
+                content, flags=re.MULTILINE,
+            )
+            # Append parallel jobs (don't replace — may not exist)
+            if "CT_PARALLEL_JOBS=" not in content:
+                content += f"\nCT_PARALLEL_JOBS={self.max_cpus}\n"
+            else:
+                content = re.sub(
+                    r'^\s*(?:#\s*)?CT_PARALLEL_JOBS.*$',
+                    f"CT_PARALLEL_JOBS={self.max_cpus}",
+                    content, flags=re.MULTILINE,
+                )
+            target_cfg.write_text(content, encoding="utf-8")
+            self.log("  Patched .config (PREFIX, DOWNLOADS, JOBS)")
+        except Exception as e:
+            self.log(f"[red]Failed to patch .config: {e}[/red]")
+            return False
+
+        # Run ./ct-ng show-config (informational)
+        self._run(["./ct-ng", "show-config"], cwd=self.ctng_dir, ignore_failure=True)
+
+        # Run ./ct-ng build
+        self.log("[bold]Running ct-ng build...[/bold]")
+        ok = self._run(["./ct-ng", "build"], cwd=self.ctng_dir)
+
+        # Cleanup build artifacts (whether success or failure — saves disk)
+        try:
+            build_log = self.ctng_dir / "build.log"
+            if build_log.exists():
+                m = re.search(r'CT_BUILD_TOP_DIR=(\S+)', build_log.read_text(encoding="utf-8", errors="replace"))
+                if m:
+                    btop = Path(m.group(1).strip())
+                    if btop.is_dir():
+                        shutil.rmtree(btop, ignore_errors=True)
+                        self.log(f"  Cleaned build artifacts: {btop}")
+        except Exception:
+            pass
+
+        if not ok:
+            self.log("[red]ct-ng build failed[/red]")
+            # Remove partial install dir on failure
+            if install_dir.exists():
+                shutil.rmtree(install_dir, ignore_errors=True)
+            return False
+
+        if not install_dir.exists():
+            self.log(f"[red]Build reported success but {install_dir} missing[/red]")
+            return False
+
+        self.log(f"[green]Toolchain {template.name} installed → {install_dir}[/green]")
+        return True
+
+    # ------------------------------------------------------------------ helper
+
+    def _run(self, cmd: list[str], cwd: Path | None = None, ignore_failure: bool = False) -> bool:
+        """Run a command, stream output to log. Returns success bool."""
+        if self.cancel_check():
+            self.log("[yellow]Cancelled[/yellow]")
+            return False
+        try:
+            self.log(f"[dim]$ {' '.join(cmd)}[/dim]")
+            proc = subprocess.Popen(
+                cmd, cwd=str(cwd) if cwd else None,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            )
+            assert proc.stdout is not None
+            # Spinner suppression: crosstool-ng prints animated spinner lines
+            # like "[00:13] /", "[00:13] -", "[00:13] \", "[00:13] |" using \r.
+            # Read by '\n' separators, then drop any line that ends with a
+            # bare spinner char (after the timestamp).
+            spinner_re = re.compile(r'^\[[0-9:]+\]\s+[/\\|\-]\s*$')
+            for raw in proc.stdout:
+                if self.cancel_check():
+                    proc.terminate()
+                    self.log("[yellow]Cancelled[/yellow]")
+                    return False
+                # Strip ANSI escapes and CR-overdrawn spinner frames
+                line = raw.rstrip("\r\n")
+                # Many of crosstool-ng's spinner lines come together via \r;
+                # the last segment after the final \r is what would be visible.
+                if "\r" in line:
+                    line = line.split("\r")[-1]
+                if not line.strip():
+                    continue
+                if spinner_re.match(line):
+                    continue
+                self.log(line)
+            proc.wait()
+            if proc.returncode != 0 and not ignore_failure:
+                return False
+            return True
+        except FileNotFoundError as e:
+            self.log(f"[red]Command not found: {e}[/red]")
+            return False
+        except Exception as e:
+            self.log(f"[red]Command failed: {e}[/red]")
+            return False

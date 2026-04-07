@@ -37,6 +37,9 @@ class Settings:
     qemu_timeout: int = 5
     qemu_expect: str = "Server running"
 
+    # Toolchain Builders
+    ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
+
     def save(self, path: Path) -> None:
         """Save settings to YAML."""
         data = {
@@ -55,6 +58,7 @@ class Settings:
             "qemu_test": self.qemu_test,
             "qemu_timeout": self.qemu_timeout,
             "qemu_expect": self.qemu_expect,
+            "ctng_dir": self.ctng_dir,
         }
         path.write_text(
             yaml.dump(data, default_flow_style=False, sort_keys=False),
@@ -88,4 +92,5 @@ class Settings:
             qemu_test=data.get("qemu_test", False),
             qemu_timeout=data.get("qemu_timeout", 5),
             qemu_expect=data.get("qemu_expect", "Server running"),
+            ctng_dir=data.get("ctng_dir", ""),
         )

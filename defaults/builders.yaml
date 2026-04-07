@@ -1,0 +1,43 @@
+# Toolchain builder recipes — how s4 sets up each external builder.
+#
+# Tokens replaced at runtime:
+#   @REPO@         → repo URL from this file
+#   @INSTALL_DIR@  → target install directory (e.g. data/builders/crosstool-ng)
+#   @CPUS@         → max CPU count from settings
+#
+# Each setup step is a shell-style command list. Steps run sequentially with
+# cwd = @INSTALL_DIR@ (except the clone step which uses the parent directory).
+# A step that fails aborts the setup.
+#
+# `binary` is the path (relative to @INSTALL_DIR@) of the executable that
+# indicates a successful install.
+
+builders:
+  - name: crosstool-ng
+    description: crosstool-NG toolchain builder
+    repo: https://github.com/crosstool-ng/crosstool-ng
+    binary: ct-ng
+    setup:
+      - [git, clone, --progress, "@REPO@", "@INSTALL_DIR@"]
+      - [./bootstrap]
+      - [./configure, --enable-local]
+      - [make, "-j@CPUS@"]
+    # Interactive configurator (menuconfig).
+    # Runs from @INSTALL_DIR@ after the template .config has been copied in.
+    customize: [./ct-ng, menuconfig]
+
+  # Future builders — placeholders, not implemented yet
+  # - name: freetz-ng
+  #   description: Freetz-NG router toolchain builder
+  #   repo: https://github.com/Freetz-NG/freetz-ng
+  #   binary: tools/freetz-doctor
+  #   setup:
+  #     - [git, clone, "@REPO@", "@INSTALL_DIR@"]
+
+  # - name: oe-sdk
+  #   description: OpenEmbedded SDK build environment
+  #   repo: https://github.com/oe-alliance/build-enviroment.git
+  #   binary: scripts/setup-machine
+  #   setup:
+  #     - [git, clone, "@REPO@", "@INSTALL_DIR@"]
+  #     - [make, update]

@@ -1,0 +1,14 @@
+name: rpi_armv7
+description: Raspberry Pi 2 Model B
+builder: crosstool-ng
+arch: armv7
+
+# Result toolchain properties (used to register after successful build)
+prefix: armv7-rpi2-linux-gnueabihf-
+sysroot: armv7-rpi2-linux-gnueabihf/sysroot
+cflags: ""
+ldflags: ""
+machines: ""
+
+# Native crosstool-ng config (next to this file)
+config: rpi_armv7.config
