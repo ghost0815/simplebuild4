@@ -2285,6 +2285,22 @@ class ToolchainsScreen(Screen):
 
         self._run_in_thread(do_install)
 
+    def _resolve_ctng_dir(self) -> Path:
+        """Return the absolute crosstool-ng install dir.
+
+        Empty setting → default `data/builders/crosstool-ng`.
+        Relative setting → resolved against project root.
+        Tilde expanded.
+        """
+        import os
+        raw = (self.app.settings.ctng_dir or "").strip()
+        if not raw:
+            return self.app.paths.builders_dir / "crosstool-ng"
+        p = Path(os.path.expanduser(raw))
+        if not p.is_absolute():
+            p = self.app.paths.root / p
+        return p
+
     def _handle_selfbuild(self) -> None:
         """Build the selected SelfBuild template via its toolchain builder."""
         name = ToolchainsScreen._selected_tc
@@ -2304,11 +2320,7 @@ class ToolchainsScreen(Screen):
             return
 
         # Determine ctng dir from settings or default
-        ctng_dir = (self.app.settings.ctng_dir or "").strip()
-        if not ctng_dir:
-            ctng_dir = str(self.app.paths.builders_dir / "crosstool-ng")
-        from pathlib import Path as _P
-        ctng_path = _P(ctng_dir)
+        ctng_path = self._resolve_ctng_dir()
 
         # Compute relative paths to project root for nicer logging
         def _rel(p):
@@ -3540,11 +3552,7 @@ class ToolchainsScreen(Screen):
             return
 
         # Determine install dir (same logic as _handle_selfbuild)
-        ctng_dir = (self.app.settings.ctng_dir or "").strip()
-        if not ctng_dir:
-            ctng_dir = str(self.app.paths.builders_dir / "crosstool-ng")
-        from pathlib import Path as _P
-        ctng_path = _P(ctng_dir)
+        ctng_path = self._resolve_ctng_dir()
 
         # Check builder is installed
         binary_path = ctng_path / recipe.binary if recipe.binary else None

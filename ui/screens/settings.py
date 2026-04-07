@@ -119,7 +119,10 @@ class SettingsScreen(Screen):
 
             # Toolchain Builders
             yield Static(f" [bold]{t('section_builders')}[/bold]", classes="section-title")
-            ctng_default = str(self.app.paths.builders_dir / "crosstool-ng")
+            try:
+                ctng_default = str((self.app.paths.builders_dir / "crosstool-ng").relative_to(self.app.paths.root))
+            except Exception:
+                ctng_default = str(self.app.paths.builders_dir / "crosstool-ng")
             ctng_browse = _Btn("📂", id="btn-ctng-browse", classes="tc-reset-btn")
             ctng_browse.tooltip = t("ph_browse_dir")
             yield Horizontal(
