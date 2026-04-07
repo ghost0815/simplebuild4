@@ -28,7 +28,10 @@ def sort_by_dependencies(
     # Load dependency graph
     dep_graph: dict[str, list[str]] = {}
     if libraries_yaml.exists():
-        data = yaml.safe_load(libraries_yaml.read_text(encoding="utf-8"))
+        try:
+            data = yaml.safe_load(libraries_yaml.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            data = None
         if data and "libraries" in data:
             for lib in data["libraries"]:
                 dep_graph[lib["name"]] = lib.get("depends", [])

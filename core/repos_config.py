@@ -23,7 +23,10 @@ def load_repos(path: Path) -> list[RepoConfig]:
         save_repos(repos, path)
         return repos
 
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return list(DEFAULT_REPOS)
     if not data or "repos" not in data:
         return list(DEFAULT_REPOS)
 

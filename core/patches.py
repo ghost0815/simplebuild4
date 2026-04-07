@@ -21,7 +21,10 @@ def load_patch_sources(path: Path) -> list[PatchSource]:
     """Load patch sources from patches.yaml."""
     if not path.exists():
         return []
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return []
     if not data or "patches" not in data:
         return []
     return [

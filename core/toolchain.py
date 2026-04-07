@@ -256,14 +256,20 @@ def load_library_recipes(libraries_path: Path, local_path: Path | None = None) -
     """
     if not libraries_path.exists():
         return []
-    data = yaml.safe_load(libraries_path.read_text(encoding="utf-8"))
+    try:
+        data = yaml.safe_load(libraries_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError:
+        return []
     if not data or "libraries" not in data:
         return []
     recipes = data["libraries"]
 
     # Merge local overrides
     if local_path and local_path.exists():
-        local_data = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+        try:
+            local_data = yaml.safe_load(local_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            local_data = None
         if local_data and "libraries" in local_data:
             local_by_name = {lib["name"]: lib for lib in local_data["libraries"]}
             # Replace defaults with local overrides
@@ -413,6 +419,7 @@ class ToolchainRegistry:
         self.local_path = local_path
         self.install_dir = install_dir
         self._toolchains: list[Toolchain] = []
+        self.yaml_error: str = ""
 
     def load(self) -> None:
         """Load toolchain registry from both YAML files."""
@@ -511,10 +518,14 @@ class ToolchainRegistry:
         self.save_local(local_tcs)
 
     def _load_file(self, path: Path) -> list[Toolchain]:
-        """Load toolchains from a single YAML file."""
+        """Load toolchains from a single YAML file. Returns empty list on parse errors."""
         if not path.exists():
             return []
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as e:
+            self.yaml_error = f"{path.name}: {str(e).splitlines()[0]}"
+            return []
         if not data or "toolchains" not in data:
             return []
         result = []

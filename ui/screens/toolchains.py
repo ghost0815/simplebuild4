@@ -358,6 +358,10 @@ class ToolchainsScreen(Screen):
     def on_mount(self) -> None:
         reg = self._get_registry()
 
+        # Show YAML parse errors as notification
+        if reg.yaml_error:
+            self.notify(f"YAML error: {reg.yaml_error}", severity="error", timeout=15)
+
         # Populate installed table (from local yaml)
         tbl = self.query_one("#tbl-installed", DataTable)
         tbl.add_columns("Name", "Arch", "Description")

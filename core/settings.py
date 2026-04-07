@@ -66,7 +66,10 @@ class Settings:
         """Load settings from YAML. Returns defaults if file missing."""
         if not path.exists():
             return cls()
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        try:
+            data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            return cls()
         if not data:
             return cls()
         return cls(

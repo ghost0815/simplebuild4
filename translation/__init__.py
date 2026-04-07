@@ -20,15 +20,21 @@ def load(language: str = "en") -> None:
     # Always load English as fallback
     en_path = trans_dir / "en.yaml"
     if en_path.exists():
-        data = yaml.safe_load(en_path.read_text(encoding="utf-8"))
-        _fallback = data if data else {}
+        try:
+            data = yaml.safe_load(en_path.read_text(encoding="utf-8"))
+            _fallback = data if data else {}
+        except yaml.YAMLError:
+            _fallback = {}
 
     # Load requested language
     if language != "en":
         lang_path = trans_dir / f"{language}.yaml"
         if lang_path.exists():
-            data = yaml.safe_load(lang_path.read_text(encoding="utf-8"))
-            _translations = data if data else {}
+            try:
+                data = yaml.safe_load(lang_path.read_text(encoding="utf-8"))
+                _translations = data if data else {}
+            except yaml.YAMLError:
+                _translations = {}
         else:
             _translations = {}
     else:
