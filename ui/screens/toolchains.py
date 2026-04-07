@@ -1076,12 +1076,12 @@ class ToolchainsScreen(Screen):
                         action_label = t("lib_install") if action == "install" else t("lib_update")
                         options.append((f"{action_label} {ver} — {label}{req}", opt_value))
 
-                # Default
-                if lib.found and lib.up_to_date:
-                    default = "skip"
-                elif lib.update_version:
-                    action = "install" if not lib.found else "update"
-                    default = f"{action}:{lib.update_version}"
+                # Default: only suggest an update for libraries that already
+                # exist in the toolchain. Missing libraries default to skip
+                # so we don't push users to integrate libs they never asked
+                # for.
+                if lib.found and not lib.up_to_date and lib.update_version:
+                    default = f"update:{lib.update_version}"
                 else:
                     default = "skip"
 
