@@ -27,8 +27,16 @@ def _switch_row(label: str, value: bool, widget_id: str) -> Horizontal:
 
 
 def _safe_id(name: str) -> str:
-    """Convert a name to a safe Textual widget ID (no dots)."""
-    return name.replace(".", "-")
+    """Convert a name to a safe Textual widget ID.
+
+    Textual requires IDs to contain only [a-zA-Z0-9_-] and not start with a digit.
+    Anything else is replaced with '-'. A leading digit gets an 's' prefix.
+    """
+    import re as _re
+    s = _re.sub(r'[^a-zA-Z0-9_-]', '-', name)
+    if s and s[0].isdigit():
+        s = "s" + s
+    return s
 
 
 def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False) -> Horizontal:
