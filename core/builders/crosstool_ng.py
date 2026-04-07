@@ -136,20 +136,36 @@ class CrosstoolNG:
             self.log(f"  Removing existing {install_dir}")
             shutil.rmtree(install_dir, ignore_errors=True)
 
-        self.downloads_dir.mkdir(parents=True, exist_ok=True)
+        # Decide where the tarballs land.
+        # Template `download_location` (relative paths resolve against the
+        # project root, ~ expanded) wins. If empty, leave whatever the .config
+        # already says — the user manages it via menuconfig.
+        tarballs_dir: Path | None = None
+        dl = (getattr(template, "download_location", "") or "").strip()
+        if dl:
+            import os
+            dl = os.path.expanduser(dl)
+            p = Path(dl)
+            if not p.is_absolute():
+                # binaries_dir is data/binaries → root is its grandparent
+                root = self.toolchains_dir.parent.parent
+                p = root / p
+            tarballs_dir = p
+            tarballs_dir.mkdir(parents=True, exist_ok=True)
 
         # Patch .config:
-        #   CT_LOCAL_TARBALLS_DIR  → downloads dir
+        #   CT_LOCAL_TARBALLS_DIR  → tarballs_dir (only if template asks)
         #   CT_PREFIX_DIR          → final toolchain install dir
         #   CT_TOOLCHAIN_PKGVERSION→ "simplebuild4"
         #   CT_PARALLEL_JOBS       → max_cpus
         try:
             content = target_cfg.read_text(encoding="utf-8", errors="replace")
-            content = re.sub(
-                r'^\s*(?:#\s*)?CT_LOCAL_TARBALLS_DIR.*$',
-                f'CT_LOCAL_TARBALLS_DIR="{self.downloads_dir}"',
-                content, flags=re.MULTILINE,
-            )
+            if tarballs_dir is not None:
+                content = re.sub(
+                    r'^\s*(?:#\s*)?CT_LOCAL_TARBALLS_DIR.*$',
+                    f'CT_LOCAL_TARBALLS_DIR="{tarballs_dir}"',
+                    content, flags=re.MULTILINE,
+                )
             content = re.sub(
                 r'^\s*(?:#\s*)?CT_PREFIX_DIR.*$',
                 f'CT_PREFIX_DIR="{install_dir}"',
@@ -170,7 +186,10 @@ class CrosstoolNG:
                     content, flags=re.MULTILINE,
                 )
             target_cfg.write_text(content, encoding="utf-8")
-            self.log("  Patched .config (PREFIX, DOWNLOADS, JOBS)")
+            patched = ["PREFIX", "JOBS"]
+            if tarballs_dir is not None:
+                patched.insert(1, "DOWNLOADS")
+            self.log(f"  Patched .config ({', '.join(patched)})")
         except Exception as e:
             self.log(f"[red]Failed to patch .config: {e}[/red]")
             return False

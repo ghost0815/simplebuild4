@@ -10,3 +10,6 @@ ldflags: ""
 machines: ""
 
 config: qnap_x64.config
+
+# Comment out to keep CT_LOCAL_TARBALLS_DIR from the .config.
+download_location: data/downloads

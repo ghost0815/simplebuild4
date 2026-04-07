@@ -12,3 +12,8 @@ machines: ""
 
 # Native crosstool-ng config (next to this file)
 config: rpi_armv7.config
+
+# Where the builder downloads its source tarballs.
+# Comment out to use whatever the .config has set (CT_LOCAL_TARBALLS_DIR).
+# Relative paths are resolved against the project root.
+download_location: data/downloads

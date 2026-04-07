@@ -51,6 +51,12 @@ class Template:
     # Builder-specific config file (relative to YAML location)
     config: str = ""
 
+    # Optional: where the builder downloads its source tarballs.
+    # Empty/missing → leave the builder's own setting (e.g. CT_LOCAL_TARBALLS_DIR
+    # from the .config) untouched. Otherwise, paths are resolved relative to
+    # the project root.
+    download_location: str = ""
+
     # Internal — set when loaded
     yaml_path: Path | None = None
     is_local: bool = False         # True if from data/templates/ instead of defaults/
@@ -82,6 +88,7 @@ def load_template(yaml_path: Path) -> Template | None:
         ldflags=data.get("ldflags", ""),
         machines=data.get("machines", ""),
         config=data.get("config", ""),
+        download_location=data.get("download_location", ""),
         yaml_path=yaml_path,
     )
 
