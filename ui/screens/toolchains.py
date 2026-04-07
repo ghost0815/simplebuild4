@@ -98,29 +98,36 @@ class S4DataTable(DataTable):
         self._marker_row = -1
         return super().clear(columns=columns)
 
-    def watch_cursor_coordinate(self, old_coordinate, new_coordinate):
-        # Let the base class handle its own bookkeeping first
+    def mark_row(self, row: int) -> None:
+        """Paint the selection marker on `row`, clearing the previous one.
+
+        Called explicitly by the screen on real selection events — never
+        as a side-effect of populating the table, so the first row of an
+        idle table stays unmarked until the user picks something.
+        """
         try:
-            super().watch_cursor_coordinate(old_coordinate, new_coordinate)
-        except Exception:
-            pass
-        try:
-            new_row = new_coordinate.row if new_coordinate is not None else -1
-            if self._marker_row == new_row:
+            if self._marker_row == row:
                 return
-            # Clear previous marker
             if 0 <= self._marker_row < self.row_count:
                 try:
                     self.update_cell_at(Coordinate(self._marker_row, 0), " ", update_width=False)
                 except Exception:
                     pass
-            # Paint new marker
-            if 0 <= new_row < self.row_count:
+            if 0 <= row < self.row_count:
                 try:
-                    self.update_cell_at(Coordinate(new_row, 0), self.MARKER, update_width=False)
+                    self.update_cell_at(Coordinate(row, 0), self.MARKER, update_width=False)
                 except Exception:
                     pass
-            self._marker_row = new_row
+            self._marker_row = row
+        except Exception:
+            pass
+
+    def clear_marker(self) -> None:
+        """Erase the current marker without painting a new one."""
+        try:
+            if 0 <= self._marker_row < self.row_count:
+                self.update_cell_at(Coordinate(self._marker_row, 0), " ", update_width=False)
+            self._marker_row = -1
         except Exception:
             pass
 from ui.footer import S4Footer
@@ -598,6 +605,7 @@ class ToolchainsScreen(Screen):
                                 except Exception:
                                     pass
                             sb_tbl.move_cursor(row=i)
+                            sb_tbl.mark_row(i)
                             focused_tbl = sb_tbl
                             found = True
                             break
@@ -611,6 +619,7 @@ class ToolchainsScreen(Screen):
                 for i, key in enumerate(tbl.rows):
                     if key.value == ToolchainsScreen._selected_tc:
                         tbl.move_cursor(row=i)
+                        tbl.mark_row(i)
                         break
             except Exception:
                 pass
@@ -894,6 +903,7 @@ class ToolchainsScreen(Screen):
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
             self._track_template_source(event)
+            self._mark_selected_row(event)
             self._update_active_tab()
             self._update_f9_state()
 
@@ -903,8 +913,28 @@ class ToolchainsScreen(Screen):
         if event.row_key and event.row_key.value:
             ToolchainsScreen._selected_tc = event.row_key.value
             self._track_template_source(event)
+            self._mark_selected_row(event)
             self._update_active_tab()
             self._update_f9_state()
+
+    def _mark_selected_row(self, event) -> None:
+        """Paint the marker on the row that the user just picked.
+
+        Also clears the marker on every other S4DataTable on the screen
+        so only one row across all tables is marked at a time.
+        """
+        try:
+            picked_table = getattr(event, "data_table", None)
+            picked_row = getattr(event, "cursor_row", None)
+            if picked_row is None:
+                picked_row = getattr(event, "row_index", None)
+            for tbl in self.query(S4DataTable):
+                if tbl is picked_table and picked_row is not None:
+                    tbl.mark_row(int(picked_row))
+                else:
+                    tbl.clear_marker()
+        except Exception:
+            pass
 
     def _track_template_source(self, event) -> None:
         """When the user picks a row in a SelfBuild table, remember its source.
@@ -1895,6 +1925,8 @@ class ToolchainsScreen(Screen):
                     for i, key in enumerate(sb_tbl.rows):
                         if key.value == final_name:
                             sb_tbl.move_cursor(row=i)
+                            if hasattr(sb_tbl, "mark_row"):
+                                sb_tbl.mark_row(i)
                             sb_tbl.focus()
                             break
                 except Exception as e:
@@ -2112,6 +2144,8 @@ class ToolchainsScreen(Screen):
             # Restore selection on the just-edited (or renamed) toolchain
             if row_index >= 0:
                 tbl.move_cursor(row=row_index)
+                if hasattr(tbl, "mark_row"):
+                    tbl.mark_row(row_index)
                 ToolchainsScreen._selected_tc = final_name
                 # Refresh yaml editor with new content
                 self._update_editor()
