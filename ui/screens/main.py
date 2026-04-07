@@ -174,8 +174,18 @@ class MainScreen(Screen):
         ])
         if b.use_compress:
             import shutil as _shutil
-            upx_path = b.upx_binary or _shutil.which("upx") or t("none")
-            lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_path}[/dim]")
+            import subprocess as _sp
+            upx_path = b.upx_binary or _shutil.which("upx") or ""
+            upx_info = upx_path or t("none")
+            if upx_path:
+                try:
+                    upx_ver = _sp.check_output(
+                        [upx_path, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5,
+                    ).splitlines()[0]
+                    upx_info = f"{upx_path} — {upx_ver}"
+                except Exception:
+                    pass
+            lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_info}[/dim]")
         lines.append(f"  {t('upload') + ':':<{pad}} {upload_str}")
 
         info = self.query_one("#info", Static)
