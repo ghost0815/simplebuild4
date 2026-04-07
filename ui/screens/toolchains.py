@@ -13,7 +13,7 @@ from pathlib import Path
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.screen import Screen, ModalScreen
-from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree
+from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree, TextArea
 from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
@@ -231,6 +231,7 @@ class ToolchainsScreen(Screen):
     BINDINGS = [
         ("d", "switch_right_tab('details')", "Details"),
         ("l", "switch_right_tab('libs')", "Libraries"),
+        ("y", "switch_right_tab('yaml')", "Yaml"),
         ("o", "switch_right_tab('log')", "Output"),
         ("p", "switch_left_tab('prebuild')", "PreBuild"),
         ("s", "switch_left_tab('selfbuild')", "SelfBuild"),
@@ -323,6 +324,7 @@ class ToolchainsScreen(Screen):
                 # Detail/Libraries/Log tab buttons
                 with Horizontal(id="tc-tab-bar"):
                     yield Static(" [b]D[/b]etails ", id="btn-tab-details", classes="tab-active")
+                    yield Static(" [b]Y[/b]aml ", id="btn-tab-yaml", classes="tab-inactive")
                     yield Static(" [b]L[/b]ibraries ", id="btn-tab-libs", classes="tab-inactive")
                     yield Static(" [b]O[/b]utput ", id="btn-tab-log", classes="tab-inactive")
 
@@ -349,6 +351,9 @@ class ToolchainsScreen(Screen):
                                 classes="lib-select",
                                 prompt=t("select_prompt"),
                             )
+
+                # Yaml editor panel (hidden by default)
+                yield TextArea("", id="tc-yaml-editor", language="yaml", show_line_numbers=True)
 
                 # Output
                 yield RichLog(highlight=False, markup=True, id="tc-output", wrap=True)
@@ -513,6 +518,8 @@ class ToolchainsScreen(Screen):
                 self._show_tab("details")
             elif widget.id == "btn-tab-libs":
                 self._show_tab("libs")
+            elif widget.id == "btn-tab-yaml":
+                self._show_tab("yaml")
             elif widget.id == "btn-tab-log":
                 self._show_tab("log")
             elif widget.id == "btn-skip-all":
@@ -662,9 +669,17 @@ class ToolchainsScreen(Screen):
         except Exception:
             return False
 
+    def _is_yaml_tab_active(self) -> bool:
+        try:
+            return self.query_one("#tc-yaml-editor", TextArea).display
+        except Exception:
+            return False
+
     def _update_active_tab(self) -> None:
         if self._is_libs_tab_active():
             self._update_libraries()
+        elif self._is_yaml_tab_active():
+            self._update_yaml_editor()
         else:
             self._update_detail()
 
@@ -692,8 +707,16 @@ class ToolchainsScreen(Screen):
             if not tc:
                 return
             status = "[green]installed[/green]" if tc.installed else "[red]not installed[/red]"
+            # Compute relative location path
+            install_dir = self.app.paths.toolchains_dir / tc.name
+            try:
+                rel_loc = install_dir.relative_to(self.app.paths.root)
+                location = str(rel_loc)
+            except Exception:
+                location = str(install_dir)
             lines = [
                 f"  [bold]{tc.name}[/bold] — {tc.description}",
+                f"  Location:  {location}",
                 f"  Status:    {status}",
                 f"  Category:  {tc.category}     Arch: {tc.arch}",
             ]
@@ -823,7 +846,7 @@ class ToolchainsScreen(Screen):
             pass
 
     def _update_f9_state(self) -> None:
-        """Update F10 button: Update/Cancel based on build state."""
+        """Update F9 (Update/Cancel) and F12 (Save) buttons based on active tab."""
         try:
             for item in self.query("FooterItem"):
                 if item._key == "F9":
@@ -842,7 +865,15 @@ class ToolchainsScreen(Screen):
                         else:
                             item.add_class("disabled")
                     item.refresh()
-                    break
+                elif item._key == "F12":
+                    # Enable F12 Save when Yaml tab is active
+                    yaml_active = self._is_yaml_tab_active()
+                    item._disabled = not yaml_active
+                    if yaml_active:
+                        item.remove_class("disabled")
+                    else:
+                        item.add_class("disabled")
+                    item.refresh()
         except Exception:
             pass
 
@@ -999,22 +1030,26 @@ class ToolchainsScreen(Screen):
             self._handle_remove()
 
     def _show_tab(self, tab: str) -> None:
-        """Switch between Details, Libraries and Log views."""
+        """Switch between Details, Libraries, Yaml and Log views."""
         detail = self.query_one("#tc-detail", Static)
         libs = self.query_one("#tc-libs", VerticalScroll)
+        yaml_editor = self.query_one("#tc-yaml-editor", TextArea)
         output = self.query_one("#tc-output", RichLog)
         tab_details = self.query_one("#btn-tab-details", Static)
         tab_libs = self.query_one("#btn-tab-libs", Static)
+        tab_yaml = self.query_one("#btn-tab-yaml", Static)
         tab_log = self.query_one("#btn-tab-log", Static)
 
         # Reset all tabs to inactive
         tab_details.set_classes("tab-inactive")
         tab_libs.set_classes("tab-inactive")
+        tab_yaml.set_classes("tab-inactive")
         tab_log.set_classes("tab-inactive")
 
         # Hide all panels
         detail.display = False
         libs.display = False
+        yaml_editor.display = False
 
         if tab == "details":
             detail.display = True
@@ -1026,12 +1061,434 @@ class ToolchainsScreen(Screen):
             tab_libs.set_classes("tab-active")
             output.styles.height = "1fr"
             self._update_libraries()
+        elif tab == "yaml":
+            yaml_editor.display = True
+            tab_yaml.set_classes("tab-active")
+            output.styles.height = "1fr"
+            self._update_yaml_editor()
         elif tab == "log":
             tab_log.set_classes("tab-active")
             output.styles.height = "1fr"
 
         # Update F10 button state in footer
         self._update_f9_state()
+
+    # -- YAML editor (Yaml tab) ---------------------------------------------
+
+    def _update_yaml_editor(self) -> None:
+        """Load the YAML block of the selected installed toolchain into the editor."""
+        editor = self.query_one("#tc-yaml-editor", TextArea)
+
+        name = ToolchainsScreen._selected_tc
+        reg = self._get_registry()
+        tc = reg.get(name) if name else None
+
+        if not tc or not tc.installed:
+            editor.text = f"# {t('yaml_only_installed')}"
+            editor.disabled = True
+            return
+
+        block = self._extract_yaml_block(name)
+        if block is None:
+            editor.text = f"# {t('yaml_block_not_found', name=name)}"
+            editor.disabled = True
+            return
+
+        editor.disabled = False
+        editor.text = block
+
+    def _extract_yaml_block(self, tc_name: str) -> "str | None":
+        """Extract the YAML block of a single toolchain from toolchains.local.yaml.
+
+        Returns the raw text (without the leading '- ' prefix removed — keeps
+        the original formatting). Returns None if not found.
+        """
+        path = self.app.paths.toolchains_local
+        if not path.exists():
+            return None
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return None
+
+        # Find the line "- name: <tc_name>" and collect until next "- name:" or non-indented line
+        start = -1
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith("- name:"):
+                # Extract name value
+                val = stripped[len("- name:"):].strip().strip('"').strip("'")
+                if val == tc_name:
+                    start = i
+                    break
+        if start < 0:
+            return None
+
+        # Collect lines until next "- name:" at same indent or end / non-list line
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            stripped = lines[j].lstrip()
+            if stripped.startswith("- name:"):
+                end = j
+                break
+            # Stop if we hit a top-level key (no indent) or empty section break
+            if lines[j] and not lines[j].startswith(" ") and not lines[j].startswith("-"):
+                end = j
+                break
+
+        return "\n".join(lines[start:end]).rstrip() + "\n"
+
+    def _replace_yaml_block(self, tc_name: str, new_block: str) -> bool:
+        """Replace the toolchain block in toolchains.local.yaml."""
+        path = self.app.paths.toolchains_local
+        if not path.exists():
+            return False
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except Exception:
+            return False
+
+        start = -1
+        for i, line in enumerate(lines):
+            stripped = line.lstrip()
+            if stripped.startswith("- name:"):
+                val = stripped[len("- name:"):].strip().strip('"').strip("'")
+                if val == tc_name:
+                    start = i
+                    break
+        if start < 0:
+            return False
+
+        end = len(lines)
+        for j in range(start + 1, len(lines)):
+            stripped = lines[j].lstrip()
+            if stripped.startswith("- name:"):
+                end = j
+                break
+            if lines[j] and not lines[j].startswith(" ") and not lines[j].startswith("-"):
+                end = j
+                break
+
+        new_lines = new_block.rstrip().splitlines()
+        # Ensure block starts with "- name:" (preserve list item)
+        if not new_lines or not new_lines[0].lstrip().startswith("- name:"):
+            return False
+
+        result = lines[:start] + new_lines + lines[end:]
+        try:
+            path.write_text("\n".join(result) + "\n", encoding="utf-8")
+            return True
+        except Exception:
+            return False
+
+    def do_save(self) -> str:
+        """F12 Save handler. Only saves the YAML editor if the Yaml tab is active."""
+        try:
+            editor = self.query_one("#tc-yaml-editor", TextArea)
+            if not editor.display:
+                return ""  # Not on yaml tab → nothing to save
+        except Exception:
+            return ""
+        if editor.disabled:
+            return ""
+
+        name = ToolchainsScreen._selected_tc
+        if not name:
+            return ""
+
+        new_text = editor.text
+        # Save cursor position to restore after reload
+        saved_cursor = editor.cursor_location
+        editor_was_focused = editor.has_focus
+
+        self._log_sync(f"[bold]Validating YAML for {name}...[/bold]")
+
+        # Step 1: YAML syntax check
+        # Wrap the block in a "toolchains:" mapping for parsing
+        try:
+            import yaml as _yaml
+            wrapped = "toolchains:\n" + "\n".join("  " + ln if ln else ln for ln in new_text.splitlines())
+            parsed = _yaml.safe_load(wrapped)
+        except _yaml.YAMLError as e:
+            err = str(e).splitlines()[0]
+            msg = t("yaml_syntax_error", err=err)
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return ""
+        self._log_sync("  [green]✓ Syntax OK[/green]")
+
+        if not parsed or "toolchains" not in parsed or not parsed["toolchains"]:
+            msg = t("yaml_no_entry")
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return ""
+
+        entries = parsed["toolchains"]
+        if len(entries) != 1:
+            msg = t("yaml_multi_entries")
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return ""
+
+        entry = entries[0]
+        if not isinstance(entry, dict):
+            msg = t("yaml_no_entry")
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return ""
+        self._log_sync(f"  [green]✓ Single entry found ({len(entry)} fields)[/green]")
+
+        # Step 2: Field validation against Toolchain dataclass
+        from dataclasses import fields as _fields
+        allowed = {f.name for f in _fields(Toolchain) if f.name != "installed"}
+        unknown = [k for k in entry.keys() if k not in allowed]
+        if unknown:
+            msg = t("yaml_unknown_fields", fields=", ".join(unknown))
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return ""
+        self._log_sync("  [green]✓ All fields known[/green]")
+
+        # Type check (simple)
+        type_map = {f.name: f.type for f in _fields(Toolchain)}
+        for k, v in entry.items():
+            expected = type_map.get(k)
+            if expected is bool and not isinstance(v, bool):
+                msg = t("yaml_wrong_type", field=k, expected="bool")
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
+            if expected is int and not isinstance(v, int):
+                msg = t("yaml_wrong_type", field=k, expected="int")
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
+            if expected is str and not isinstance(v, (str, type(None))):
+                msg = t("yaml_wrong_type", field=k, expected="str")
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
+        self._log_sync("  [green]✓ Field types OK[/green]")
+
+        # Detect rename: name field changed
+        new_name = entry.get("name", "")
+        is_rename = (new_name != name)
+
+        if is_rename:
+            ok, msg = self._rename_toolchain(name, new_name, new_text)
+            if not ok:
+                return ""
+            final_name = new_name
+            result_msg = msg
+        else:
+            # Step 3: Save (no rename)
+            if not self._replace_yaml_block(name, new_text):
+                msg = t("yaml_save_failed")
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
+            self._log_sync(f"  [green]✓ Written to toolchains.local.yaml[/green]")
+            final_name = name
+            result_msg = t("yaml_saved", name=name)
+
+        # Step 4: Reload registry and refresh tables
+        self._registry = None
+        reg = self._get_registry()
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            tbl.clear()
+            row_index = -1
+            for i, tc in enumerate(reg.installed_toolchains()):
+                if tc.native:
+                    tbl.add_row(
+                        Text(tc.name, style="bold"),
+                        Text(tc.arch, style="bold"),
+                        Text(tc.description, style="bold"),
+                        key=tc.name,
+                    )
+                else:
+                    tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+                if tc.name == final_name:
+                    row_index = i
+            # Restore selection on the just-edited (or renamed) toolchain
+            if row_index >= 0:
+                tbl.move_cursor(row=row_index)
+                ToolchainsScreen._selected_tc = final_name
+                # Refresh yaml editor with new content
+                self._update_yaml_editor()
+                # Defer cursor restore: row_highlighted events trigger another
+                # _update_yaml_editor() that would reset (0,0). Run after events.
+                if saved_cursor and editor_was_focused:
+                    self.set_timer(0.05, lambda: self._restore_yaml_cursor(saved_cursor))
+        except Exception:
+            pass
+
+        return result_msg
+
+    def _restore_yaml_cursor(self, saved_cursor) -> None:
+        """Restore cursor position in the YAML editor after a save+reload."""
+        try:
+            editor = self.query_one("#tc-yaml-editor", TextArea)
+            if editor.disabled:
+                return
+            line_count = editor.document.line_count
+            row, col = saved_cursor
+            if row >= line_count:
+                row = max(0, line_count - 1)
+            try:
+                line_len = len(editor.document.get_line(row))
+            except Exception:
+                line_len = 0
+            if col > line_len:
+                col = line_len
+            editor.cursor_location = (row, col)
+            editor.focus()
+        except Exception:
+            pass
+
+    def _rename_toolchain(self, old_name: str, new_name: str, new_yaml_text: str) -> tuple:
+        """Rename an installed toolchain. Returns (success, message).
+
+        Performs all rename steps with rollback on failure.
+        """
+        import re as _re
+        import shutil as _shutil
+
+        self._log_sync(f"[bold]Renaming {old_name} → {new_name}...[/bold]")
+
+        reg = self._get_registry()
+        tc = reg.get(old_name)
+        if not tc:
+            self.notify(t("yaml_rename_failed", err=f"toolchain {old_name} not found"),
+                        severity="error", timeout=10)
+            return (False, "")
+
+        # --- Pre-validation ---
+        # 1. Block native
+        if tc.native:
+            msg = t("yaml_rename_native_blocked")
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return (False, "")
+
+        # 2. Name format
+        if not new_name or not _re.match(r"^[a-zA-Z0-9_.\-]+$", new_name):
+            msg = t("yaml_rename_invalid_name", name=new_name)
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return (False, "")
+
+        # 3. Name collision in toolchains.local.yaml
+        local_tcs = reg._load_file(reg.local_path)
+        if any(t_.name == new_name for t_ in local_tcs):
+            msg = t("yaml_rename_name_exists", name=new_name)
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return (False, "")
+
+        # 4. Directory collision
+        old_dir = self.app.paths.toolchains_dir / old_name
+        new_dir = self.app.paths.toolchains_dir / new_name
+        if new_dir.exists():
+            msg = t("yaml_rename_dir_exists", name=new_name)
+            self._log_sync(f"  [red]✗ {msg}[/red]")
+            self.notify(msg, severity="error", timeout=10)
+            return (False, "")
+
+        self._log_sync("  [green]✓ Pre-validation OK[/green]")
+
+        # --- Perform rename ---
+        done_steps = []  # for rollback
+
+        try:
+            # Step 1: Move directory
+            if old_dir.exists():
+                _shutil.move(str(old_dir), str(new_dir))
+                done_steps.append("move_dir")
+                self._log_sync(f"  [green]✓ Moved {old_name} → {new_name}[/green]")
+
+            # Step 2: Relocate
+            from core.toolchain import Toolchain as _TC
+            new_tc = _TC(name=new_name, prefix=tc.prefix, sysroot=tc.sysroot, arch=tc.arch)
+            if new_dir.exists():
+                pc_total, pc_fixed = self._fix_pc_files(new_dir)
+                self._log_sync(f"  [green]✓ .pc files: {pc_fixed}/{pc_total} updated[/green]")
+                la_total, la_fixed = self._fix_la_files(new_dir)
+                if la_total:
+                    self._log_sync(f"  [green]✓ .la files: {la_fixed}/{la_total} updated[/green]")
+                self._relocate_toolchain(new_dir, new_tc)
+                done_steps.append("relocate")
+                self._log_sync("  [green]✓ ELF interpreters relocated[/green]")
+
+            # Step 3: Update target references
+            from core.target import Target as _Target
+            updated_targets = []
+            targets_dir = self.app.paths.targets_dir
+            if targets_dir.is_dir():
+                for target_path in targets_dir.glob("*.yaml"):
+                    try:
+                        target = _Target.load(target_path)
+                    except Exception:
+                        continue
+                    if any(tcc.name == old_name for tcc in target.toolchains):
+                        for tcc in target.toolchains:
+                            if tcc.name == old_name:
+                                tcc.name = new_name
+                        target.save(target_path)
+                        updated_targets.append(target_path)
+            done_steps.append(("targets", updated_targets))
+            if updated_targets:
+                self._log_sync(f"  [green]✓ Updated {len(updated_targets)} target(s)[/green]")
+            else:
+                self._log_sync("  [green]✓ No targets to update[/green]")
+
+            # Step 4: Replace YAML block in toolchains.local.yaml
+            if not self._replace_yaml_block(old_name, new_yaml_text):
+                raise RuntimeError("failed to write toolchains.local.yaml")
+            done_steps.append("yaml_block")
+            self._log_sync("  [green]✓ Updated toolchains.local.yaml[/green]")
+
+        except Exception as e:
+            # Rollback
+            self._log_sync(f"  [red]✗ {t('yaml_rename_failed', err=str(e))}[/red]")
+            self._rollback_rename(done_steps, old_dir, new_dir, old_name, new_name, tc)
+            self._log_sync(f"  [yellow]{t('yaml_rename_rollback')}[/yellow]")
+            self.notify(t("yaml_rename_failed", err=str(e)), severity="error", timeout=10)
+            return (False, "")
+
+        return (True, t("yaml_renamed", old=old_name, new=new_name))
+
+    def _rollback_rename(self, done_steps, old_dir, new_dir, old_name, new_name, old_tc) -> None:
+        """Rollback rename operations on error."""
+        import shutil as _shutil
+
+        for step in reversed(done_steps):
+            try:
+                if step == "move_dir":
+                    if new_dir.exists() and not old_dir.exists():
+                        _shutil.move(str(new_dir), str(old_dir))
+                elif step == "relocate":
+                    # Re-relocate to old path
+                    if old_dir.exists():
+                        self._fix_pc_files(old_dir)
+                        self._fix_la_files(old_dir)
+                        self._relocate_toolchain(old_dir, old_tc)
+                elif isinstance(step, tuple) and step[0] == "targets":
+                    from core.target import Target as _Target
+                    for target_path in step[1]:
+                        try:
+                            target = _Target.load(target_path)
+                            for tcc in target.toolchains:
+                                if tcc.name == new_name:
+                                    tcc.name = old_name
+                            target.save(target_path)
+                        except Exception:
+                            pass
+                elif step == "yaml_block":
+                    # Should not happen — yaml_block is the last step
+                    pass
+            except Exception:
+                pass
 
     def _check_c11(self, install_dir: Path, prefix: str) -> bool:
         """Check if toolchain's gcc supports C11 (>= GCC 4.9)."""
@@ -1458,23 +1915,11 @@ class ToolchainsScreen(Screen):
 
         self._run_in_thread(do_restore)
 
-    def _fix_pc_files(self, install_dir: Path) -> None:
-        """Fix prefix= paths in .pc files after import/install.
-
-        .pc files from backups or OE-SDK installs contain stale absolute paths
-        from the original build/install location. We replace the old prefix with
-        the correct current absolute path.
-
-        We keep absolute paths (not ${pcfiledir} relative) because:
-        - OE-SDK itself uses absolute paths + PKG_CONFIG_SYSROOT_DIR
-        - configure scripts do string comparisons on include paths
-        - Relative ../../ paths cause issues with some build systems
-
-        Typical .pc layout:  <sysroot>/usr/lib/pkgconfig/foo.pc
-        prefix should be:    <sysroot>/usr  (= pkgconfig dir / ../../)
-        """
+    def _fix_pc_files(self, install_dir: Path) -> tuple:
+        """Fix prefix= paths in .pc files. Returns (total, fixed) counts."""
         pc_files = list(install_dir.glob("**/pkgconfig/*.pc"))
         self._log(f"  Checking {len(pc_files)} .pc files...")
+        fixed = 0
         for pc_file in pc_files:
             try:
                 content = pc_file.read_text(encoding="utf-8", errors="replace")
@@ -1494,19 +1939,16 @@ class ToolchainsScreen(Screen):
                     content = content.replace(old_prefix, new_prefix)
                     pc_file.write_text(content, encoding="utf-8")
                     self._log(f"  Fixed {pc_file.name}")
+                    fixed += 1
             except Exception:
                 pass
+        return (len(pc_files), fixed)
 
-    def _fix_la_files(self, install_dir: Path) -> None:
-        """Fix .la files: replace '=' sysroot prefix in dependency_libs with actual path.
-
-        OE-SDK .la files use '=/usr/lib/...' as sysroot-relative paths, but
-        libtool on the host doesn't understand the '=' prefix. We replace it
-        with the actual sysroot path.
-        """
+    def _fix_la_files(self, install_dir: Path) -> tuple:
+        """Fix .la files: replace '=' sysroot prefix. Returns (total, fixed) counts."""
         la_files = list(install_dir.glob("**/*.la"))
         if not la_files:
-            return
+            return (0, 0)
         # Find sysroot — look for usr/lib pattern
         sysroot = ""
         for la in la_files:
@@ -1520,7 +1962,7 @@ class ToolchainsScreen(Screen):
             if sysroot:
                 break
         if not sysroot:
-            return
+            return (len(la_files), 0)
 
         fixed = 0
         for la_file in la_files:
@@ -1537,6 +1979,7 @@ class ToolchainsScreen(Screen):
                 pass
         if fixed:
             self._log(f"  Fixed {fixed} .la files (sysroot={sysroot})")
+        return (len(la_files), fixed)
 
     def _detect_toolchain(self, name: str, install_dir: Path) -> "Toolchain | None":
         """Auto-detect toolchain properties from an extracted directory."""
