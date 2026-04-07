@@ -95,6 +95,61 @@ class LibraryInfo:
     up_to_date: bool = False
 
 
+def detect_toolchain_props(install_dir: Path) -> tuple[str, str]:
+    """Auto-detect (prefix, sysroot) from a freshly built toolchain dir.
+
+    Walks the install dir for a `*-gcc` binary and asks it for its sysroot
+    via `-print-sysroot`. Returns ("", "") if nothing usable is found.
+    The sysroot is returned as a path relative to install_dir if possible,
+    otherwise the absolute path.
+    """
+    if not install_dir or not install_dir.is_dir():
+        return "", ""
+    gcc = None
+    prefix = ""
+    # Look for a cross gcc binary anywhere under install_dir/**/bin/
+    for bd in install_dir.rglob("bin"):
+        if not bd.is_dir():
+            continue
+        try:
+            entries = list(bd.iterdir())
+        except Exception:
+            continue
+        for f in entries:
+            n = f.name
+            if not n.endswith("-gcc"):
+                continue
+            if n.endswith(".br_real"):
+                continue
+            stem = n[: -len("-gcc")]
+            if "-" not in stem:
+                continue
+            try:
+                if (f.is_file() or f.is_symlink()) and os.access(f, os.X_OK):
+                    gcc = f
+                    prefix = stem + "-"
+                    break
+            except Exception:
+                continue
+        if gcc:
+            break
+    if not gcc:
+        return "", ""
+    sysroot_rel = ""
+    try:
+        sr = subprocess.check_output(
+            [str(gcc), "-print-sysroot"], text=True, stderr=subprocess.DEVNULL, timeout=5,
+        ).strip()
+    except Exception:
+        sr = ""
+    if sr:
+        try:
+            sysroot_rel = str(Path(sr).resolve().relative_to(install_dir.resolve()))
+        except Exception:
+            sysroot_rel = sr
+    return prefix, sysroot_rel
+
+
 def scan_libraries(install_dir: Path, sysroot: str, native: bool = False) -> list[LibraryInfo]:
     """Scan a toolchain's sysroot for known libraries via pkg-config files.
 

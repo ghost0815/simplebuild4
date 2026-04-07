@@ -2311,20 +2311,34 @@ class ToolchainsScreen(Screen):
         self._run_in_thread(do_build)
 
     def _register_built_toolchain(self, tpl) -> None:
-        """Add the built toolchain to toolchains.local.yaml using template metadata."""
+        """Add the built toolchain to toolchains.local.yaml.
+
+        Auto-detects the compiler prefix and sysroot from the actual built
+        toolchain directory; the template values are kept as fallback when
+        detection fails.
+        """
         reg = self._get_registry()
         local_tcs = reg._load_file(reg.local_path)
         # Skip if already present
         if any(tc.name == tpl.name for tc in local_tcs):
             return
+        from core.toolchain import detect_toolchain_props
+        install_dir = self.app.paths.toolchains_dir / tpl.name
+        det_prefix, det_sysroot = detect_toolchain_props(install_dir)
+        prefix = det_prefix or tpl.prefix
+        sysroot = det_sysroot or tpl.sysroot
+        if det_prefix or det_sysroot:
+            self._log_sync(
+                f"  [green]Auto-detected:[/green] prefix=[dim]{prefix or '-'}[/dim] sysroot=[dim]{sysroot or '-'}[/dim]"
+            )
         new_tc = Toolchain(
             name=tpl.name,
             description=tpl.description or tpl.name,
             category="selfbuild",
             arch=tpl.arch,
             machines=tpl.machines,
-            prefix=tpl.prefix,
-            sysroot=tpl.sysroot,
+            prefix=prefix,
+            sysroot=sysroot,
             cflags=tpl.cflags,
             ldflags=tpl.ldflags,
             selfbuild=True,
