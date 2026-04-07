@@ -429,17 +429,21 @@ class TargetEditScreen(Screen):
         self._removed_opts = {}  # category → list of removed option names
 
         def _merge(saved: list[str], available: list[str], defaults: list[str], category: str) -> dict[str, bool]:
-            """Merge saved target config with available oscam options."""
+            """Merge saved target config with available oscam options.
+
+            New target → use oscam defaults.
+            Existing target → trust the saved list verbatim. Options that
+            were deselected MUST stay off, even if they happen to be in
+            oscam's default_enabled list. Options that were never seen
+            before (e.g. newly added in oscam) default to off; the user
+            can enable them explicitly.
+            """
             result = {}
             for opt in available:
                 if is_new:
                     result[opt] = opt in defaults
-                elif opt in saved:
-                    result[opt] = True
-                elif opt not in saved and opt in defaults:
-                    result[opt] = True
                 else:
-                    result[opt] = False
+                    result[opt] = opt in saved
             # Detect removed options (saved but no longer in any repo)
             removed = [opt for opt in saved if opt not in available and available]
             if removed:
