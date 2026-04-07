@@ -287,6 +287,7 @@ lib_recommended: "empfohlen"
 lib_reinstall: "neu installieren"
 lib_install: "installieren"
 lib_update: "aktualisieren"
+installed: "Installiert"
 lib_needs_c11: "benötigt c11"
 lib_skip_all: "alle überspringen"
 

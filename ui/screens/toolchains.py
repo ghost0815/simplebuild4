@@ -366,7 +366,7 @@ class ToolchainsScreen(Screen):
                     yield remove_btn
 
                 # Installed toolchains (always visible)
-                yield Static(" [bold]Installed[/bold]", id="tc-installed-label")
+                yield Static(f" [bold]{t('installed')}[/bold]", id="tc-installed-label")
                 yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
 
                 # PreBuild / SelfBuild tabs
@@ -672,7 +672,7 @@ class ToolchainsScreen(Screen):
                 else:
                     tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
                 count += 1
-            self.query_one("#tc-installed-label", Static).update(f" [bold]Installed ({count})[/bold]")
+            self.query_one("#tc-installed-label", Static).update(f" [bold]{t('installed')} ({count})[/bold]")
         except Exception:
             pass
 
