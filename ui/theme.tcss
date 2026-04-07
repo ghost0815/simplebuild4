@@ -345,7 +345,7 @@ Switch.-on .switch--slider {
 
 #tbl-installed {
     height: auto;
-    max-height: 12;
+    max-height: 24;
     margin: 0 1;
     border-left: solid #444444;
     border-right: solid #444444;

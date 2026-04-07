@@ -259,7 +259,7 @@ class ToolchainsScreen(Screen):
         ("e", "switch_right_tab('editor')", "Editor"),
         ("o", "switch_right_tab('log')", "Output"),
         ("p", "switch_left_tab('prebuild')", "PreBuild"),
-        ("s", "switch_left_tab('selfbuild')", "SelfBuild"),
+        ("t", "switch_left_tab('selfbuild')", "ToolchainBuilder"),
     ]
 
     _log_history: list[str] = []
@@ -321,7 +321,7 @@ class ToolchainsScreen(Screen):
                 # PreBuild / SelfBuild tabs
                 with Horizontal(id="tc-left-tab-bar"):
                     yield Static(" [b]P[/b]reBuild ", id="btn-ltab-prebuild", classes="tab-active")
-                    yield Static(" [b]S[/b]elfBuild ", id="btn-ltab-selfbuild", classes="tab-inactive")
+                    yield Static(" [b]T[/b]oolchainBuilder ", id="btn-ltab-selfbuild", classes="tab-inactive")
 
                 # PreBuild panel — catalog categories + local
                 self._categories = _build_categories(reg)
