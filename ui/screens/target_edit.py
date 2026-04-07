@@ -6,7 +6,7 @@ from pathlib import Path
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Switch, Input, Collapsible, Select
+from textual.widgets import Static, Switch, Input, Collapsible, Select, Button
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.target import Target, BuildSettings, UploadConfig, SourceConfig, ToolchainConfig
@@ -218,8 +218,9 @@ class TargetEditScreen(Screen):
                     classes="s-row",
                 )
                 yield Horizontal(
-                    Static(f" {t('te_binary_name')}", classes="s-label-tall"),
-                    Input(value=b.use_oscamname, placeholder=t("ph_empty_default"), id="t-oscamname"),
+                    Static(f" {t('te_oscam_binary_path')}", classes="s-label-tall"),
+                    Input(value=b.use_oscamname, placeholder=t("ph_oscam_binary_path"), id="t-oscamname"),
+                    Button("📂", id="btn-binary-browse", classes="tc-reset-btn"),
                     classes="s-row",
                 )
                 yield Horizontal(
@@ -502,7 +503,6 @@ class TargetEditScreen(Screen):
 
             # Cleanup button (only show if there are removed options)
             if self._removed_opts:
-                from textual.widgets import Button
                 yield Horizontal(
                     Static("", classes="spacer"),
                     Button(t("te_cleanup"), id="btn-cleanup", variant="primary"),
@@ -649,6 +649,8 @@ class TargetEditScreen(Screen):
             self._do_cleanup()
         elif event.button.id == "btn-upx-browse":
             self._open_upx_picker()
+        elif event.button.id == "btn-binary-browse":
+            self._open_binary_dir_picker()
         elif event.button.id == "rst-stapi-lib":
             try:
                 inp = self.query_one("#f-stapi-lib", Input)
@@ -658,6 +660,103 @@ class TargetEditScreen(Screen):
                 pass
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
+
+    # ---------------------------------------------------- oscam binary path
+    def _normalize_binary_path(self, raw: str) -> tuple[str, str | None]:
+        """Normalize the OScam binary path field.
+
+        Returns (normalized, error). If error is not None, the input
+        should be rejected and the error shown to the user.
+
+        - empty                          → ""
+        - bare filename (no '/')         → "data/binaries/<name>"
+        - path ending with '/'           → directory (kept verbatim, ~ expanded)
+        - path with name (no trailing /) → kept verbatim (~ expanded);
+                                           rejected if it points to an
+                                           existing directory
+        """
+        import os
+        v = (raw or "").strip()
+        if not v:
+            return "", None
+        # Expand ~
+        v = os.path.expanduser(v)
+        # Bare filename → data/binaries/<name>
+        if "/" not in v and "\\" not in v:
+            return f"data/binaries/{v}", None
+        # Directory (trailing slash)
+        if v.endswith("/"):
+            return v, None
+        # Path with filename — reject if existing directory
+        try:
+            check = Path(v)
+            if not check.is_absolute():
+                check = self.app.paths.root / check
+            if check.is_dir():
+                return v, t("oscam_binary_path_is_dir")
+        except Exception:
+            pass
+        return v, None
+
+    def _open_binary_dir_picker(self) -> None:
+        """Open directory picker for the oscam binary output dir."""
+        from ui.screens.toolchains import FilePickerScreen
+        # Start path: current value (its directory part) or data/binaries
+        try:
+            current = self.query_one("#t-oscamname", Input).value.strip()
+        except Exception:
+            current = ""
+        import os
+        start = ""
+        if current:
+            cur = os.path.expanduser(current)
+            cur_path = Path(cur)
+            if not cur_path.is_absolute():
+                cur_path = self.app.paths.root / cur_path
+            if cur_path.is_dir():
+                start = str(cur_path)
+            elif cur_path.parent.is_dir():
+                start = str(cur_path.parent)
+        if not start:
+            default = self.app.paths.binaries_dir
+            default.mkdir(parents=True, exist_ok=True)
+            start = str(default)
+        self.app.push_screen(
+            FilePickerScreen(
+                start_path=start,
+                title=f"{t('select_file_label')}: {t('te_oscam_binary_path')}",
+                directories_only=True,
+                select_label=t("select_btn"),
+            ),
+            callback=self._on_binary_dir_selected,
+        )
+
+    def _on_binary_dir_selected(self, result) -> None:
+        if not result:
+            return
+        path, _ = result if isinstance(result, tuple) else (result, "")
+        if not path:
+            return
+        # Always trailing slash for directory variant
+        if not path.endswith("/"):
+            path = path + "/"
+        try:
+            self.query_one("#t-oscamname", Input).value = path
+        except Exception:
+            pass
+
+    def on_input_blurred(self, event) -> None:
+        """Normalize the oscam binary path on blur."""
+        try:
+            if event.input.id == "t-oscamname":
+                normalized, err = self._normalize_binary_path(event.input.value)
+                if err:
+                    self.notify(err, severity="warning")
+                    return
+                if normalized != event.input.value:
+                    event.input.value = normalized
+        except Exception:
+            pass
 
     def _open_upx_picker(self) -> None:
         """Open file picker dialog to select UPX binary."""
@@ -889,7 +988,7 @@ class TargetEditScreen(Screen):
             compress_level=self._input_val("t-compress-level") or "--lzma",
             upx_binary=self._input_val("t-upx-binary"),
             stapi_lib=self._input_val("f-stapi-lib"),
-            use_oscamname=self.query_one("#t-oscamname", Input).value.strip(),
+            use_oscamname=self._normalize_binary_path(self.query_one("#t-oscamname", Input).value)[0],
             build_system=self.query_one("#t-build-system", Select).value or "make",
             confdir=self.query_one("#t-confdir", Input).value.strip(),
         )
@@ -935,6 +1034,15 @@ class TargetEditScreen(Screen):
 
     def do_save(self) -> str:
         """Save target (called by App)."""
+        # Validate the oscam binary path before collecting
+        try:
+            raw = self.query_one("#t-oscamname", Input).value
+            _norm, err = self._normalize_binary_path(raw)
+            if err:
+                self.notify(err, severity="error")
+                return ""
+        except Exception:
+            pass
         target = self._collect()
         if not target.name:
             self.notify(t("target_name_required"), severity="error")

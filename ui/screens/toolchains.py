@@ -160,11 +160,12 @@ class FilePickerScreen(ModalScreen[tuple]):
     """
 
     def __init__(self, start_path: str = "/", title: str = "", simple: bool = False,
-                 select_label: str = "Import") -> None:
+                 select_label: str = "Import", directories_only: bool = False) -> None:
         super().__init__()
         self._start_path = start_path
         self._title = title or "Restore toolchain from backup"
-        self._simple = simple
+        self._simple = simple or directories_only
+        self._directories_only = directories_only
         self._select_label = select_label
 
     def compose(self) -> ComposeResult:
@@ -198,9 +199,17 @@ class FilePickerScreen(ModalScreen[tuple]):
 
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         """When a file is clicked in the tree."""
+        if self._directories_only:
+            return
         self.query_one("#fp-path", Input).value = str(event.path)
         if not self._simple:
             self.query_one("#fp-name", Input).value = self._name_from_filename(event.path.name)
+
+    def on_directory_tree_directory_selected(self, event) -> None:
+        """When a directory is clicked in the tree (only used in directories_only mode)."""
+        if not self._directories_only:
+            return
+        self.query_one("#fp-path", Input).value = str(event.path)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "fp-path" and not self._simple:

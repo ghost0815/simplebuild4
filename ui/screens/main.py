@@ -193,7 +193,7 @@ class MainScreen(Screen):
         confdir_str = b.confdir.strip() if b.confdir else ""
         lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}")
         oscamname_str = b.use_oscamname.strip() if b.use_oscamname else ""
-        lines.append(f"  {t('oscam_name') + ':':<{pad}} {oscamname_str or '-'}")
+        lines.append(f"  {t('oscam_binary_path') + ':':<{pad}} {oscamname_str or 'data/binaries/'}")
 
         info = self.query_one("#info", Static)
         info.update("\n".join(lines))
