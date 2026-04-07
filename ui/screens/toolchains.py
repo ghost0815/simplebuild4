@@ -159,25 +159,30 @@ class FilePickerScreen(ModalScreen[tuple]):
     }
     """
 
-    def __init__(self, start_path: str = "/") -> None:
+    def __init__(self, start_path: str = "/", title: str = "", simple: bool = False,
+                 select_label: str = "Import") -> None:
         super().__init__()
         self._start_path = start_path
+        self._title = title or "Restore toolchain from backup"
+        self._simple = simple
+        self._select_label = select_label
 
     def compose(self) -> ComposeResult:
         with Vertical(id="file-picker-box"):
             with Horizontal(id="fp-title-row"):
-                yield Static("Restore toolchain from backup", id="fp-title")
+                yield Static(self._title, id="fp-title")
                 yield Static("", classes="spacer")
                 yield Button("⌂ Home", id="fp-home", classes="fp-nav-btn")
                 yield Button("/ Root", id="fp-root", classes="fp-nav-btn")
             yield DirectoryTree(self._start_path, id="fp-tree")
             yield Input(placeholder=t("ph_enter_path"), id="fp-path")
-            with Horizontal(id="fp-name-row"):
-                yield Static(" Name: ", id="fp-name-label")
-                yield Input(placeholder=t("ph_tc_name"), id="fp-name")
+            if not self._simple:
+                with Horizontal(id="fp-name-row"):
+                    yield Static(" Name: ", id="fp-name-label")
+                    yield Input(placeholder=t("ph_tc_name"), id="fp-name")
             with Horizontal(id="fp-buttons"):
                 yield Button("Cancel", id="fp-cancel")
-                yield Button("Import", id="fp-select", variant="primary")
+                yield Button(self._select_label, id="fp-select", variant="primary")
 
     @staticmethod
     def _name_from_filename(filename: str) -> str:
@@ -194,10 +199,11 @@ class FilePickerScreen(ModalScreen[tuple]):
     def on_directory_tree_file_selected(self, event: DirectoryTree.FileSelected) -> None:
         """When a file is clicked in the tree."""
         self.query_one("#fp-path", Input).value = str(event.path)
-        self.query_one("#fp-name", Input).value = self._name_from_filename(event.path.name)
+        if not self._simple:
+            self.query_one("#fp-name", Input).value = self._name_from_filename(event.path.name)
 
     def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "fp-path":
+        if event.input.id == "fp-path" and not self._simple:
             path = event.value.strip()
             if path:
                 self.query_one("#fp-name", Input).value = self._name_from_filename(Path(path).name)
@@ -207,6 +213,10 @@ class FilePickerScreen(ModalScreen[tuple]):
             self.dismiss(("", ""))
         elif event.button.id == "fp-select":
             path = self.query_one("#fp-path", Input).value.strip()
+            if self._simple:
+                if path:
+                    self.dismiss((path, ""))
+                return
             name = self.query_one("#fp-name", Input).value.strip()
             if path and name:
                 self.dismiss((path, name))

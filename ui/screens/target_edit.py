@@ -180,11 +180,15 @@ class TargetEditScreen(Screen):
                 if compress_enabled:
                     lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
                     lvl_inp.styles.max_width = 25
+                    from textual.widgets import Button as _Btn
+                    upx_browse_btn = _Btn("📂", id="btn-upx-browse", classes="tc-reset-btn")
+                    upx_browse_btn.tooltip = t("ph_browse_upx")
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
                         upx_switch,
                         Static(f" {t('te_binary')}", classes="src-opt-label"),
                         upx_path_inp,
+                        upx_browse_btn,
                         Static(f" {t('te_compression_level')}", classes="src-opt-label"),
                         lvl_inp,
                         classes="flag-row",
@@ -631,6 +635,8 @@ class TargetEditScreen(Screen):
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-cleanup":
             self._do_cleanup()
+        elif event.button.id == "btn-upx-browse":
+            self._open_upx_picker()
         elif event.button.id == "rst-stapi-lib":
             try:
                 inp = self.query_one("#f-stapi-lib", Input)
@@ -640,6 +646,42 @@ class TargetEditScreen(Screen):
                 pass
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
+
+    def _open_upx_picker(self) -> None:
+        """Open file picker dialog to select UPX binary."""
+        from ui.screens.toolchains import FilePickerScreen
+        # Default start: data/bin (where s4 keeps the upx symlink)
+        start = str(self.app.paths.bin_dir) if self.app.paths.bin_dir.is_dir() else "/"
+        self.app.push_screen(
+            FilePickerScreen(
+                start_path=start,
+                title="Select UPX binary",
+                simple=True,
+                select_label="Select",
+            ),
+            callback=self._on_upx_selected,
+        )
+
+    def _on_upx_selected(self, result) -> None:
+        """Callback after file picker — set the UPX binary path."""
+        if not result:
+            return
+        path, _ = result if isinstance(result, tuple) else (result, "")
+        if not path:
+            return
+        # Reject the s4-managed symlink to avoid pointing it at itself
+        try:
+            sel = Path(path)
+            bin_link = self.app.paths.bin_dir / "upx"
+            if sel.resolve() == bin_link.resolve():
+                self.notify(t("upx_pick_self_blocked"), severity="warning", timeout=8)
+                return
+        except Exception:
+            pass
+        try:
+            self.query_one("#t-upx-binary", Input).value = path
+        except Exception:
+            pass
 
     def _do_reset_field(self, btn_id: str) -> None:
         """Reset a toolchain field to its default value."""
