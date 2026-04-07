@@ -225,6 +225,8 @@ libraries: "Libraries"
 hardware: "Hardware"
 compress: "Compress"
 upload: "Upload"
+config_dir: "Config dir"
+oscam_name: "oscam name"
 none: "none"
 
 # Settings screen labels

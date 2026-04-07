@@ -168,10 +168,14 @@ class MainScreen(Screen):
             lines.append(self._wrap_values(f"  {t('readers') + ':':<{pad}} ", b.readers))
         if b.card_readers:
             lines.append(self._wrap_values(f"  {t('card_readers') + ':':<{pad}} ", b.card_readers))
-        lines.extend([
-            self._wrap_values(f"  {t('libraries') + ':':<{pad}} ", lib_flags) + (f"  [dim]Static: {static_str}[/dim]" if static_str else ""),
-            self._wrap_values(f"  {t('hardware') + ':':<{pad}} ", hw_flags),
-        ])
+        lines.append(
+            self._wrap_values(f"  {t('libraries') + ':':<{pad}} ", lib_flags)
+            + (f"  [dim]Static: {static_str}[/dim]" if static_str else "")
+        )
+        if hw_flags:
+            lines.append(self._wrap_values(f"  {t('hardware') + ':':<{pad}} ", hw_flags))
+        else:
+            lines.append(f"  {t('hardware') + ':':<{pad}} -")
         if b.use_compress:
             import shutil as _shutil
             import subprocess as _sp
@@ -186,7 +190,10 @@ class MainScreen(Screen):
                 except Exception:
                     pass
             lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_info}[/dim]")
-        lines.append(f"  {t('upload') + ':':<{pad}} {upload_str}")
+        confdir_str = b.confdir.strip() if b.confdir else ""
+        lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}")
+        oscamname_str = b.use_oscamname.strip() if b.use_oscamname else ""
+        lines.append(f"  {t('oscam_name') + ':':<{pad}} {oscamname_str or '-'}")
 
         info = self.query_one("#info", Static)
         info.update("\n".join(lines))
