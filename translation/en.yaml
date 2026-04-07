@@ -101,6 +101,12 @@ cmd_settings: "Settings"
 cmd_settings_help: "s4 settings"
 cmd_license: "License"
 cmd_license_help: "Show license (COPYING)"
+cmd_shortcuts: "Shortcuts"
+cmd_shortcuts_help: "Show keyboard shortcuts"
+cmd_theme: "Theme"
+cmd_theme_help: "Change the current theme"
+cmd_quit: "Quit"
+cmd_quit_help: "Quit s4"
 
 # Keys help
 keys_title: "s4 Keyboard Reference"

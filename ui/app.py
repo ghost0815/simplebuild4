@@ -16,7 +16,8 @@ class S4App(App):
     CSS_PATH = "theme.tcss"
 
     ENABLE_COMMAND_PALETTE = True
-    COMMANDS = App.COMMANDS | {S4Commands}
+    # Single provider with deterministic ordering (s4 commands first, then system)
+    COMMANDS = {S4Commands}
 
     BINDINGS = [
         Binding("q", "quit", "Quit", show=False),

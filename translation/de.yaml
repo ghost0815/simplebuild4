@@ -101,6 +101,12 @@ cmd_settings: "Einstellungen"
 cmd_settings_help: "s4-Einstellungen"
 cmd_license: "Lizenz"
 cmd_license_help: "Lizenz anzeigen (COPYING)"
+cmd_shortcuts: "Tastenkürzel"
+cmd_shortcuts_help: "Tastenkürzel anzeigen"
+cmd_theme: "Design"
+cmd_theme_help: "Aktuelles Design ändern"
+cmd_quit: "Beenden"
+cmd_quit_help: "s4 beenden"
 
 # Keys help
 keys_title: "s4 Tastatur Übersicht"
