@@ -1197,6 +1197,7 @@ class ToolchainsScreen(Screen):
         self._building = True
         self._build_kind = "libs"
         self._cancel_requested = False
+        self.app.build_timer_start("toolchains")
         self._update_f9_state()
         order = ", ".join(name for name, _ in actions)
         self._log_sync(f"[bold]Building {len(actions)} libraries for {tc.name}:[/bold] {order}")
@@ -1256,6 +1257,10 @@ class ToolchainsScreen(Screen):
                         else:
                             _set_lib_status(lib_name, f"[bold red]{lib_name:<15s}[/bold red] [red]failed[/red]")
 
+                self.app.call_from_thread(self.app.build_timer_stop)
+                elapsed = self.app.build_timer_format()
+                if elapsed:
+                    self._log(f"[bold]Elapsed:[/bold] {elapsed}")
                 self._log(f"\n[bold]Done[/bold]")
             finally:
                 self._building = False
@@ -2126,6 +2131,7 @@ class ToolchainsScreen(Screen):
         self._building = True
         self._build_kind = "selfbuild"
         self._cancel_requested = False
+        self.app.build_timer_start("toolchains")
         self._update_f9_state()
 
         from datetime import datetime
@@ -2196,6 +2202,10 @@ class ToolchainsScreen(Screen):
                 blog(f"[green]{tpl.name} built and registered[/green]")
                 self.app.call_from_thread(self.notify, t("selfbuild_done", name=tpl.name))
             finally:
+                self.app.call_from_thread(self.app.build_timer_stop)
+                elapsed = self.app.build_timer_format()
+                if elapsed:
+                    blog(f"[bold]Elapsed:[/bold] {elapsed}")
                 blog(f"Log: {log_path}")
                 log_file.close()
                 self._building = False

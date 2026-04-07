@@ -326,6 +326,7 @@ class MainScreen(Screen):
         self.query_one("#output", RichLog).clear()
         self._building = True
         self._cancel_requested = False
+        self.app.build_timer_start("main")
         self.call_later(self._update_build_button)
 
         def log(msg: str):
@@ -368,6 +369,10 @@ class MainScreen(Screen):
                 )
                 engine.build()
             finally:
+                self.app.call_from_thread(self.app.build_timer_stop)
+                elapsed = self.app.build_timer_format()
+                if elapsed:
+                    log(f"[bold]Elapsed:[/bold] {elapsed}")
                 self._building = False
                 self._cancel_requested = False
                 self.app.call_from_thread(self._update_build_button)

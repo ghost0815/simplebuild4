@@ -88,6 +88,57 @@ class FooterSpacer(Static):
         return ""
 
 
+class BuildTimerWidget(Static):
+    """Centered build/library-update elapsed-time display.
+
+    Reads its state from the App-level timer (S4App.build_timer_*).
+    Resets automatically when mounted on a different screen than the
+    one that started the timer.
+    """
+
+    DEFAULT_CSS = """
+    BuildTimerWidget {
+        height: 1;
+        width: auto;
+        content-align: center middle;
+        padding: 0 1;
+    }
+    """
+
+    def __init__(self, screen_name: str, **kwargs):
+        super().__init__(**kwargs)
+        self._screen_name = screen_name
+        self._interval = None
+
+    def on_mount(self) -> None:
+        app = self.app
+        # If the timer was started on a different screen, clear it
+        if getattr(app, "_timer_screen", None) and app._timer_screen != self._screen_name:
+            try:
+                app.build_timer_reset()
+            except Exception:
+                pass
+        self.refresh_display()
+        # Tick every second so a running timer counts up live
+        self._interval = self.set_interval(1.0, self.refresh_display)
+
+    def refresh_display(self) -> None:
+        app = self.app
+        try:
+            text = app.build_timer_format()
+            running = getattr(app, "_timer_stopped_at", None) is None and getattr(app, "_timer_start", None) is not None
+        except Exception:
+            text = ""
+            running = False
+        if not text:
+            self.update("")
+            return
+        if running:
+            self.update(f"⏱ {text}")
+        else:
+            self.update(f"⏱ {text} ⏹")
+
+
 class S4Footer(Horizontal):
     """Unified clickable footer with left F-keys and right actions."""
 
@@ -119,7 +170,9 @@ class S4Footer(Horizontal):
                 active=is_active,
             )
 
-        # Spacer
+        # Spacer + centered build timer + spacer
+        yield FooterSpacer()
+        yield BuildTimerWidget(screen_name=self._active_screen)
         yield FooterSpacer()
 
         # Right: F9 Update, F10 Add, F11 Remove

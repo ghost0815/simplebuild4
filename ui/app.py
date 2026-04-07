@@ -41,6 +41,61 @@ class S4App(App):
         super().__init__(**kwargs)
         self.paths = paths
         self.settings = Settings.load(paths.root / "data" / "settings.yaml")
+        # Build/library-update timer state (read by ui.footer.BuildTimerWidget)
+        self._timer_screen: str | None = None
+        self._timer_start: float | None = None
+        self._timer_stopped_at: float | None = None
+
+    # ---------------------------------------------------------------- timer
+    def build_timer_start(self, screen: str) -> None:
+        """Start (or restart) the build timer for the given screen."""
+        import time
+        self._timer_screen = screen
+        self._timer_start = time.monotonic()
+        self._timer_stopped_at = None
+        self._refresh_build_timer()
+
+    def build_timer_stop(self) -> None:
+        """Freeze the timer at the current elapsed time."""
+        import time
+        if self._timer_start is not None and self._timer_stopped_at is None:
+            self._timer_stopped_at = time.monotonic()
+        self._refresh_build_timer()
+
+    def build_timer_reset(self) -> None:
+        """Clear the timer entirely."""
+        self._timer_screen = None
+        self._timer_start = None
+        self._timer_stopped_at = None
+        self._refresh_build_timer()
+
+    def build_timer_elapsed(self) -> float | None:
+        """Return current elapsed seconds, or None if no timer."""
+        if self._timer_start is None:
+            return None
+        import time
+        end = self._timer_stopped_at if self._timer_stopped_at is not None else time.monotonic()
+        return max(0.0, end - self._timer_start)
+
+    def build_timer_format(self) -> str:
+        """Format current elapsed time as HH:MM:SS / MM:SS, or '' if no timer."""
+        e = self.build_timer_elapsed()
+        if e is None:
+            return ""
+        h = int(e // 3600)
+        m = int((e % 3600) // 60)
+        s = int(e % 60)
+        if h:
+            return f"{h:02d}:{m:02d}:{s:02d}"
+        return f"{m:02d}:{s:02d}"
+
+    def _refresh_build_timer(self) -> None:
+        try:
+            from ui.footer import BuildTimerWidget
+            for w in self.query(BuildTimerWidget):
+                w.refresh_display()
+        except Exception:
+            pass
 
     @property
     def settings_path(self) -> "Path":
