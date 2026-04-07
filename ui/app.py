@@ -136,18 +136,33 @@ class S4App(App):
                 ["git", "fetch", "--prune"], cwd=str(root),
                 capture_output=True, text=True, timeout=15,
             )
+            branch = subprocess.run(
+                ["git", "branch", "--show-current"], cwd=str(root),
+                capture_output=True, text=True, timeout=5,
+            ).stdout.strip()
             result = subprocess.run(
-                ["git", "rev-list", "HEAD..origin/" + subprocess.run(
-                    ["git", "branch", "--show-current"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip(), "--count"],
+                ["git", "rev-list", f"HEAD..origin/{branch}", "--count"],
                 cwd=str(root), capture_output=True, text=True, timeout=5,
             )
             behind = int(result.stdout.strip() or "0")
             if behind > 0:
+                # Collect the actual commit subjects so the user sees what
+                # would be applied. Cap to keep the toast readable.
+                commits = subprocess.run(
+                    ["git", "log", f"HEAD..origin/{branch}",
+                     "--pretty=format:%h %s", "--no-merges"],
+                    cwd=str(root), capture_output=True, text=True, timeout=5,
+                ).stdout.strip().splitlines()
+                max_show = 10
+                shown = commits[:max_show]
+                lines = [f"  • {c}" for c in shown]
+                if len(commits) > max_show:
+                    lines.append(f"  … +{len(commits) - max_show} more")
+                header = t("s4_update_available", count=behind, s="s" if behind > 1 else "")
+                msg = f"[bold]{header}[/bold]\n\n" + "\n".join(lines)
                 self.call_from_thread(
                     self.notify,
-                    t("s4_update_available", count=behind, s="s" if behind > 1 else ""),
+                    msg,
                     severity="information",
                     timeout=10,
                 )
