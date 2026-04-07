@@ -231,7 +231,7 @@ class ToolchainsScreen(Screen):
     BINDINGS = [
         ("d", "switch_right_tab('details')", "Details"),
         ("l", "switch_right_tab('libs')", "Libraries"),
-        ("y", "switch_right_tab('yaml')", "Yaml"),
+        ("e", "switch_right_tab('editor')", "Editor"),
         ("o", "switch_right_tab('log')", "Output"),
         ("p", "switch_left_tab('prebuild')", "PreBuild"),
         ("s", "switch_left_tab('selfbuild')", "SelfBuild"),
@@ -324,7 +324,7 @@ class ToolchainsScreen(Screen):
                 # Detail/Libraries/Log tab buttons
                 with Horizontal(id="tc-tab-bar"):
                     yield Static(" [b]D[/b]etails ", id="btn-tab-details", classes="tab-active")
-                    yield Static(" [b]Y[/b]aml ", id="btn-tab-yaml", classes="tab-inactive")
+                    yield Static(" [b]E[/b]ditor ", id="btn-tab-editor", classes="tab-inactive")
                     yield Static(" [b]L[/b]ibraries ", id="btn-tab-libs", classes="tab-inactive")
                     yield Static(" [b]O[/b]utput ", id="btn-tab-log", classes="tab-inactive")
 
@@ -353,7 +353,7 @@ class ToolchainsScreen(Screen):
                             )
 
                 # Yaml editor panel (hidden by default)
-                yield TextArea("", id="tc-yaml-editor", language="yaml", show_line_numbers=True)
+                yield TextArea("", id="tc-editor", language="yaml", show_line_numbers=True)
 
                 # Output
                 yield RichLog(highlight=False, markup=True, id="tc-output", wrap=True)
@@ -518,8 +518,8 @@ class ToolchainsScreen(Screen):
                 self._show_tab("details")
             elif widget.id == "btn-tab-libs":
                 self._show_tab("libs")
-            elif widget.id == "btn-tab-yaml":
-                self._show_tab("yaml")
+            elif widget.id == "btn-tab-editor":
+                self._show_tab("editor")
             elif widget.id == "btn-tab-log":
                 self._show_tab("log")
             elif widget.id == "btn-skip-all":
@@ -669,17 +669,17 @@ class ToolchainsScreen(Screen):
         except Exception:
             return False
 
-    def _is_yaml_tab_active(self) -> bool:
+    def _is_editor_tab_active(self) -> bool:
         try:
-            return self.query_one("#tc-yaml-editor", TextArea).display
+            return self.query_one("#tc-editor", TextArea).display
         except Exception:
             return False
 
     def _update_active_tab(self) -> None:
         if self._is_libs_tab_active():
             self._update_libraries()
-        elif self._is_yaml_tab_active():
-            self._update_yaml_editor()
+        elif self._is_editor_tab_active():
+            self._update_editor()
         else:
             self._update_detail()
 
@@ -867,7 +867,7 @@ class ToolchainsScreen(Screen):
                     item.refresh()
                 elif item._key == "F12":
                     # Enable F12 Save when Yaml tab is active
-                    yaml_active = self._is_yaml_tab_active()
+                    yaml_active = self._is_editor_tab_active()
                     item._disabled = not yaml_active
                     if yaml_active:
                         item.remove_class("disabled")
@@ -1030,26 +1030,26 @@ class ToolchainsScreen(Screen):
             self._handle_remove()
 
     def _show_tab(self, tab: str) -> None:
-        """Switch between Details, Libraries, Yaml and Log views."""
+        """Switch between Details, Editor, Libraries and Log views."""
         detail = self.query_one("#tc-detail", Static)
         libs = self.query_one("#tc-libs", VerticalScroll)
-        yaml_editor = self.query_one("#tc-yaml-editor", TextArea)
+        editor = self.query_one("#tc-editor", TextArea)
         output = self.query_one("#tc-output", RichLog)
         tab_details = self.query_one("#btn-tab-details", Static)
         tab_libs = self.query_one("#btn-tab-libs", Static)
-        tab_yaml = self.query_one("#btn-tab-yaml", Static)
+        tab_editor = self.query_one("#btn-tab-editor", Static)
         tab_log = self.query_one("#btn-tab-log", Static)
 
         # Reset all tabs to inactive
         tab_details.set_classes("tab-inactive")
         tab_libs.set_classes("tab-inactive")
-        tab_yaml.set_classes("tab-inactive")
+        tab_editor.set_classes("tab-inactive")
         tab_log.set_classes("tab-inactive")
 
         # Hide all panels
         detail.display = False
         libs.display = False
-        yaml_editor.display = False
+        editor.display = False
 
         if tab == "details":
             detail.display = True
@@ -1061,11 +1061,11 @@ class ToolchainsScreen(Screen):
             tab_libs.set_classes("tab-active")
             output.styles.height = "1fr"
             self._update_libraries()
-        elif tab == "yaml":
-            yaml_editor.display = True
-            tab_yaml.set_classes("tab-active")
+        elif tab == "editor":
+            editor.display = True
+            tab_editor.set_classes("tab-active")
             output.styles.height = "1fr"
-            self._update_yaml_editor()
+            self._update_editor()
         elif tab == "log":
             tab_log.set_classes("tab-active")
             output.styles.height = "1fr"
@@ -1075,9 +1075,9 @@ class ToolchainsScreen(Screen):
 
     # -- YAML editor (Yaml tab) ---------------------------------------------
 
-    def _update_yaml_editor(self) -> None:
+    def _update_editor(self) -> None:
         """Load the YAML block of the selected installed toolchain into the editor."""
-        editor = self.query_one("#tc-yaml-editor", TextArea)
+        editor = self.query_one("#tc-editor", TextArea)
 
         name = ToolchainsScreen._selected_tc
         reg = self._get_registry()
@@ -1184,9 +1184,9 @@ class ToolchainsScreen(Screen):
     def do_save(self) -> str:
         """F12 Save handler. Only saves the YAML editor if the Yaml tab is active."""
         try:
-            editor = self.query_one("#tc-yaml-editor", TextArea)
+            editor = self.query_one("#tc-editor", TextArea)
             if not editor.display:
-                return ""  # Not on yaml tab → nothing to save
+                return ""  # Not on editor tab → nothing to save
         except Exception:
             return ""
         if editor.disabled:
@@ -1315,20 +1315,20 @@ class ToolchainsScreen(Screen):
                 tbl.move_cursor(row=row_index)
                 ToolchainsScreen._selected_tc = final_name
                 # Refresh yaml editor with new content
-                self._update_yaml_editor()
+                self._update_editor()
                 # Defer cursor restore: row_highlighted events trigger another
-                # _update_yaml_editor() that would reset (0,0). Run after events.
+                # _update_editor() that would reset (0,0). Run after events.
                 if saved_cursor and editor_was_focused:
-                    self.set_timer(0.05, lambda: self._restore_yaml_cursor(saved_cursor))
+                    self.set_timer(0.05, lambda: self._restore_editor_cursor(saved_cursor))
         except Exception:
             pass
 
         return result_msg
 
-    def _restore_yaml_cursor(self, saved_cursor) -> None:
+    def _restore_editor_cursor(self, saved_cursor) -> None:
         """Restore cursor position in the YAML editor after a save+reload."""
         try:
-            editor = self.query_one("#tc-yaml-editor", TextArea)
+            editor = self.query_one("#tc-editor", TextArea)
             if editor.disabled:
                 return
             line_count = editor.document.line_count

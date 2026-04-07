@@ -459,7 +459,7 @@ Switch.-on .switch--slider {
     overflow-x: hidden;
 }
 
-TextArea#tc-yaml-editor {
+TextArea#tc-editor {
     display: none;
     margin: 0;
     padding: 0;
@@ -467,7 +467,7 @@ TextArea#tc-yaml-editor {
     border: solid #444444;
 }
 
-TextArea#tc-yaml-editor:focus {
+TextArea#tc-editor:focus {
     border: solid #1e88e5;
 }
 
