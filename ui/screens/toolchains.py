@@ -970,8 +970,15 @@ class ToolchainsScreen(Screen):
             cands = [t_ for t_ in templates if t_.name == name]
         return cands[0] if cands else None
 
-    def _update_libraries(self) -> None:
-        """Scan libraries and update pre-created rows with options."""
+    def _update_libraries(self, built_libs: "set[str] | None" = None) -> None:
+        """Scan libraries and update pre-created rows with options.
+
+        When built_libs is None, the dropdowns are reset to their fresh
+        defaults (toolchain switch). When a set is supplied, only the libs
+        in that set are reset; everything else preserves its current
+        Select.value (so an F9 update doesn't blow away unrelated picks
+        the user just made).
+        """
         if self._building:
             return  # Don't refresh while building — preserves status display
         try:
@@ -1009,6 +1016,19 @@ class ToolchainsScreen(Screen):
                 header.update(f"  [dim]Not installed — install toolchain first[/dim]")
                 return
                 return
+
+            # Snapshot current dropdown selections — used to preserve picks
+            # for libs that weren't part of the just-finished build run.
+            prev_values: dict[str, str] = {}
+            if built_libs is not None:
+                for _ln, _, _ in KNOWN_LIBS:
+                    _sid = _ln.replace(".", "-").replace(" ", "-")
+                    try:
+                        _sel = self.query_one(f"#lib-action-{_sid}", Select)
+                        if _sel.value and isinstance(_sel.value, str):
+                            prev_values[_ln] = _sel.value
+                    except Exception:
+                        pass
 
             install_dir = self.app.paths.toolchains_dir / tc.name
             libs = scan_libraries(install_dir, tc.sysroot, native=tc.native)
@@ -1081,9 +1101,23 @@ class ToolchainsScreen(Screen):
                 # so we don't push users to integrate libs they never asked
                 # for.
                 if lib.found and not lib.up_to_date and lib.update_version:
-                    default = f"update:{lib.update_version}"
+                    fresh_default = f"update:{lib.update_version}"
                 else:
-                    default = "skip"
+                    fresh_default = "skip"
+
+                # Preserve user selection for libs that weren't part of the
+                # finished build run. Libs in built_libs (successfully built
+                # this round) get the fresh default.
+                if (
+                    built_libs is not None
+                    and lib.name not in built_libs
+                    and lib.name in prev_values
+                ):
+                    candidate = prev_values[lib.name]
+                    valid_values = {o[1] for o in options}
+                    default = candidate if candidate in valid_values else fresh_default
+                else:
+                    default = fresh_default
 
                 # Update select options
                 try:
@@ -1222,6 +1256,8 @@ class ToolchainsScreen(Screen):
             except Exception:
                 pass
 
+        built_libs: set[str] = set()
+
         def do_build():
             try:
                 for lib_name, action_str in actions:
@@ -1255,6 +1291,7 @@ class ToolchainsScreen(Screen):
                         log=self._log,
                     )
                     if success:
+                        built_libs.add(lib_name)
                         _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]done[/green]")
                     else:
                         if self._cancel_requested:
@@ -1273,7 +1310,9 @@ class ToolchainsScreen(Screen):
                 self._cancel_requested = False
                 self.app.call_from_thread(self._update_f9_state)
                 # Refresh library info (stay on Libraries tab)
-                self.app.call_from_thread(self._update_libraries)
+                # Pass built_libs so unrelated picks the user made
+                # before pressing F9 are preserved.
+                self.app.call_from_thread(self._update_libraries, built_libs)
 
         thread = threading.Thread(target=do_build, daemon=True)
         thread.start()
