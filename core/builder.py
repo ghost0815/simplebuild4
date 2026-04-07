@@ -109,10 +109,27 @@ class BuildEngine:
             self._close_log(log_path)
 
     def _setup_upx_symlink(self) -> None:
-        """Create/update data/bin/upx symlink based on target's upx_binary setting."""
+        """Create/update data/bin/upx symlink based on target's upx_binary setting.
+
+        - If use_compress is False or no UPX is configured: remove the symlink.
+        - If a custom upx_binary is set: link to it.
+        - Otherwise: link to system upx (which upx).
+        """
         import shutil as _shutil
         self.bin_dir.mkdir(parents=True, exist_ok=True)
         upx_link = self.bin_dir / "upx"
+
+        def _remove_link():
+            if upx_link.is_symlink() or upx_link.exists():
+                try:
+                    upx_link.unlink()
+                except Exception:
+                    pass
+
+        # If UPX is not used at all, remove any stale symlink
+        if not self.target.build.use_compress:
+            _remove_link()
+            return
 
         # Determine target path: custom or system default
         upx_target = self.target.build.upx_binary.strip() if self.target.build.upx_binary else ""
@@ -120,18 +137,35 @@ class BuildEngine:
             upx_target = _shutil.which("upx") or ""
 
         if not upx_target:
-            # No UPX found — remove symlink if exists
-            if upx_link.exists() or upx_link.is_symlink():
-                upx_link.unlink()
+            self._log("[yellow]USE_COMPRESS=1 but no upx binary found — disabling symlink[/yellow]")
+            _remove_link()
             return
 
-        # Create/update symlink
-        upx_target_path = Path(upx_target).resolve()
-        if upx_link.is_symlink() or upx_link.exists():
-            if upx_link.resolve() == upx_target_path:
-                return  # Already correct
-            upx_link.unlink()
-        upx_link.symlink_to(upx_target_path)
+        # Validate target exists
+        upx_target_path = Path(upx_target)
+        if not upx_target_path.exists():
+            self._log(f"[yellow]upx binary not found: {upx_target}[/yellow]")
+            _remove_link()
+            return
+
+        upx_target_resolved = upx_target_path.resolve()
+
+        # If link already correct, skip
+        if upx_link.is_symlink():
+            try:
+                if upx_link.resolve() == upx_target_resolved:
+                    self._log(f"  upx: [dim]{upx_link} → {upx_target_resolved}[/dim]")
+                    return
+            except Exception:
+                pass
+
+        # Recreate the link
+        _remove_link()
+        try:
+            upx_link.symlink_to(upx_target_resolved)
+            self._log(f"  upx: [dim]{upx_link} → {upx_target_resolved}[/dim]")
+        except Exception as e:
+            self._log(f"[yellow]Failed to create upx symlink: {e}[/yellow]")
 
     def _do_build(self, log_path: Path) -> bool:
         """Internal build logic."""

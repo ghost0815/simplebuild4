@@ -321,11 +321,42 @@ class S4App(App):
         if hasattr(screen, 'do_remove'):
             screen.do_remove()
 
+    def _check_busy_or_dirty(self) -> tuple:
+        """Check if any screen has a running operation or potentially unsaved changes.
+
+        Returns (busy_screen_name, dirty_screen_name). Either may be empty.
+        """
+        busy = ""
+        dirty = ""
+        try:
+            for screen in self.screen_stack:
+                if getattr(screen, "_building", False):
+                    busy = type(screen).__name__
+                    break
+            # Any screen with do_save() is a potentially-dirty state holder
+            current = self.screen
+            if hasattr(current, "do_save"):
+                dirty = type(current).__name__
+        except Exception:
+            pass
+        return (busy, dirty)
+
     def action_s4_update(self) -> None:
         """Self-update s4 via git pull (handles force pushes). Output to main screen RichLog."""
         import subprocess
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent
+
+        # Check for running operations — block update entirely
+        busy, dirty = self._check_busy_or_dirty()
+        if busy:
+            self.notify(t("update_busy"), severity="warning", timeout=10)
+            return
+        if dirty:
+            self.notify(t("update_dirty_warning"), severity="warning", timeout=15)
+
+        # Track success for auto-restart at the end
+        updated_ok = False
 
         # Setup logging: RichLog + file
         import re
@@ -439,7 +470,7 @@ class S4App(App):
                         capture_output=True, text=True, timeout=5,
                     ).stdout.strip()
                     _log(f"[green]Updated to r{new_rev}: {new_commit}[/green]")
-                    self.notify(f"s4 updated ({behind} new commits) — please restart", severity="warning")
+                    updated_ok = True
                 else:
                     _log(f"[red]Update failed: {result.stderr.strip()}[/red]")
 
@@ -481,11 +512,32 @@ class S4App(App):
 
                 shutil.rmtree(tmp_dir)
                 _log(f"[green]Updated from {s4_url}[/green]")
-                self.notify("s4 updated — please restart", severity="warning")
-                self.notify(f"Update failed: {result.stderr.strip()}", severity="error")
+                updated_ok = True
         except Exception as e:
             _log(f"[red]Update failed: {e}[/red]")
             self.notify(f"Update failed: {e}", severity="error")
         finally:
             _log(f"Log: {log_path}")
             log_file.close()
+
+        # Auto-restart if update succeeded and no unsaved changes
+        if updated_ok:
+            if dirty:
+                self.notify(t("update_done_manual_restart"), severity="warning", timeout=15)
+            else:
+                self.notify(t("update_done_restarting"), severity="information", timeout=3)
+                self.set_timer(1.5, self._restart_s4)
+
+    def _restart_s4(self) -> None:
+        """Restart s4 in-place via os.execv()."""
+        import os
+        import sys
+        try:
+            self.exit()
+        except Exception:
+            pass
+        # Replace current process with a fresh s4 invocation
+        try:
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        except Exception:
+            pass

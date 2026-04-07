@@ -272,6 +272,10 @@ some_checks_failed: "{name} — einige Prüfungen fehlgeschlagen"
 
 # Self-updater
 s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — Strg+p → Aktualisieren"
+update_busy: "Update nicht möglich: Build- oder Bibliothek-Vorgang läuft"
+update_dirty_warning: "Ungespeicherte Änderungen erkannt — bitte speichern und s4 manuell neu starten"
+update_done_restarting: "Update fertig — s4 wird neu gestartet..."
+update_done_manual_restart: "Update fertig — bitte s4 manuell neu starten"
 s4_up_to_date: "s4 ist aktuell"
 s4_updated_restart: "s4 aktualisiert ({count} neue Änderungen) — bitte neu starten"
 update_failed: "Aktualisierung fehlgeschlagen: {error}"
