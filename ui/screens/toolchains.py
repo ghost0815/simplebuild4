@@ -341,12 +341,12 @@ class ToolchainsScreen(Screen):
                 with VerticalScroll(id="tc-selfbuild"):
                     with Collapsible(title="Local (0)", collapsed=True, id="cat-sb-local"):
                         yield S4DataTable(id="tbl-sb-local", cursor_type="row", zebra_stripes=True)
-                    with Collapsible(title="CrosstoolNG (0)", collapsed=True, id="cat-sb-ctng"):
-                        yield S4DataTable(id="tbl-sb-ctng", cursor_type="row", zebra_stripes=True)
-                    with Collapsible(title="FreetzNG (0)", collapsed=True, id="cat-sb-freetz"):
-                        yield S4DataTable(id="tbl-sb-freetz", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="OE-SDK (0)", collapsed=True, id="cat-sb-oesdk"):
                         yield S4DataTable(id="tbl-sb-oesdk", cursor_type="row", zebra_stripes=True)
+                    with Collapsible(title="Crosstool-NG (0)", collapsed=True, id="cat-sb-ctng"):
+                        yield S4DataTable(id="tbl-sb-ctng", cursor_type="row", zebra_stripes=True)
+                    with Collapsible(title="Freetz-NG (0)", collapsed=True, id="cat-sb-freetz"):
+                        yield S4DataTable(id="tbl-sb-freetz", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="Android-NDK (0)", collapsed=True, id="cat-sb-android"):
                         yield S4DataTable(id="tbl-sb-android", cursor_type="row", zebra_stripes=True)
 
@@ -445,9 +445,9 @@ class ToolchainsScreen(Screen):
             "android-ndk": "tbl-sb-android",
         }
         _builder_collapsible = {
-            "crosstool-ng": ("cat-sb-ctng", "CrosstoolNG"),
-            "freetz-ng": ("cat-sb-freetz", "FreetzNG"),
             "oe-sdk": ("cat-sb-oesdk", "OE-SDK"),
+            "crosstool-ng": ("cat-sb-ctng", "Crosstool-NG"),
+            "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
             "android-ndk": ("cat-sb-android", "Android-NDK"),
         }
         # Init columns
@@ -1715,9 +1715,9 @@ class ToolchainsScreen(Screen):
             "android-ndk": "tbl-sb-android",
         }
         _builder_collapsible = {
-            "crosstool-ng": ("cat-sb-ctng", "CrosstoolNG"),
-            "freetz-ng": ("cat-sb-freetz", "FreetzNG"),
             "oe-sdk": ("cat-sb-oesdk", "OE-SDK"),
+            "crosstool-ng": ("cat-sb-ctng", "Crosstool-NG"),
+            "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
             "android-ndk": ("cat-sb-android", "Android-NDK"),
         }
         # Clear all
