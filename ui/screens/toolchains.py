@@ -15,6 +15,7 @@ from textual.app import ComposeResult
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree, TextArea
 from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.coordinate import Coordinate
 
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
 from core.lib_builder import build_library, sort_by_dependencies
@@ -23,7 +24,15 @@ from ui.header import S4Header
 
 
 class S4DataTable(DataTable):
-    """DataTable with custom cursor colors."""
+    """DataTable with a leading marker column and focus-aware cursor.
+
+    A hidden marker column is prepended automatically (via overrides of
+    add_columns / add_row). The currently selected row carries a small
+    glyph in that column, so the selection stays visible even when the
+    table is not focused — no background colour required.
+    """
+
+    MARKER = "▶"
 
     DEFAULT_CSS = """
     S4DataTable {
@@ -32,7 +41,8 @@ class S4DataTable(DataTable):
         height: auto;
         max-height: 100%;
 
-        /* Cursor row: invisible when not focused so unrelated tables look idle */
+        /* Cursor row: invisible when not focused — the marker glyph
+           in column 0 indicates the selection instead. */
         & > .datatable--cursor {
             background: $surface;
             color: $foreground;
@@ -72,6 +82,47 @@ class S4DataTable(DataTable):
         }
     }
     """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._marker_row: int = -1
+
+    def add_columns(self, *labels):
+        """Prepend a 1-char marker column before the user-supplied ones."""
+        return super().add_columns(" ", *labels)
+
+    def add_row(self, *cells, height=1, key=None, label=None):
+        return super().add_row(" ", *cells, height=height, key=key, label=label)
+
+    def clear(self, columns: bool = False):
+        self._marker_row = -1
+        return super().clear(columns=columns)
+
+    def watch_cursor_coordinate(self, old_coordinate, new_coordinate):
+        # Let the base class handle its own bookkeeping first
+        try:
+            super().watch_cursor_coordinate(old_coordinate, new_coordinate)
+        except Exception:
+            pass
+        try:
+            new_row = new_coordinate.row if new_coordinate is not None else -1
+            if self._marker_row == new_row:
+                return
+            # Clear previous marker
+            if 0 <= self._marker_row < self.row_count:
+                try:
+                    self.update_cell_at(Coordinate(self._marker_row, 0), " ", update_width=False)
+                except Exception:
+                    pass
+            # Paint new marker
+            if 0 <= new_row < self.row_count:
+                try:
+                    self.update_cell_at(Coordinate(new_row, 0), self.MARKER, update_width=False)
+                except Exception:
+                    pass
+            self._marker_row = new_row
+        except Exception:
+            pass
 from ui.footer import S4Footer
 
 _BASE_CATEGORIES = [
