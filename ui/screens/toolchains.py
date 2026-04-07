@@ -1095,7 +1095,20 @@ class ToolchainsScreen(Screen):
 
             if not tc.installed:
                 header.update(f"  [dim]Not installed — install toolchain first[/dim]")
-                return
+                # Same idle state as for templates: status dashes + blank dropdowns
+                for lib_name, _, _ in KNOWN_LIBS:
+                    safe_id = lib_name.replace(".", "-").replace(" ", "-")
+                    try:
+                        sw = self.query_one(f"#lib-status-{safe_id}", Static)
+                        sw.update(f"  [dim]{lib_name:<15s} —[/dim]")
+                    except Exception:
+                        pass
+                    try:
+                        sel = self.query_one(f"#lib-action-{safe_id}", Select)
+                        sel.set_options([(t("lib_skip"), "skip")])
+                        sel.value = Select.BLANK
+                    except Exception:
+                        pass
                 return
 
             # Snapshot current dropdown selections — used to preserve picks
@@ -1232,8 +1245,9 @@ class ToolchainsScreen(Screen):
                     else:
                         item._label = t("update")
                         item._active = False
-                        # F9 only for toolchain library actions, never for templates
-                        f9_enabled = libs_active and not tpl_selected
+                        # F9 only for installed toolchain library actions, never
+                        # for templates or uninstalled entries
+                        f9_enabled = libs_active and not tpl_selected and self._selected_is_installed()
                         item._disabled = not f9_enabled
                         if f9_enabled:
                             item.remove_class("disabled")
@@ -1283,6 +1297,19 @@ class ToolchainsScreen(Screen):
                     item.refresh()
         except Exception:
             pass
+
+    def _selected_is_installed(self) -> bool:
+        """True when the selected PreBuild toolchain is actually installed."""
+        try:
+            if self._is_template_selected():
+                return False
+            name = ToolchainsScreen._selected_tc
+            if not name:
+                return False
+            tc = self._get_registry().get(name)
+            return bool(tc and tc.installed)
+        except Exception:
+            return False
 
     def _is_local_removable(self) -> bool:
         """True when the current selection is a removable local entry.
