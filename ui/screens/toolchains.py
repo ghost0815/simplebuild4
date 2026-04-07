@@ -3593,7 +3593,8 @@ class ToolchainsScreen(Screen):
 
     def action_go_back(self) -> None:
         if self._building:
-            self.notify("Build in progress — cancel first with F9", severity="warning")
+            cancel_key = "F5" if getattr(self, "_build_kind", "") == "selfbuild" else "F9"
+            self.notify(t("build_in_progress_cancel", fkey=cancel_key), severity="warning")
             return
         ToolchainsScreen._log_history.clear()
         ToolchainsScreen._selected_tc = ""
