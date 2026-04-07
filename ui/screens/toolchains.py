@@ -1533,12 +1533,30 @@ class ToolchainsScreen(Screen):
             return ""
         self._log_sync("  [green]✓ Fields OK[/green]")
 
-        # Step 3: name in YAML must match selection (no rename via editor)
-        if parsed.get("name") != name:
-            msg = t("template_name_mismatch", name=name)
+        # Step 3: handle rename (name in YAML differs from selection)
+        new_name = (parsed.get("name") or "").strip()
+        if not new_name:
+            msg = t("template_name_required")
             self._log_sync(f"  [red]✗ {msg}[/red]")
             self.notify(msg, severity="error", timeout=10)
             return ""
+
+        is_rename = (new_name != name)
+        if is_rename:
+            import re as _re
+            if not _re.fullmatch(r"[a-zA-Z0-9_.-]+", new_name):
+                msg = t("template_rename_invalid_name", name=new_name)
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
+            # Collision check against ALL templates (defaults + local)
+            from core.template import load_templates as _load_tpls
+            _all = _load_tpls(self.app.paths.templates_defaults, self.app.paths.templates_local)
+            if any(t.name == new_name for t in _all):
+                msg = t("template_rename_name_exists", name=new_name)
+                self._log_sync(f"  [red]✗ {msg}[/red]")
+                self.notify(msg, severity="error", timeout=10)
+                return ""
 
         # Step 4: Find current template (incl. source) to know if we need to fork
         tpl = self._get_selected_template()
@@ -1549,24 +1567,42 @@ class ToolchainsScreen(Screen):
             return ""
 
         local_dir = self.app.paths.templates_local
-        local_yaml = local_dir / f"{name}.yaml"
+        # Final on-disk yaml/config names depend on rename
+        final_name = new_name if is_rename else name
+        local_yaml = local_dir / f"{final_name}.yaml"
+
+        # Adjust the `config:` field inside the new_text if it still references
+        # the old config filename — keeps yaml + on-disk file name in sync.
+        if is_rename and tpl.config:
+            old_cfg = tpl.config
+            old_stem = Path(old_cfg).stem
+            if old_stem == name:
+                new_cfg = f"{new_name}{Path(old_cfg).suffix or '.config'}"
+                # Replace inside YAML text so the dump stays user-formatted
+                import re as _re2
+                new_text = _re2.sub(
+                    r'(?m)^(\s*config\s*:\s*)["\']?' + _re2.escape(old_cfg) + r'["\']?\s*$',
+                    rf'\1{new_cfg}',
+                    new_text,
+                )
+                parsed["config"] = new_cfg
 
         if not tpl.is_local:
             # Editing a default template → fork to data/templates/
             if local_yaml.exists():
-                msg = t("template_local_exists", name=name)
+                msg = t("template_local_exists", name=final_name)
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
                 return ""
             try:
                 local_dir.mkdir(parents=True, exist_ok=True)
-                # Copy the .config first (before .yaml so the path stays valid)
+                # Copy the .config (under new filename if renamed)
                 if tpl.config and tpl.config_path and tpl.config_path.exists():
-                    _shutil.copy2(tpl.config_path, local_dir / tpl.config)
-                    self._log_sync(f"  [green]✓ Forked {tpl.config} → data/templates/[/green]")
-                # Write the new .yaml content
+                    target_cfg_name = parsed.get("config") or tpl.config
+                    _shutil.copy2(tpl.config_path, local_dir / target_cfg_name)
+                    self._log_sync(f"  [green]✓ Forked {tpl.config} → data/templates/{target_cfg_name}[/green]")
                 local_yaml.write_text(new_text, encoding="utf-8")
-                self._log_sync(f"  [green]✓ Forked {name}.yaml → data/templates/[/green]")
+                self._log_sync(f"  [green]✓ Forked {name}.yaml → data/templates/{final_name}.yaml[/green]")
             except Exception as e:
                 msg = t("template_fork_failed", err=str(e))
                 self._log_sync(f"  [red]✗ {msg}[/red]")
@@ -1574,22 +1610,76 @@ class ToolchainsScreen(Screen):
                 return ""
             ToolchainsScreen._selected_tpl_source = "local"
         else:
-            # Already local → overwrite in place
+            # Already local → overwrite (and rename files if requested)
             try:
-                tpl.yaml_path.write_text(new_text, encoding="utf-8")
-                self._log_sync(f"  [green]✓ Saved {tpl.yaml_path.name}[/green]")
+                if is_rename:
+                    # Rename .config first
+                    if tpl.config and tpl.config_path and tpl.config_path.exists():
+                        target_cfg_name = parsed.get("config") or tpl.config
+                        new_cfg_path = local_dir / target_cfg_name
+                        if new_cfg_path.exists() and new_cfg_path != tpl.config_path:
+                            msg = t("template_rename_dir_exists", name=target_cfg_name)
+                            self._log_sync(f"  [red]✗ {msg}[/red]")
+                            self.notify(msg, severity="error", timeout=10)
+                            return ""
+                        tpl.config_path.rename(new_cfg_path)
+                        self._log_sync(f"  [green]✓ Renamed {tpl.config} → {target_cfg_name}[/green]")
+                    # Then rename .yaml (write new content + remove old file)
+                    local_yaml.write_text(new_text, encoding="utf-8")
+                    if tpl.yaml_path.exists() and tpl.yaml_path != local_yaml:
+                        tpl.yaml_path.unlink()
+                    self._log_sync(f"  [green]✓ Renamed {name}.yaml → {final_name}.yaml[/green]")
+                else:
+                    tpl.yaml_path.write_text(new_text, encoding="utf-8")
+                    self._log_sync(f"  [green]✓ Saved {tpl.yaml_path.name}[/green]")
             except Exception as e:
                 msg = t("template_save_failed", err=str(e))
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
                 return ""
 
+        if is_rename:
+            ToolchainsScreen._selected_tc = final_name
+            name = final_name
+
         # Step 5: Refresh SelfBuild tables and detail/editor
         try:
+            # Suppress row_highlighted handlers while tables rebuild — otherwise
+            # RowHighlighted from e.g. tbl-sb-ctng row 0 would clobber our
+            # _selected_tc with whatever sits at the top of those tables.
+            self._mounted = False
             self._refresh_selfbuild_tables()
+            # After a rename, move the cursor in the local table to the new entry
+            if is_rename:
+                try:
+                    self.query_one("#cat-sb-local", Collapsible).collapsed = False
+                except Exception:
+                    pass
+                try:
+                    sb_tbl = self.query_one("#tbl-sb-local", DataTable)
+                    for i, key in enumerate(sb_tbl.rows):
+                        if key.value == final_name:
+                            sb_tbl.move_cursor(row=i)
+                            sb_tbl.focus()
+                            break
+                except Exception as e:
+                    self._log_sync(f"  [yellow]select_renamed: {e}[/yellow]")
+                # Pin the selection again after the deferred RowHighlighted
+                # events from the table rebuild have flushed.
+                def _repin():
+                    ToolchainsScreen._selected_tc = final_name
+                    ToolchainsScreen._selected_tpl_source = "local"
+                    self._mounted = True
+                    self._update_detail()
+                    self._update_editor()
+                self.set_timer(0.1, _repin)
+            else:
+                self._mounted = True
             self._update_detail()
             self._update_editor()
-            if saved_cursor and editor_was_focused:
+            # Skip editor focus restore on rename — focus stays on the SB table
+            # so the highlight on the renamed entry is visible.
+            if saved_cursor and editor_was_focused and not is_rename:
                 self.set_timer(0.05, lambda: self._restore_editor_cursor(saved_cursor))
         except Exception:
             pass
