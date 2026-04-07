@@ -319,10 +319,14 @@ class S4App(App):
             self.push_screen(SettingsScreen())
 
     def _footer_disabled(self, key: str) -> bool:
-        """Return True if the footer item for the given F-key is currently disabled."""
+        """Return True if the footer item for the given F-key is currently disabled.
+
+        Only the current screen's footer is consulted — other screens on the
+        stack would otherwise pollute the result.
+        """
         try:
             from ui.footer import FooterItem
-            for item in self.query(FooterItem):
+            for item in self.screen.query(FooterItem):
                 if item._key == key:
                     return bool(item._disabled)
         except Exception:
