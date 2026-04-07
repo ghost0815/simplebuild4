@@ -19,6 +19,19 @@ from ui.header import S4Header
 from ui.footer import S4Footer
 
 
+def _safe_id(name: str) -> str:
+    """Convert a name to a safe Textual widget ID.
+
+    Textual requires IDs to contain only [a-zA-Z0-9_-] and not start with a digit.
+    Anything else is replaced with '-'. A leading digit gets an 's' prefix.
+    """
+    import re as _re
+    s = _re.sub(r'[^a-zA-Z0-9_-]', '-', name)
+    if s and s[0].isdigit():
+        s = "s" + s
+    return s
+
+
 class RepositoryScreen(Screen):
     BINDINGS = []
 
@@ -59,7 +72,7 @@ class RepositoryScreen(Screen):
                     for p in available:
                         enabled = RepositoryScreen._patch_states.get(p.stem, True)
                         yield Horizontal(
-                            Switch(value=enabled, id=f"patch-{p.stem}"),
+                            Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
                             Static(f" {p.name}", classes="patch-name"),
                             classes="patch-item",
                         )
@@ -193,7 +206,7 @@ class RepositoryScreen(Screen):
         if patches_dir.is_dir():
             for p in sorted(patches_dir.glob("*.patch")):
                 try:
-                    sw = self.query_one(f"#patch-{p.stem}", Switch)
+                    sw = self.query_one(f"#patch-{_safe_id(p.stem)}", Switch)
                     if sw.value:
                         selected.append(p.name)
                 except Exception:
@@ -243,7 +256,7 @@ class RepositoryScreen(Screen):
         if patches_dir.is_dir():
             for p in patches_dir.glob("*.patch"):
                 try:
-                    sw = self.query_one(f"#patch-{p.stem}", Switch)
+                    sw = self.query_one(f"#patch-{_safe_id(p.stem)}", Switch)
                     RepositoryScreen._patch_states[p.stem] = sw.value
                 except Exception:
                     pass
