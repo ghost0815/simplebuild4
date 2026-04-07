@@ -939,7 +939,7 @@ class BuildEngine:
 
         # --- Log common settings ---
         self._log(f"  Build system: {b.build_system}")
-        self._log(f"  Output: {bin_path.name}")
+        self._log(f"  Output: {bin_path}")
         self._log(f"  CROSS: {cross or '(native)'}")
         if cross_sysroot:
             self._log(f"  CC: {cross}gcc {cross_sysroot}")
