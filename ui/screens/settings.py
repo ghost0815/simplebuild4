@@ -84,14 +84,21 @@ class SettingsScreen(Screen):
 
             # Signing
             yield Static(f" [bold]{t('section_signing')}[/bold]", classes="section-title")
+            from textual.widgets import Button as _Btn
+            cert_browse = _Btn("📂", id="btn-cert-browse", classes="tc-reset-btn")
+            cert_browse.tooltip = t("ph_browse_file")
+            key_browse = _Btn("📂", id="btn-key-browse", classes="tc-reset-btn")
+            key_browse.tooltip = t("ph_browse_file")
             yield Horizontal(
                 Static(f" {t('signing_certificate')}", classes="s-label"),
                 Input(value=s.sign_cert, placeholder=t("ph_sign_cert"), id="set-sign-cert"),
+                cert_browse,
                 classes="s-row",
             )
             yield Horizontal(
                 Static(f" {t('private_key')}", classes="s-label"),
                 Input(value=s.sign_key, placeholder=t("ph_sign_key"), id="set-sign-key"),
+                key_browse,
                 classes="s-row",
             )
 
@@ -140,6 +147,42 @@ class SettingsScreen(Screen):
             translation.load(s.language)
 
     _language_changed: bool = False
+
+    def on_button_pressed(self, event) -> None:
+        if event.button.id == "btn-cert-browse":
+            self._open_file_picker("set-sign-cert", t("signing_certificate"))
+        elif event.button.id == "btn-key-browse":
+            self._open_file_picker("set-sign-key", t("private_key"))
+
+    def _open_file_picker(self, target_input_id: str, label: str) -> None:
+        """Open file picker dialog and write the result into the given input."""
+        from ui.screens.toolchains import FilePickerScreen
+        from pathlib import Path as _P
+        start = str(_P.home()) if _P.home().exists() else "/"
+        self._picker_target = target_input_id
+        self.app.push_screen(
+            FilePickerScreen(
+                start_path=start,
+                title=f"{t('select_file_label')}: {label}",
+                simple=True,
+                select_label=t("select_btn"),
+            ),
+            callback=self._on_file_selected,
+        )
+
+    def _on_file_selected(self, result) -> None:
+        if not result:
+            return
+        path, _ = result if isinstance(result, tuple) else (result, "")
+        if not path:
+            return
+        target_id = getattr(self, "_picker_target", "")
+        if not target_id:
+            return
+        try:
+            self.query_one(f"#{target_id}", Input).value = path
+        except Exception:
+            pass
 
     def do_save(self) -> str:
         """Save settings (called by App)."""

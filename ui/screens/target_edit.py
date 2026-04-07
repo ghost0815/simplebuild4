@@ -655,9 +655,9 @@ class TargetEditScreen(Screen):
         self.app.push_screen(
             FilePickerScreen(
                 start_path=start,
-                title="Select UPX binary",
+                title=f"{t('select_file_label')}: {t('te_binary')}",
                 simple=True,
-                select_label="Select",
+                select_label=t("select_btn"),
             ),
             callback=self._on_upx_selected,
         )
