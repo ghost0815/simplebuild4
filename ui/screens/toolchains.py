@@ -3401,8 +3401,12 @@ class ToolchainsScreen(Screen):
 
         import subprocess as _sp
         try:
-            with self.app.suspend():
-                _sp.run(cmd, cwd=str(ctng_path))
+            self.app._suspended = True
+            try:
+                with self.app.suspend():
+                    _sp.run(cmd, cwd=str(ctng_path))
+            finally:
+                self.app._suspended = False
         except Exception as e:
             self.notify(t("customize_failed", err=str(e)), severity="error")
             self._log_sync(f"[red]Customize failed: {e}[/red]")

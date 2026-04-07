@@ -124,19 +124,27 @@ class BuildTimerWidget(Static):
 
     def refresh_display(self) -> None:
         app = self.app
+        # Skip while the app is suspended (e.g. menuconfig running) — any
+        # write to a suspended terminal raises an exception that flashes
+        # briefly under the ncurses overlay.
+        if getattr(app, "_suspended", False):
+            return
         try:
             text = app.build_timer_format()
             running = getattr(app, "_timer_stopped_at", None) is None and getattr(app, "_timer_start", None) is not None
         except Exception:
             text = ""
             running = False
-        if not text:
-            self.update("")
-            return
-        if running:
-            self.update(f"⏱ {text}")
-        else:
-            self.update(f"⏱ {text} ⏹")
+        try:
+            if not text:
+                self.update("")
+                return
+            if running:
+                self.update(f"⏱ {text}")
+            else:
+                self.update(f"⏱ {text} ⏹")
+        except Exception:
+            pass
 
 
 class S4Footer(Horizontal):
