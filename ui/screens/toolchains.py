@@ -984,12 +984,18 @@ class ToolchainsScreen(Screen):
             # Template selected → libraries are managed by the builder, not s4
             if self._is_template_selected():
                 header.update(f"  [dim]{t('libs_not_for_templates')}[/dim]")
-                # Clear all library rows
+                # Clear all library rows + blank the action dropdowns
                 for lib_name, _, _ in KNOWN_LIBS:
                     safe_id = lib_name.replace(".", "-").replace(" ", "-")
                     try:
                         sw = self.query_one(f"#lib-status-{safe_id}", Static)
                         sw.update(f"  [dim]{lib_name:<15s} —[/dim]")
+                    except Exception:
+                        pass
+                    try:
+                        sel = self.query_one(f"#lib-action-{safe_id}", Select)
+                        sel.set_options([(t("lib_skip"), "skip")])
+                        sel.value = Select.BLANK
                     except Exception:
                         pass
                 return
