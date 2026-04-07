@@ -225,6 +225,31 @@ class SettingsScreen(Screen):
             callback=self._on_file_selected,
         )
 
+    def is_dirty(self) -> bool:
+        """True if any widget value differs from the loaded settings."""
+        try:
+            s = self.app.settings
+            for wid, attr in SWITCH_MAP.items():
+                if self.query_one(f"#{wid}", Switch).value != getattr(s, attr):
+                    return True
+            for wid, attr in INPUT_MAP.items():
+                cur = getattr(s, attr)
+                val = self.query_one(f"#{wid}", Input).value
+                if isinstance(cur, int):
+                    try:
+                        val = int(val)
+                    except ValueError:
+                        val = cur
+                if val != cur:
+                    return True
+            for wid, attr in SELECT_MAP.items():
+                val = self.query_one(f"#{wid}", Select).value
+                if val is not None and val != getattr(s, attr):
+                    return True
+        except Exception:
+            return False
+        return False
+
     def do_save(self) -> str:
         """Save settings (called by App)."""
         self._save()

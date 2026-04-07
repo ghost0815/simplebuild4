@@ -1364,6 +1364,16 @@ class ToolchainsScreen(Screen):
 
     # -- YAML editor (Yaml tab) ---------------------------------------------
 
+    def is_dirty(self) -> bool:
+        """True only if the editor has unsaved changes vs. its loaded source."""
+        try:
+            editor = self.query_one("#tc-editor", TextArea)
+            if not editor.display or editor.disabled:
+                return False
+            return editor.text != getattr(self, "_editor_loaded_text", editor.text)
+        except Exception:
+            return False
+
     def _update_editor(self) -> None:
         """Load editor content based on the active left tab.
 
@@ -1380,6 +1390,7 @@ class ToolchainsScreen(Screen):
             if not tpl or not tpl.yaml_path:
                 editor.text = f"# {t('template_not_found', name=name)}"
                 editor.disabled = True
+                self._editor_loaded_text = editor.text
                 return
             try:
                 editor.text = tpl.yaml_path.read_text(encoding="utf-8")
@@ -1387,6 +1398,7 @@ class ToolchainsScreen(Screen):
             except Exception as e:
                 editor.text = f"# Error: {e}"
                 editor.disabled = True
+            self._editor_loaded_text = editor.text
             return
 
         reg = self._get_registry()
@@ -1395,16 +1407,19 @@ class ToolchainsScreen(Screen):
         if not tc or not tc.installed:
             editor.text = f"# {t('yaml_only_installed')}"
             editor.disabled = True
+            self._editor_loaded_text = editor.text
             return
 
         block = self._extract_yaml_block(name)
         if block is None:
             editor.text = f"# {t('yaml_block_not_found', name=name)}"
             editor.disabled = True
+            self._editor_loaded_text = editor.text
             return
 
         editor.disabled = False
         editor.text = block
+        self._editor_loaded_text = editor.text
 
     def _extract_yaml_block(self, tc_name: str) -> "str | None":
         """Extract the YAML block of a single toolchain from toolchains.local.yaml.

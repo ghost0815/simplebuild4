@@ -412,9 +412,16 @@ class S4App(App):
             screen.do_remove()
 
     def _check_busy_or_dirty(self) -> tuple:
-        """Check if any screen has a running operation or potentially unsaved changes.
+        """Check if any screen has a running operation or actual unsaved changes.
 
         Returns (busy_screen_name, dirty_screen_name). Either may be empty.
+
+        A screen is only considered dirty if it explicitly implements an
+        is_dirty() method that returns True. The previous heuristic
+        (any screen with do_save() = dirty) produced too many false
+        positives — Settings/Repository/Toolchains/TargetEdit always have
+        do_save() but are only actually dirty when the user changed
+        something.
         """
         busy = ""
         dirty = ""
@@ -423,10 +430,15 @@ class S4App(App):
                 if getattr(screen, "_building", False):
                     busy = type(screen).__name__
                     break
-            # Any screen with do_save() is a potentially-dirty state holder
-            current = self.screen
-            if hasattr(current, "do_save"):
-                dirty = type(current).__name__
+            for screen in self.screen_stack:
+                is_dirty = getattr(screen, "is_dirty", None)
+                if callable(is_dirty):
+                    try:
+                        if is_dirty():
+                            dirty = type(screen).__name__
+                            break
+                    except Exception:
+                        pass
         except Exception:
             pass
         return (busy, dirty)

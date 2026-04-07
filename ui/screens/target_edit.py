@@ -1032,6 +1032,35 @@ class TargetEditScreen(Screen):
         except Exception:
             return False
 
+    def is_dirty(self) -> bool:
+        """True if the in-memory target differs from the file on disk."""
+        try:
+            collected = self._collect()
+            if not self.save_path or not self.save_path.exists():
+                return bool(collected.name)
+            current = self._serialize_target(collected)
+            from core.target import Target as _T
+            disk = self._serialize_target(_T.load(self.save_path))
+            return current != disk
+        except Exception:
+            return False
+
+    @staticmethod
+    def _serialize_target(target) -> str:
+        """Stable string representation of a Target for diffing."""
+        import tempfile
+        from pathlib import Path as _P
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            tmp_path = _P(f.name)
+        try:
+            target.save(tmp_path)
+            return tmp_path.read_text(encoding="utf-8")
+        finally:
+            try:
+                tmp_path.unlink()
+            except Exception:
+                pass
+
     def do_save(self) -> str:
         """Save target (called by App)."""
         # Validate the oscam binary path before collecting

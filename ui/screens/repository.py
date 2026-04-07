@@ -498,6 +498,19 @@ class RepositoryScreen(Screen):
         self._log_sync(f"[green]Added repo '{name}'[/green]")
         self._full_refresh(name)
 
+    def is_dirty(self) -> bool:
+        """True if the edit form differs from the selected repo entry."""
+        try:
+            repo = self._get_selected_repo()
+            if not repo:
+                return False
+            name = self.query_one("#edit-repo-name", Input).value.strip()
+            url = self.query_one("#edit-repo-url", Input).value.strip()
+            branch = self.query_one("#edit-repo-branch", Input).value.strip()
+            return (name != repo.name) or (url != repo.url) or (branch != (repo.branch or ""))
+        except Exception:
+            return False
+
     def do_save(self) -> str:
         """Save current repo edits (called by App, no log output)."""
         repo = self._get_selected_repo()
