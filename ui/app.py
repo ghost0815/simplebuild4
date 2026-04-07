@@ -318,8 +318,21 @@ class S4App(App):
         if not isinstance(self.screen, SettingsScreen):
             self.push_screen(SettingsScreen())
 
+    def _footer_disabled(self, key: str) -> bool:
+        """Return True if the footer item for the given F-key is currently disabled."""
+        try:
+            from ui.footer import FooterItem
+            for item in self.query(FooterItem):
+                if item._key == key:
+                    return bool(item._disabled)
+        except Exception:
+            pass
+        return False
+
     def action_save_action(self) -> None:
         """Dispatch F12 Save to the current screen."""
+        if self._footer_disabled("F12"):
+            return
         screen = self.screen
         if hasattr(screen, 'do_save'):
             msg = screen.do_save()
@@ -327,12 +340,16 @@ class S4App(App):
 
     def action_build(self) -> None:
         """Dispatch F5 Build to main screen."""
+        if self._footer_disabled("F5"):
+            return
         screen = self.screen
         if hasattr(screen, 'action_build'):
             screen.action_build()
 
     def action_customize(self) -> None:
         """Dispatch F6 Customize to the current screen (Toolchains SelfBuild)."""
+        if self._footer_disabled("F6"):
+            return
         screen = self.screen
         if hasattr(screen, 'action_customize'):
             screen.action_customize()
@@ -368,18 +385,24 @@ class S4App(App):
 
     def action_tc_update(self) -> None:
         """Dispatch F9 Update to toolchains screen."""
+        if self._footer_disabled("F9"):
+            return
         screen = self.screen
         if hasattr(screen, 'do_tc_update'):
             screen.do_tc_update()
 
     def action_add(self) -> None:
         """Dispatch F10 Add to the current screen."""
+        if self._footer_disabled("F10"):
+            return
         screen = self.screen
         if hasattr(screen, 'do_add'):
             screen.do_add()
 
     def action_remove(self) -> None:
         """Dispatch F11 Remove to the current screen."""
+        if self._footer_disabled("F11"):
+            return
         screen = self.screen
         if hasattr(screen, 'do_remove'):
             screen.do_remove()
