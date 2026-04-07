@@ -1588,34 +1588,34 @@ class ToolchainsScreen(Screen):
             else:
                 arch = raw_arch
 
-            # Extract CFLAGS and LDFLAGS from environment-setup
+            # Extract CFLAGS from environment-setup
             try:
                 env_text = env_setups[0].read_text(encoding="utf-8", errors="ignore")
                 import re as _re
                 tune_ccargs = ""
-                raw_ldflags = ""
                 for line in env_text.splitlines():
                     # Best source: OECORE_TUNE_CCARGS (pure arch flags)
                     m = _re.match(r'^export\s+OECORE_TUNE_CCARGS="(.+)"', line)
                     if m:
                         tune_ccargs = m.group(1).strip()
-                    # LDFLAGS
-                    m = _re.match(r'^export\s+LDFLAGS="(.+)"', line)
+                        break
+                # Combine TUNE_CCARGS with extra -m* flags from CC= (e.g. -mbranch-protection)
+                cc_extra_flags = []
+                for line in env_text.splitlines():
+                    m = _re.match(r'^export\s+CC="(.+)"', line)
                     if m:
-                        raw_ldflags = m.group(1).strip()
-                # Use TUNE_CCARGS if available (cleanest), otherwise extract from CC=
+                        cc_parts = m.group(1).split()
+                        cc_extra_flags = [p for p in cc_parts if p.startswith("-m")]
+                        break
                 if tune_ccargs:
-                    detected_cflags = tune_ccargs
+                    # Merge: TUNE_CCARGS as base, add CC= flags not already present
+                    base_flags = tune_ccargs.split()
+                    for f in cc_extra_flags:
+                        if f not in base_flags:
+                            base_flags.append(f)
+                    detected_cflags = " ".join(base_flags)
                 else:
-                    # Try extracting arch flags from CC= line
-                    for line in env_text.splitlines():
-                        m = _re.match(r'^export\s+CC="(.+)"', line)
-                        if m:
-                            cc_parts = m.group(1).split()
-                            arch_flags = [p for p in cc_parts if p.startswith("-m") or p.startswith("-march")]
-                            detected_cflags = " ".join(arch_flags)
-                            break
-                detected_ldflags = raw_ldflags
+                    detected_cflags = " ".join(cc_extra_flags)
             except Exception:
                 pass
 
@@ -1669,6 +1669,34 @@ class ToolchainsScreen(Screen):
                         sysroot = str(Path(gs).relative_to(install_dir))
                     except ValueError:
                         pass
+            except Exception:
+                pass
+
+        # Auto-detect dynamic linker from sysroot
+        # Priority: real loader file (ld-X.Y.so or ld-linux-*.so.*) over symlinks (ld.so.*)
+        if sysroot and not detected_ldflags:
+            try:
+                sr_path = install_dir / sysroot
+                # Strip "/usr" suffix if present (sysroot may point to /usr)
+                if sr_path.name == "usr":
+                    sr_path = sr_path.parent
+                lib_dir = sr_path / "lib"
+                if lib_dir.is_dir():
+                    candidates = []
+                    for ld in lib_dir.iterdir():
+                        if not ld.name.startswith("ld"):
+                            continue
+                        if ld.is_symlink():
+                            continue  # skip symlinks, prefer real files
+                        if ld.name.startswith(("ld-", "ld-linux")) and ".so" in ld.name:
+                            candidates.append(ld.name)
+                    if candidates:
+                        # Prefer ld-X.Y.so (versioned glibc) over ld-linux-*.so.*
+                        candidates.sort(key=lambda n: (not n.startswith("ld-linux"), n))
+                        # Actually: prefer ld-X.Y.so first (matches s3 behavior)
+                        versioned = [c for c in candidates if c.startswith("ld-") and not c.startswith("ld-linux")]
+                        chosen = versioned[0] if versioned else candidates[0]
+                        detected_ldflags = f"-Wl,--dynamic-linker=/lib/{chosen}"
             except Exception:
                 pass
 
