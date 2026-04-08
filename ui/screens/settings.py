@@ -14,6 +14,7 @@ from ui.footer import S4Footer
 
 SWITCH_MAP = {
     "set-update-check": "update_check",
+    "set-warn-unsaved": "warn_unsaved_on_exit",
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
@@ -66,6 +67,7 @@ class SettingsScreen(Screen):
                 classes="s-row",
             )
             yield _switch_row(t("check_updates_start"), s.update_check, "set-update-check")
+            yield _switch_row(t("warn_unsaved_on_exit"), s.warn_unsaved_on_exit, "set-warn-unsaved")
 
             # Build
             yield Static(f" [bold]{t('section_build')}[/bold]", classes="section-title")
@@ -261,5 +263,7 @@ class SettingsScreen(Screen):
         return t("settings_saved")
 
     def action_go_back(self) -> None:
-        self._save()
+        # Do NOT auto-save on leave. F12 is the only save path; Esc
+        # just pops the screen, which (together with is_dirty) lets
+        # the app-level warning handle unsaved state.
         self.app.pop_screen()

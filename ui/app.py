@@ -373,24 +373,86 @@ class S4App(App):
         if hasattr(screen, 'action_customize'):
             screen.action_customize()
 
+    _pending_esc_discard: float = 0.0
+    _pending_esc_screen_id: int = 0
+
     def action_esc(self) -> None:
-        """Esc: quit on main, back on sub-screens."""
+        """Esc: quit on main, back on sub-screens.
+
+        When the current screen has unsaved changes the first Esc
+        shows a warning toast and refuses to leave; a second Esc
+        within 5 s actually discards the changes and pops the screen.
+        """
         from ui.screens.main import MainScreen
         if isinstance(self.screen, MainScreen):
             self.exit()
+            return
+
+        import time
+        screen = self.screen
+        is_dirty = getattr(screen, "is_dirty", None)
+        dirty = False
+        if callable(is_dirty) and getattr(self.settings, "warn_unsaved_on_exit", False):
+            try:
+                dirty = bool(is_dirty())
+            except Exception:
+                dirty = False
+
+        if dirty:
+            now = time.time()
+            same_screen = id(screen) == self._pending_esc_screen_id
+            if not same_screen or now - self._pending_esc_discard > 5.0:
+                self._pending_esc_discard = now
+                self._pending_esc_screen_id = id(screen)
+                self.notify(
+                    t("unsaved_changes_confirm", fkey="Esc"),
+                    severity="warning",
+                    timeout=5,
+                )
+                return
+            # Second press within the grace window → discard
+            self._pending_esc_discard = 0.0
+            self._pending_esc_screen_id = 0
+
+        if hasattr(screen, 'action_go_back'):
+            screen.action_go_back()
         else:
-            screen = self.screen
-            if hasattr(screen, 'action_go_back'):
-                screen.action_go_back()
-            else:
-                self.pop_screen()
+            self.pop_screen()
 
     def action_open_targets(self) -> None:
         from ui.screens.main import MainScreen
-        if not isinstance(self.screen, MainScreen):
-            # Pop back to main screen
-            while not isinstance(self.screen, MainScreen):
-                self.pop_screen()
+        if isinstance(self.screen, MainScreen):
+            return
+        # Going back to main pops every screen above it — if any of
+        # those have unsaved changes, warn once and require a second
+        # press to actually discard them. Same grace window as Esc.
+        import time
+        dirty_screens: list[str] = []
+        if getattr(self.settings, "warn_unsaved_on_exit", False):
+            for scr in self.screen_stack:
+                if isinstance(scr, MainScreen):
+                    continue
+                is_dirty = getattr(scr, "is_dirty", None)
+                if callable(is_dirty):
+                    try:
+                        if is_dirty():
+                            dirty_screens.append(type(scr).__name__)
+                    except Exception:
+                        pass
+        if dirty_screens:
+            now = time.time()
+            if now - self._pending_esc_discard > 5.0 or self._pending_esc_screen_id != 0:
+                self._pending_esc_discard = now
+                self._pending_esc_screen_id = 0  # special marker for mass-pop
+                self.notify(
+                    t("unsaved_changes_confirm", fkey="F2"),
+                    severity="warning",
+                    timeout=5,
+                )
+                return
+            self._pending_esc_discard = 0.0
+        while not isinstance(self.screen, MainScreen):
+            self.pop_screen()
 
     def action_open_repository(self) -> None:
         from ui.screens.repository import RepositoryScreen

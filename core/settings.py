@@ -16,6 +16,7 @@ class Settings:
     language: str = "en"
     theme: str = "textual-dark"    # Textual theme name (auto-saved)
     update_check: bool = True
+    warn_unsaved_on_exit: bool = False  # Esc/F2 warn when a screen is dirty
     last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
@@ -47,6 +48,7 @@ class Settings:
             "language": self.language,
             "theme": self.theme,
             "update_check": self.update_check,
+            "warn_unsaved_on_exit": self.warn_unsaved_on_exit,
             "s4_url": self.s4_url,
             "compiler_opt": self.compiler_opt,
             "max_cpus": self.max_cpus,
@@ -81,6 +83,7 @@ class Settings:
             language=data.get("language", "en"),
             theme=data.get("theme", "textual-dark"),
             update_check=data.get("update_check", True),
+            warn_unsaved_on_exit=data.get("warn_unsaved_on_exit", False),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
             max_cpus=data.get("max_cpus", 16),
