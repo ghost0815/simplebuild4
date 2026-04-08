@@ -47,6 +47,9 @@ class BuildEngine:
         qemu_timeout: int = 5,
         qemu_expect: str = "Server running",
         build_overrides: str = "",
+        log_max_age_days: int = 0,
+        log_max_count: int = 0,
+        log_max_size_mb: int = 0,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -72,6 +75,9 @@ class BuildEngine:
         self.qemu_timeout = qemu_timeout
         self.qemu_expect = qemu_expect
         self.build_overrides = build_overrides
+        self.log_max_age_days = log_max_age_days
+        self.log_max_count = log_max_count
+        self.log_max_size_mb = log_max_size_mb
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
         self._log_file = None  # set in build()
@@ -487,12 +493,39 @@ class BuildEngine:
             self._log(f"[red]QEMU -------> ERROR: {e}[/red]")
 
     def _close_log(self, log_path: Path) -> None:
-        """Close the build log file and show its path."""
+        """Show the log path, apply retention, then close the log file.
+
+        Retention must run *before* the file is closed so the
+        "Log retention: removed …" message still reaches both the
+        GUI *and* the freshly written log file (the wrapped self._log
+        writes to both).
+        """
         try:
             self._log(f"Log: {log_path}")
+        except Exception:
+            pass
+        # Apply global log retention (per-bucket). Cleans every log
+        # type (build, library, selfbuild, backup, s4-update) within
+        # its own group. The current log is the newest of its bucket
+        # and is always protected.
+        try:
+            from core.log_cleanup import cleanup_logs
+            removed, freed = cleanup_logs(
+                self.logs_dir,
+                max_age_days=self.log_max_age_days,
+                max_count=self.log_max_count,
+                max_size_mb=self.log_max_size_mb,
+            )
+            if removed:
+                mb = freed / (1024 * 1024)
+                self._log(f"Log retention: removed {removed} old log(s), freed {mb:.2f} MB")
+        except Exception:
+            pass
+        try:
             self._log_file.close()
         except Exception:
             pass
+
 
     def _auto_clone_repo(self, source_name: str) -> Optional[Path]:
         """Auto-clone a repository if it doesn't exist yet."""

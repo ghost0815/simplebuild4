@@ -1543,6 +1543,11 @@ class ToolchainsScreen(Screen):
                 if elapsed:
                     self._log(f"[bold]Elapsed:[/bold] {elapsed}")
                 self._log(f"\n[bold]Done[/bold]")
+                try:
+                    from core.log_cleanup import run_retention
+                    run_retention(self.app.paths.logs_dir, self.app.settings, log=self._log)
+                except Exception:
+                    pass
             finally:
                 self._building = False
                 self._cancel_requested = False
@@ -2612,6 +2617,11 @@ class ToolchainsScreen(Screen):
                     blog(f"[bold]Elapsed:[/bold] {elapsed}")
                 blog(f"Log: {log_path}")
                 log_file.close()
+                try:
+                    from core.log_cleanup import run_retention
+                    run_retention(self.app.paths.logs_dir, self.app.settings, log=self._log)
+                except Exception:
+                    pass
                 self._building = False
                 self.app.call_from_thread(self._update_f9_state)
                 self.app.call_from_thread(self._refresh)
@@ -2768,6 +2778,11 @@ class ToolchainsScreen(Screen):
                 self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]backup failed[/red]")
             finally:
                 log_file.close()
+                try:
+                    from core.log_cleanup import run_retention
+                    run_retention(self.app.paths.logs_dir, self.app.settings, log=self._log)
+                except Exception:
+                    pass
 
         thread = threading.Thread(target=do_backup, daemon=True)
         thread.start()

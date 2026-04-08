@@ -30,6 +30,9 @@ INPUT_MAP = {
     "set-qemu-timeout": "qemu_timeout",
     "set-qemu-expect": "qemu_expect",
     "set-ctng-dir": "ctng_dir",
+    "set-log-max-age": "log_max_age_days",
+    "set-log-max-count": "log_max_count",
+    "set-log-max-size": "log_max_size_mb",
 }
 
 SELECT_MAP = {
@@ -116,6 +119,24 @@ class SettingsScreen(Screen):
             yield Horizontal(
                 Static(f" {t('expected_output')}", classes="s-label"),
                 Input(value=s.qemu_expect, id="set-qemu-expect"),
+                classes="s-row",
+            )
+
+            # Log retention
+            yield Static(f" [bold]{t('section_logs')}[/bold]", classes="section-title")
+            yield Horizontal(
+                Static(f" {t('log_max_age_days')}", classes="s-label"),
+                Input(value=str(s.log_max_age_days), id="set-log-max-age", type="integer"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(f" {t('log_max_count')}", classes="s-label"),
+                Input(value=str(s.log_max_count), id="set-log-max-count", type="integer"),
+                classes="s-row",
+            )
+            yield Horizontal(
+                Static(f" {t('log_max_size_mb')}", classes="s-label"),
+                Input(value=str(s.log_max_size_mb), id="set-log-max-size", type="integer"),
                 classes="s-row",
             )
 

@@ -122,6 +122,9 @@ def cli_build(args: list[str]) -> int:
             qemu_timeout=settings.qemu_timeout,
             qemu_expect=settings.qemu_expect,
             build_overrides=build_overrides,
+            log_max_age_days=settings.log_max_age_days,
+            log_max_count=settings.log_max_count,
+            log_max_size_mb=settings.log_max_size_mb,
             log=log,
         )
         success = engine.build()

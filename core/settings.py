@@ -41,6 +41,12 @@ class Settings:
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
 
+    # Log retention (applied per target to build logs in logs_dir).
+    # 0 = unlimited for that rule. The newest log per target is always kept.
+    log_max_age_days: int = 30
+    log_max_count: int = 5
+    log_max_size_mb: int = 0
+
     def save(self, path: Path) -> None:
         """Save settings to YAML."""
         data = {
@@ -61,6 +67,9 @@ class Settings:
             "qemu_timeout": self.qemu_timeout,
             "qemu_expect": self.qemu_expect,
             "ctng_dir": self.ctng_dir,
+            "log_max_age_days": self.log_max_age_days,
+            "log_max_count": self.log_max_count,
+            "log_max_size_mb": self.log_max_size_mb,
         }
         path.write_text(
             yaml.dump(data, default_flow_style=False, sort_keys=False),
@@ -96,4 +105,7 @@ class Settings:
             qemu_timeout=data.get("qemu_timeout", 5),
             qemu_expect=data.get("qemu_expect", "Server running"),
             ctng_dir=data.get("ctng_dir", ""),
+            log_max_age_days=data.get("log_max_age_days", 30),
+            log_max_count=data.get("log_max_count", 5),
+            log_max_size_mb=data.get("log_max_size_mb", 0),
         )

@@ -116,6 +116,19 @@ class S4App(App):
         # Restore saved theme
         if self.settings.theme:
             self.theme = self.settings.theme
+        # Apply log retention at startup so old logs are cleaned
+        # even when the user never triggers a build.
+        try:
+            from core.log_cleanup import cleanup_logs
+            cleanup_logs(
+                self.paths.logs_dir,
+                max_age_days=self.settings.log_max_age_days,
+                max_count=self.settings.log_max_count,
+                max_size_mb=self.settings.log_max_size_mb,
+            )
+        except Exception:
+            pass
+
         from ui.screens.main import MainScreen
         self.push_screen(MainScreen())
 
@@ -698,6 +711,11 @@ class S4App(App):
         finally:
             _log(f"Log: {log_path}")
             log_file.close()
+            try:
+                from core.log_cleanup import run_retention
+                run_retention(self.paths.logs_dir, self.settings, log=_log)
+            except Exception:
+                pass
 
         # Auto-restart if update succeeded and no unsaved changes
         if updated_ok:
