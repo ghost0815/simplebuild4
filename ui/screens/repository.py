@@ -116,6 +116,7 @@ class RepositoryScreen(Screen):
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_name')}", classes="repo-label")
                     yield Input(placeholder=t("ph_repo_name"), id="edit-repo-name")
+                    yield Static("", classes="repo-row-spacer")
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_url')}", classes="repo-label")
@@ -135,6 +136,7 @@ class RepositoryScreen(Screen):
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_switch_to')}", classes="repo-label")
                     yield Input(placeholder=t("ph_repo_switch"), id="edit-repo-switch")
+                    yield Static("", classes="repo-row-spacer")
 
         yield S4Footer(active_screen="repository")
 

@@ -574,3 +574,9 @@ TextArea#tc-editor:focus {
 .repo-row Select {
     width: 1fr;
 }
+
+.repo-row-spacer {
+    width: 4;
+    min-width: 4;
+    max-width: 4;
+}
