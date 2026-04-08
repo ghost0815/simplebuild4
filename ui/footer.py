@@ -26,7 +26,7 @@ SCREEN_MAP = {
 # Screens where Add/Remove are available
 ADD_REMOVE_SCREENS = {"main", "repository"}
 ADD_SCREENS = {"main", "repository"}
-REMOVE_SCREENS = {"main", "repository", "toolchains"}
+REMOVE_SCREENS = {"main", "repository", "toolchains", "target_edit"}
 UPDATE_SCREENS = {"toolchains"}
 
 
@@ -192,10 +192,12 @@ class S4Footer(Horizontal):
         add_disabled = self._active_screen not in ADD_SCREENS
         yield FooterItem(key="F10", label=t("add"), action="action_add", disabled=add_disabled)
 
-        # F11 Remove starts disabled on toolchains; the screen flips it on
-        # via _update_f9_state when the selection is a removable local entry.
+        # F11 starts disabled on screens that decide context-dependently
+        # (toolchains: only when a removable local item is selected;
+        # target_edit: only on the Options tab). They flip it on via
+        # their own update routines.
         remove_disabled = self._active_screen not in REMOVE_SCREENS
-        if self._active_screen == "toolchains":
+        if self._active_screen in ("toolchains", "target_edit"):
             remove_disabled = True
         yield FooterItem(key="F11", label=t("remove"), action="action_remove", disabled=remove_disabled)
 

@@ -71,10 +71,48 @@ Screen {
     padding: 0;
 }
 
+.opts-toggle-row {
+    height: 1;
+    margin: 0;
+    padding: 0;
+}
+
+Switch.section-switch.-on > .switch--slider {
+    color: $primary;
+}
+
+Switch.section-switch.all-on.-on > .switch--slider {
+    color: $success;
+}
+
+.opts-toggle-btn {
+    min-width: 8;
+    max-width: 12;
+    height: 1;
+    margin: 0;
+    padding: 0;
+    border: none;
+    background: $surface;
+    color: $foreground;
+}
+
+.opts-toggle-btn:hover {
+    background: $primary;
+    color: $text;
+}
+
 .s-compact {
     height: 1;
     width: 1fr;
     padding: 0;
+}
+
+.mod-grid > .s-compact.row-odd {
+    background: #1f1f1f;
+}
+
+.mod-grid > .s-compact.row-even {
+    background: #2a2a2a;
 }
 
 .s-compact Switch {

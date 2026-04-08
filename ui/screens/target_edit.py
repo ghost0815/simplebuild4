@@ -39,13 +39,35 @@ def _safe_id(name: str) -> str:
     return s
 
 
-def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False) -> Horizontal:
+def _column_major(items: list, cols: int = 3) -> list:
+    """Reorder items so a row-major grid renders them column by column.
+
+    Default Textual Grid fills row-by-row (left → right, then next row).
+    With this reordering, reading the rendered grid top → bottom in
+    column 1, then column 2, etc., yields the original order.
+    """
+    n = len(items)
+    if n == 0 or cols <= 1:
+        return list(items)
+    rows = (n + cols - 1) // cols
+    placed: list = [None] * (rows * cols)
+    for i, item in enumerate(items):
+        col = i // rows
+        row = i % rows
+        placed[row * cols + col] = item
+    return [x for x in placed if x is not None]
+
+
+def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False, row_class: str = "") -> Horizontal:
     """Compact switch for multi-column grid layout."""
     display_label = f" [red strike]{label}[/red strike]" if removed else f" {label}"
+    classes = "s-compact"
+    if row_class:
+        classes = f"s-compact {row_class}"
     return Horizontal(
         Switch(value=value, id=widget_id),
         Static(display_label, classes="sc-label"),
-        classes="s-compact",
+        classes=classes,
     )
 
 
@@ -61,7 +83,15 @@ class TargetEditScreen(Screen):
 
     _collapsible_states: dict[str, bool] = {}  # class-level: id → collapsed
 
-    def __init__(self, target: Target | None = None, save_path: Path | None = None, active_tab: str = "general", focus_id: str = "") -> None:
+    def __init__(
+        self,
+        target: Target | None = None,
+        save_path: Path | None = None,
+        active_tab: str = "general",
+        focus_id: str = "",
+        options_seeded: bool = False,
+        sticky_stale: dict[str, list[str]] | None = None,
+    ) -> None:
         super().__init__()
         self.target = target or Target()
         self.save_path = save_path
@@ -69,6 +99,14 @@ class TargetEditScreen(Screen):
         self._active_tab = active_tab
         self._focus_id = focus_id
         self._tc_defaults: dict[str, dict] = {}  # sid → {cc, cf, ld, mv}
+        # Options have been "seeded" once an existing yaml was loaded
+        # OR the user has touched the screen (refreshes from _collect
+        # always set this). A truly new untouched target stays unseeded
+        # so the first compose can fill in oscam defaults.
+        self._options_seeded = options_seeded or bool(save_path)
+        # Stale (red, no longer in repo) options survive toggle-all
+        # actions until the user explicitly Resets the category.
+        self._sticky_stale: dict[str, list[str]] = dict(sticky_stale or {})
 
     def _load_oscam_options(self) -> OscamOptions:
         """Load and merge oscam options from all assigned source repos."""
@@ -423,11 +461,13 @@ class TargetEditScreen(Screen):
 
         # === Tab 2: Options (oscam modules) ===
         # Merge target config with oscam options:
-        # - New target (empty): use oscam defaults
-        # - Existing target: keep saved state, new options get oscam default
-        # - Removed options: warn user
-        is_new = not b.modules and not b.protocols and not b.readers and not b.card_readers
-        self._removed_opts = {}  # category → list of removed option names
+        # - Untouched new target → seed with oscam defaults exactly once
+        # - Existing target / touched new target → trust target.yaml
+        # - Removed options: shown strike-through in red so the user can
+        #                    explicitly drop them via the Reset button
+        is_new = not self._options_seeded
+        # Carry sticky stale (those the user has not yet Reset away).
+        self._removed_opts = {k: list(v) for k, v in self._sticky_stale.items()}
 
         def _merge(saved: list[str], available: list[str], defaults: list[str], category: str) -> dict[str, bool]:
             """Merge saved target config with available oscam options.
@@ -445,16 +485,56 @@ class TargetEditScreen(Screen):
                     result[opt] = opt in defaults
                 else:
                     result[opt] = opt in saved
-            # Detect removed options (saved but no longer in any repo)
-            removed = [opt for opt in saved if opt not in available and available]
-            if removed:
-                self._removed_opts[category] = removed
+            # Detect removed options. A name counts as stale if either
+            # (a) it is in the saved list but not in the current repo,
+            # or (b) the previous compose already flagged it via
+            # _sticky_stale. Sticky entries survive toggle-all so they
+            # only disappear via Reset.
+            removed_set: set[str] = set(self._removed_opts.get(category, []))
+            for opt in saved:
+                if opt not in available and available:
+                    removed_set.add(opt)
+            if removed_set:
+                self._removed_opts[category] = sorted(removed_set)
+            # Render stale options with their actual on/off state from
+            # the saved list — same treatment as available items.
+            for stale in self._removed_opts.get(category, []):
+                result[stale] = stale in saved
             return result
 
         merged_addons = _merge(b.modules, oscam.addons, oscam.default_enabled.get("addons", []), "addons")
         merged_protos = _merge(b.protocols, oscam.protocols, oscam.default_enabled.get("protocols", []), "protocols")
         merged_readers = _merge(b.readers, oscam.readers, oscam.default_enabled.get("readers", []), "readers")
         merged_crs = _merge(b.card_readers, oscam.card_readers, oscam.default_enabled.get("card_readers", []), "card_readers")
+
+        def _opt_widget(name: str, merged: dict, removed_set: set, pos: int = 0):
+            row_class = "row-even" if (pos // 3) % 2 == 0 else "row-odd"
+            return _switch_compact(
+                name,
+                merged.get(name, False),
+                f"m-{name}",
+                removed=name in removed_set,
+                row_class=row_class,
+            )
+
+        def _section_toggle(category: str, items: list[str], merged: dict, section_label: str):
+            """A first-row Switch that toggles every option in the
+            collapsible. Default state mirrors the live selection: ON
+            if at least one option is enabled, OFF if everything is
+            off. Sits in the top-left grid cell so it aligns with the
+            real options below. The label echoes the action so the
+            user does not need a hover tooltip.
+            """
+            any_on = any(merged.get(name, False) for name in items)
+            all_on = bool(items) and all(merged.get(name, False) for name in items)
+            classes = "section-switch all-on" if all_on else "section-switch"
+            sw = Switch(value=any_on, id=f"sec-{category}", classes=classes)
+            label = Static(
+                f" [b]{t('te_section_toggle_tip', section=section_label)}[/b]",
+                classes="sc-label",
+            )
+            cell = Horizontal(sw, label, classes="s-compact")
+            return Grid(cell, classes="mod-grid")
 
         with VerticalScroll(id="te-panel-oscam"):
             addons_sorted = sorted(oscam.addons)
@@ -463,51 +543,48 @@ class TargetEditScreen(Screen):
             addon_count = sum(1 for m in all_addons if merged_addons.get(m) or m in removed_addons)
             with Collapsible(title=f"Addons ({addon_count}/{len(addons_sorted)})", collapsed=False, id="col-addons"):
                 if oscam.addons or removed_addons:
+                    yield _section_toggle("addons", all_addons, merged_addons, "Addons")
                     with Grid(classes="mod-grid"):
-                        for mod in addons_sorted:
-                            yield _switch_compact(mod, merged_addons.get(mod, False), f"m-{mod}")
-                        for mod in removed_addons:
-                            yield _switch_compact(mod, True, f"m-{mod}", removed=True)
+                        for _i, mod in enumerate(_column_major(all_addons)):
+                            yield _opt_widget(mod, merged_addons, set(removed_addons), pos=_i)
                 else:
                     yield Static(f"  [dim]{t('te_select_source_first')}[/dim]")
 
             protos_sorted = sorted(oscam.protocols)
             removed_protos = sorted(self._removed_opts.get("protocols", []))
+            all_protos = protos_sorted + removed_protos
             proto_count = sum(1 for m in protos_sorted if merged_protos.get(m))
             with Collapsible(title=f"Protocols ({proto_count}/{len(protos_sorted)})", collapsed=False, id="col-protocols"):
+                if all_protos:
+                    yield _section_toggle("protocols", all_protos, merged_protos, "Protocols")
                 with Grid(classes="mod-grid"):
-                    for mod in protos_sorted:
-                        yield _switch_compact(mod, merged_protos.get(mod, False), f"m-{mod}")
-                    for mod in removed_protos:
-                        yield _switch_compact(mod, True, f"m-{mod}", removed=True)
+                    for _i, mod in enumerate(_column_major(all_protos)):
+                        yield _opt_widget(mod, merged_protos, set(removed_protos), pos=_i)
 
             readers_sorted = sorted(oscam.readers)
             removed_readers = sorted(self._removed_opts.get("readers", []))
+            all_readers = readers_sorted + removed_readers
             reader_count = sum(1 for m in readers_sorted if merged_readers.get(m))
             with Collapsible(title=f"Readers ({reader_count}/{len(readers_sorted)})", collapsed=False, id="col-readers"):
+                if all_readers:
+                    yield _section_toggle("readers", all_readers, merged_readers, "Readers")
                 with Grid(classes="mod-grid"):
-                    for mod in readers_sorted:
-                        yield _switch_compact(mod, merged_readers.get(mod, False), f"m-{mod}")
-                    for mod in removed_readers:
-                        yield _switch_compact(mod, True, f"m-{mod}", removed=True)
+                    for _i, mod in enumerate(_column_major(all_readers)):
+                        yield _opt_widget(mod, merged_readers, set(removed_readers), pos=_i)
 
             crs_sorted = sorted(oscam.card_readers)
             removed_crs = sorted(self._removed_opts.get("card_readers", []))
+            all_crs = crs_sorted + removed_crs
             cr_count = sum(1 for m in crs_sorted if merged_crs.get(m))
             with Collapsible(title=f"Card Readers ({cr_count}/{len(crs_sorted)})", collapsed=False, id="col-card-readers"):
+                if all_crs:
+                    yield _section_toggle("card_readers", all_crs, merged_crs, "Card Readers")
                 with Grid(classes="mod-grid"):
-                    for mod in crs_sorted:
-                        yield _switch_compact(mod, merged_crs.get(mod, False), f"m-{mod}")
-                    for mod in removed_crs:
-                        yield _switch_compact(mod, True, f"m-{mod}", removed=True)
+                    for _i, mod in enumerate(_column_major(all_crs)):
+                        yield _opt_widget(mod, merged_crs, set(removed_crs), pos=_i)
 
-            # Cleanup button (only show if there are removed options)
-            if self._removed_opts:
-                yield Horizontal(
-                    Static("", classes="spacer"),
-                    Button(t("te_cleanup"), id="btn-cleanup", variant="primary"),
-                    classes="s-row",
-                )
+            # The reset action lives on F11 in the footer (only when
+            # the Options tab is active) — see do_remove.
 
         # === Tab 3: Upload ===
         with VerticalScroll(id="te-panel-upload"):
@@ -562,7 +639,30 @@ class TargetEditScreen(Screen):
         if self._focus_id:
             self.set_timer(0.1, self._restore_focus)
         else:
-            self.set_timer(0.1, lambda: self.query_one("#t-name", Input).focus())
+            self.set_timer(0.1, self._focus_common)
+
+    def _focus_common(self) -> None:
+        """Set focus to the Common collapsible header so the user can
+        immediately collapse/expand it with Enter/Space without typing
+        anything into the Name field by accident.
+        """
+        from textual.widgets._collapsible import CollapsibleTitle
+        col = None
+        try:
+            col = self.query_one("#col-common", Collapsible)
+        except Exception:
+            pass
+        if col is not None:
+            for child in col.query(CollapsibleTitle):
+                try:
+                    child.focus()
+                    return
+                except Exception:
+                    break
+        try:
+            self.query_one("#t-name", Input).focus()
+        except Exception:
+            pass
 
     def _restore_focus(self) -> None:
         try:
@@ -576,11 +676,26 @@ class TargetEditScreen(Screen):
             if col.id:
                 TargetEditScreen._collapsible_states[col.id] = col.collapsed
 
-    def _refresh_screen(self, target: Target, active_tab: str, focus_id: str = "") -> None:
-        """Save state and refresh the screen."""
+    def _refresh_screen(self, target: Target, active_tab: str, focus_id: str = "", clear_stale: bool = False) -> None:
+        """Save state and refresh the screen.
+
+        The new screen is always considered seeded — anything the user
+        touched between the previous compose and this refresh is in
+        `target` already, so we must NOT re-apply oscam defaults over
+        it. Sticky stale entries are forwarded so they survive
+        all-on/all-off until the user explicitly Resets the category.
+        """
         self._save_collapsible_states()
+        sticky = {} if clear_stale else {k: list(v) for k, v in self._removed_opts.items()}
         self.app.pop_screen()
-        self.app.push_screen(TargetEditScreen(target=target, save_path=self.save_path, active_tab=active_tab, focus_id=focus_id))
+        self.app.push_screen(TargetEditScreen(
+            target=target,
+            save_path=self.save_path,
+            active_tab=active_tab,
+            focus_id=focus_id,
+            options_seeded=True,
+            sticky_stale=sticky,
+        ))
 
     def on_click(self, event) -> None:
         widget = event.widget if hasattr(event, 'widget') else None
@@ -594,9 +709,25 @@ class TargetEditScreen(Screen):
             elif widget.id == "te-tab-upload":
                 self._show_tab("upload")
 
+    _suppress_section_sync: bool = False
+
     def on_switch_changed(self, event: Switch.Changed) -> None:
         """When a source or toolchain switch changes, refresh to update UI."""
         sid = event.switch.id or ""
+        # Section toggle (sec-addons / sec-protocols / sec-readers /
+        # sec-card_readers) → flip every option in the matching
+        # collapsible to the new value, then refresh. Programmatic
+        # syncs from the option-side handler suppress themselves.
+        if sid.startswith("sec-"):
+            if self._suppress_section_sync:
+                return
+            self._do_section_toggle(sid[len("sec-"):], event.value)
+            return
+        # Individual option (m-*) toggled → keep the matching section
+        # switch in sync. ON if any option in the category is on.
+        if sid.startswith("m-"):
+            self._sync_section_for_option(sid[len("m-"):])
+            return
         is_source = sid.startswith("src-") and not sid.startswith("src-upd-") and not sid.startswith("src-patch-")
         is_patch_toggle = sid.startswith("src-patch-")
         is_toolchain = sid.startswith("tc-") and not sid.startswith("tc-cc-") and not sid.startswith("tc-cf-") and not sid.startswith("tc-ld-") and not sid.startswith("tc-mv-")
@@ -645,9 +776,7 @@ class TargetEditScreen(Screen):
             return
 
     def on_button_pressed(self, event) -> None:
-        if event.button.id == "btn-cleanup":
-            self._do_cleanup()
-        elif event.button.id == "btn-upx-browse":
+        if event.button.id == "btn-upx-browse":
             self._open_upx_picker()
         elif event.button.id == "btn-binary-browse":
             self._open_binary_dir_picker()
@@ -857,22 +986,86 @@ class TargetEditScreen(Screen):
             else:
                 event.input.add_class("tc-default")
 
-    def _do_cleanup(self) -> None:
-        """Remove stale options that no longer exist in oscam."""
-        if not self._removed_opts:
-            self.notify("Nothing to clean up", severity="information")
+    def _sync_section_for_option(self, opt_name: str) -> None:
+        """Recompute the section toggle state after a user toggle on
+        an individual option.
+        """
+        oscam = self._load_oscam_options()
+        category = None
+        if opt_name in oscam.addons or opt_name in self._removed_opts.get("addons", []):
+            category = "addons"
+        elif opt_name in oscam.protocols or opt_name in self._removed_opts.get("protocols", []):
+            category = "protocols"
+        elif opt_name in oscam.readers or opt_name in self._removed_opts.get("readers", []):
+            category = "readers"
+        elif opt_name in oscam.card_readers or opt_name in self._removed_opts.get("card_readers", []):
+            category = "card_readers"
+        if not category:
             return
-        count = sum(len(v) for v in self._removed_opts.values())
-        # Collect current state without removed options
+        items_map = {
+            "addons": oscam.addons,
+            "protocols": oscam.protocols,
+            "readers": oscam.readers,
+            "card_readers": oscam.card_readers,
+        }
+        all_items = list(items_map[category]) + list(self._removed_opts.get(category, []))
+        any_on = any(self._switch_on(f"m-{name}") for name in all_items)
+        all_on = bool(all_items) and all(self._switch_on(f"m-{name}") for name in all_items)
+        try:
+            sec = self.query_one(f"#sec-{category}", Switch)
+        except Exception:
+            return
+        if sec.value != any_on:
+            # Suppress the resulting Switch.Changed message so the
+            # sec-* handler does not flip every option to match.
+            with sec.prevent(Switch.Changed):
+                sec.value = any_on
+        # Update the all-on class so the slider tints differently
+        # when every option in the section is enabled.
+        if all_on:
+            sec.add_class("all-on")
+        else:
+            sec.remove_class("all-on")
+
+    def _do_section_toggle(self, category: str, new_state: bool) -> None:
+        """Set every option in a category to new_state.
+
+        Stale (red) entries are toggled along with the regular ones —
+        they only disappear via Reset.
+        """
+        oscam = self._load_oscam_options()
+        attr_map = {
+            "addons": ("modules", oscam.addons),
+            "protocols": ("protocols", oscam.protocols),
+            "readers": ("readers", oscam.readers),
+            "card_readers": ("card_readers", oscam.card_readers),
+        }
+        if category not in attr_map:
+            return
+        target_attr, available = attr_map[category]
+        stale = list(self._removed_opts.get(category, []))
+        live_items = list(available) + stale
+        target = self._collect()
+        if new_state:
+            setattr(target.build, target_attr, list(live_items))
+        else:
+            setattr(target.build, target_attr, [])
+        self._refresh_screen(target, "oscam")
+
+    def _do_reset_options(self) -> None:
+        """Restore Options to the oscam defaults from the assigned
+        repos and drop any stale (red) entries. F12 still required to
+        persist the result.
+        """
         target = self._collect()
         oscam = self._load_oscam_options()
-        # Filter out removed options from the collected target
-        target.build.modules = [m for m in target.build.modules if m in oscam.addons]
-        target.build.protocols = [m for m in target.build.protocols if m in oscam.protocols]
-        target.build.readers = [m for m in target.build.readers if m in oscam.readers]
-        target.build.card_readers = [m for m in target.build.card_readers if m in oscam.card_readers]
-        self._refresh_screen(target, "oscam")
-        self.notify(f"Cleaned up {count} removed option(s) — save to apply", severity="information")
+        target.build.modules = list(oscam.default_enabled.get("addons", []))
+        target.build.protocols = list(oscam.default_enabled.get("protocols", []))
+        target.build.readers = list(oscam.default_enabled.get("readers", []))
+        target.build.card_readers = list(oscam.default_enabled.get("card_readers", []))
+        self._removed_opts = {}
+        self._refresh_screen(target, "oscam", clear_stale=True)
+        self.notify(t("te_reset_done"), severity="information")
 
     def action_switch_tab(self, tab: str) -> None:
         self._show_tab(tab)
@@ -890,6 +1083,31 @@ class TargetEditScreen(Screen):
                 self.query_one(tab_id).set_classes("tab-active" if key == tab else "tab-inactive")
             except Exception:
                 pass
+        self._active_tab = tab
+        self._update_footer_state()
+
+    def _update_footer_state(self) -> None:
+        """F11 acts as Reset for the Options tab — enabled there only."""
+        try:
+            from ui.footer import FooterItem
+            for item in self.query(FooterItem):
+                if item._key == "F11":
+                    enabled = self._active_tab == "oscam"
+                    item._label = t("te_reset")
+                    item._disabled = not enabled
+                    if enabled:
+                        item.remove_class("disabled")
+                    else:
+                        item.add_class("disabled")
+                    item.refresh()
+        except Exception:
+            pass
+
+    def do_remove(self) -> None:
+        """F11 in the Options tab → Reset oscam options to repo defaults."""
+        if self._active_tab != "oscam":
+            return
+        self._do_reset_options()
 
     def _collect(self) -> Target:
         """Collect all values from widgets into a Target."""
@@ -957,10 +1175,10 @@ class TargetEditScreen(Screen):
         all_protos = oscam.protocols + self._removed_opts.get("protocols", [])
         all_readers = oscam.readers + self._removed_opts.get("readers", [])
         all_crs = oscam.card_readers + self._removed_opts.get("card_readers", [])
-        modules = [m for m in all_addons if self._switch_on(f"m-{m}")]
-        protocols = [m for m in all_protos if self._switch_on(f"m-{m}")]
-        readers = [m for m in all_readers if self._switch_on(f"m-{m}")]
-        card_readers = [m for m in all_crs if self._switch_on(f"m-{m}")]
+        modules = sorted(m for m in all_addons if self._switch_on(f"m-{m}"))
+        protocols = sorted(m for m in all_protos if self._switch_on(f"m-{m}"))
+        readers = sorted(m for m in all_readers if self._switch_on(f"m-{m}"))
+        card_readers = sorted(m for m in all_crs if self._switch_on(f"m-{m}"))
 
         # Collect USE_* and STATIC_* flags dynamically from switches
         mk_flags = self._load_makefile_flags()

@@ -233,10 +233,10 @@ class Target:
                     static_flags[flag] = True
 
         build = BuildSettings(
-            modules=build_data.get("modules", []),
-            protocols=build_data.get("protocols", []),
-            readers=build_data.get("readers", []),
-            card_readers=build_data.get("card_readers", []),
+            modules=sorted(build_data.get("modules") or []),
+            protocols=sorted(build_data.get("protocols") or []),
+            readers=sorted(build_data.get("readers") or []),
+            card_readers=sorted(build_data.get("card_readers") or []),
             use_flags=use_flags,
             static_flags=static_flags,
             use_compress=build_data.get("use_compress", False),
