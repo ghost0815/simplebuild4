@@ -67,11 +67,14 @@ class Paths:
         ):
             d.mkdir(parents=True, exist_ok=True)
 
-        # seed default targets on first run
-        # Only copy files that are actual target configs (contain 'sources:' or 'toolchain:')
+        # seed default targets on first run — the shipped defaults/
+        # directory holds target samples alongside registry files
+        # (toolchains.yaml, libraries.yaml, builders.yaml). Only the
+        # target samples should end up in data/targets/.
+        _not_targets = {"toolchains.yaml", "libraries.yaml", "builders.yaml"}
         if self.defaults_dir.is_dir():
             for default in self.defaults_dir.glob("*.yaml"):
-                if default.name in ("toolchains.yaml", "libraries.yaml"):
+                if default.name in _not_targets:
                     continue
                 dest = self.targets_dir / default.name
                 if not dest.exists():
