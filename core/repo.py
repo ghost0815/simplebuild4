@@ -28,6 +28,7 @@ class RepoConfig:
     url: str = "https://git.streamboard.tv/common/oscam.git"
     branch: str = ""           # empty = default branch
     clone_depth: int = 0       # 0 = full clone
+    vcs: str = ""              # "git" | "svn" | "" (auto-detect)
 
 
 @dataclass
@@ -85,11 +86,27 @@ class RepoState:
                 info = subprocess.check_output(
                     ["svn", "info"], cwd=repo_path, text=True, stderr=subprocess.DEVNULL,
                 )
+                # svn info exposes two revision fields:
+                #   Revision         → global HEAD the WC was updated to
+                #   Last Changed Rev → rev at which THIS path was last
+                #                      modified — that's the per-branch
+                #                      number we actually want to show
+                last_changed = 0
+                global_rev = 0
                 for line in info.splitlines():
                     if line.startswith("Revision:"):
-                        state.revision = int(line.split(":", 1)[1].strip())
+                        try:
+                            global_rev = int(line.split(":", 1)[1].strip())
+                        except ValueError:
+                            pass
+                    elif line.startswith("Last Changed Rev:"):
+                        try:
+                            last_changed = int(line.split(":", 1)[1].strip())
+                        except ValueError:
+                            pass
                     elif line.startswith("URL:"):
                         state.branch = line.split(":", 1)[1].strip()
+                state.revision = last_changed or global_rev
             except (subprocess.CalledProcessError, ValueError):
                 pass
 
@@ -116,8 +133,13 @@ class RepoManager:
 
     @property
     def is_git(self) -> bool:
-        """Detect VCS type from URL."""
+        """Detect VCS type: explicit config.vcs wins, otherwise URL heuristic."""
+        if self.config.vcs:
+            return self.config.vcs == "git"
         url = self.config.url
+        # Obvious SVN markers override the default git assumption
+        if "/svn/" in url or url.rstrip("/").endswith("/trunk") or "/trunk/" in url:
+            return False
         return url.startswith("git@") or url.endswith(".git")
 
     @property
@@ -171,8 +193,39 @@ class RepoManager:
                 log(f"Clone failed: {e}")
             return False
 
+    def _svn_effective_url(self) -> str:
+        """Compute the real checkout URL for the configured branch.
+
+        config.url is treated as the root (typically ending in
+        `/trunk`, `/branches/<x>` or `/tags/<x>`); config.branch
+        overrides which path within the standard layout to use.
+
+        - empty branch on a standard-layout URL → `<base>/trunk`
+        - empty branch on a non-standard URL    → url as-is
+        - 'trunk'                               → `<base>/trunk`
+        - 'branches/x' / 'tags/x'               → `<base>/<x>`
+        - anything else                         → `<base>/branches/<x>`
+        """
+        from core.vcs_branches import svn_base_url
+        target = (self.config.branch or "").strip()
+        base = svn_base_url(self.config.url)
+        # Standard layout is detected when svn_base_url actually stripped
+        # a trunk/branches/tags suffix off the configured URL.
+        is_standard = base.rstrip("/") != self.config.url.rstrip("/")
+        if not target:
+            return f"{base}/trunk" if is_standard else self.config.url
+        if target == "trunk":
+            return f"{base}/trunk"
+        if target.startswith("branches/") or target.startswith("tags/"):
+            return f"{base}/{target}"
+        return f"{base}/branches/{target}"
+
     def _svn_checkout(self, log: Optional[Callable[[str], None]] = None) -> bool:
-        cmd = ["svn", "checkout", "--non-interactive", self.config.url, str(self.repo_path)]
+        # Build the effective checkout URL. config.url is the base/trunk
+        # URL; config.branch (if set) selects an alternate location in
+        # the standard trunk/branches/tags layout.
+        checkout_url = self._svn_effective_url()
+        cmd = ["svn", "checkout", "--non-interactive", checkout_url, str(self.repo_path)]
         if log:
             log(f"$ {' '.join(cmd)}")
         try:
@@ -206,6 +259,27 @@ class RepoManager:
 
     def _git_update(self, log: Optional[Callable[[str], None]] = None) -> bool:
         try:
+            # If the config has a branch set and the working copy is on a
+            # different branch, fetch + checkout + pull — so that a simple
+            # Update also applies a branch change saved in the editor.
+            target = (self.config.branch or "").strip()
+            if target:
+                try:
+                    current = _git(self.repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+                except subprocess.CalledProcessError:
+                    current = ""
+                if current != target:
+                    if log:
+                        log("$ git reset --hard")
+                    _git(self.repo_path, "reset", "--hard")
+                    if log:
+                        log(f"$ git fetch origin {target}")
+                    _git(self.repo_path, "fetch", "origin", target)
+                    if log:
+                        log(f"$ git checkout -B {target} origin/{target}")
+                    out = _git(self.repo_path, "checkout", "-B", target, f"origin/{target}")
+                    if log and out:
+                        log(out)
             if log:
                 log("$ git pull")
             output = _git(self.repo_path, "pull")
@@ -227,6 +301,29 @@ class RepoManager:
                 ["svn", "revert", "-R", "."],
                 cwd=self.repo_path, capture_output=True, text=True, timeout=120,
             )
+            # If the config branch points at a different URL than what is
+            # currently checked out, switch to it before updating. The
+            # branch field stores a path relative to the base URL, e.g.
+            # "trunk" or "branches/<name>".
+            target = (self.config.branch or "").strip()
+            if target:
+                try:
+                    info = subprocess.check_output(
+                        ["svn", "info", "--show-item", "url", "--non-interactive"],
+                        cwd=self.repo_path, text=True, stderr=subprocess.DEVNULL,
+                    ).strip()
+                except Exception:
+                    info = ""
+                target_url = self._svn_effective_url()
+                if info and info.rstrip("/") != target_url.rstrip("/"):
+                    if log:
+                        log(f"$ svn switch {target_url}")
+                    out = subprocess.check_output(
+                        ["svn", "switch", "--non-interactive", "--accept", "postpone", target_url],
+                        cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
+                    )
+                    if log and out:
+                        log(out)
             if log:
                 log("$ svn update")
             output = subprocess.check_output(
@@ -241,6 +338,112 @@ class RepoManager:
             if log:
                 log(f"Update failed: {e}")
             return False
+
+    def ensure_config_branch(self, log: Optional[Callable[[str], None]] = None) -> bool:
+        """If the working copy is not on config.branch, switch to it.
+
+        No fetch, no pull, no update — just the minimal checkout/switch
+        needed to move the working copy to the configured branch.
+        Returns True if already in sync or switch succeeded.
+        """
+        if not self.repo_path.exists():
+            return True
+        target = (self.config.branch or "").strip()
+        if self.is_git:
+            try:
+                current = _git(self.repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+            except subprocess.CalledProcessError:
+                return False
+            # Empty branch for git → resolve to the remote default
+            # (what origin/HEAD points at). Falls back to "master".
+            if not target:
+                try:
+                    # Ask the remote so we pick the *current* default
+                    # even if the local symref is stale.
+                    out = subprocess.check_output(
+                        ["git", "ls-remote", "--symref", self.config.url, "HEAD"],
+                        text=True, stderr=subprocess.DEVNULL, timeout=10,
+                    )
+                    target = ""
+                    for line in out.splitlines():
+                        if line.startswith("ref:"):
+                            import re as _re
+                            m = _re.match(r'^ref:\s+refs/heads/(\S+)', line)
+                            if m:
+                                target = m.group(1)
+                                break
+                    if not target:
+                        target = "master"
+                except Exception:
+                    target = "master"
+            if current == target:
+                return True
+            try:
+                # Drop local modifications (typically applied patches) so
+                # the checkout can proceed without a dirty WC refusal.
+                if log:
+                    log("$ git reset --hard")
+                _git(self.repo_path, "reset", "--hard")
+                if log:
+                    log(f"$ git fetch origin {target}")
+                _git(self.repo_path, "fetch", "origin", target)
+                # Prefer the remote-tracking ref so the checkout works
+                # even if no local branch exists yet.
+                if log:
+                    log(f"$ git checkout -B {target} origin/{target}")
+                out = _git(self.repo_path, "checkout", "-B", target, f"origin/{target}")
+                if log and out:
+                    log(out)
+                return True
+            except subprocess.CalledProcessError as e:
+                if log:
+                    log(f"Branch switch failed: {e}")
+                return False
+        else:
+            # SVN — translate the branch value to a URL and svn switch
+            try:
+                info = subprocess.check_output(
+                    ["svn", "info", "--show-item", "url", "--non-interactive"],
+                    cwd=self.repo_path, text=True, stderr=subprocess.DEVNULL,
+                ).strip()
+            except Exception:
+                info = ""
+            target_url = self._svn_effective_url()
+            if info.rstrip("/") == target_url.rstrip("/"):
+                return True
+            try:
+                # Drop any lingering patches before the switch — a dirty
+                # working copy causes the switch to error out.
+                if log:
+                    log("$ svn revert -R .")
+                subprocess.run(
+                    ["svn", "revert", "-R", "."],
+                    cwd=self.repo_path, capture_output=True, text=True, timeout=120,
+                )
+                if log:
+                    log(f"$ svn switch {target_url}")
+                out = subprocess.check_output(
+                    ["svn", "switch", "--non-interactive", "--accept", "postpone", "--ignore-ancestry", target_url],
+                    cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
+                )
+                if log and out:
+                    log(out)
+                # svn switch brings the WC to HEAD of the new URL already,
+                # but run an explicit update so the revision is visibly
+                # advanced even on edge cases.
+                if log:
+                    log("$ svn update")
+                out = subprocess.check_output(
+                    ["svn", "update", "--non-interactive"],
+                    cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
+                )
+                if log and out:
+                    log(out)
+                return True
+            except subprocess.CalledProcessError as e:
+                if log:
+                    log(f"Branch switch failed: {e}")
+                return False
 
     # -- Switch revision/branch ---------------------------------------------
 

@@ -120,10 +120,17 @@ class RepositoryScreen(Screen):
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_url')}", classes="repo-label")
                     yield Input(placeholder=t("ph_repo_url"), id="edit-repo-url")
+                    yield Button("📜", id="btn-repo-log", classes="tc-reset-btn")
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_branch')}", classes="repo-label")
-                    yield Input(placeholder=t("ph_repo_branch"), id="edit-repo-branch")
+                    yield Select(
+                        options=[(t("ph_repo_branch"), "")],
+                        id="edit-repo-branch",
+                        allow_blank=False,
+                        prompt=t("ph_repo_branch"),
+                    )
+                    yield Button("🔄", id="btn-branch-refresh", classes="tc-reset-btn")
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_switch_to')}", classes="repo-label")
@@ -134,7 +141,13 @@ class RepositoryScreen(Screen):
     def on_mount(self) -> None:
         """Fill edit fields and restore log on mount."""
         if self._repos:
-            self._fill_edit_fields(self._repos[0])
+            target = RepositoryScreen._last_selected
+            repo = next((r for r in self._repos if r.name == target), None) or self._repos[0]
+            try:
+                self.query_one("#repo-select", Select).value = repo.name
+            except Exception:
+                pass
+            self._fill_edit_fields(repo)
         # Set border titles
         self.query_one("#repo-output", VerticalScroll).border_title = t("output_title")
         try:
@@ -196,8 +209,208 @@ class RepositoryScreen(Screen):
         """Fill edit fields with repo data."""
         self.query_one("#edit-repo-name", Input).value = repo.name
         self.query_one("#edit-repo-url", Input).value = repo.url
-        self.query_one("#edit-repo-branch", Input).value = repo.branch
-        self.query_one("#edit-repo-switch", Input).value = ""
+        # Keep the last picked switch value visible across refreshes;
+        # it only ever matches one repo, so guard by _last_selected.
+        keep = (
+            RepositoryScreen._last_switch_rev
+            if RepositoryScreen._last_selected == repo.name
+            else ""
+        )
+        self.query_one("#edit-repo-switch", Input).value = keep
+        # Populate the branch dropdown — either from session cache or,
+        # if nothing cached yet, with a minimal option set that shows
+        # the current value and a "click to load" entry.
+        try:
+            from core.vcs_branches import _cache as _branch_cache, _cache_key
+            key = _cache_key(repo.url, self._current_vcs(repo)) if repo.url else ""
+            if key and key in _branch_cache:
+                self._apply_branch_options(_branch_cache[key], repo.branch)
+            else:
+                self._apply_branch_options([], repo.branch)
+        except Exception:
+            pass
+
+    def _open_commit_log(self) -> None:
+        """Open the commit log modal for the currently selected repo."""
+        repo = self._get_selected_repo()
+        if not repo:
+            return
+        repo_path = self.app.paths.repos_dir / f"oscam-{repo.name}"
+        if not repo_path.exists():
+            self.notify(t("log_not_cloned"), severity="warning")
+            return
+        vcs = self._current_vcs(repo)
+        branch = self._get_branch_value() if vcs == "git" else ""
+        from ui.screens.commit_log import CommitLogModal
+        self.app.push_screen(
+            CommitLogModal(repo_path=repo_path, vcs=vcs, branch=branch),
+            callback=self._on_commit_picked,
+        )
+
+    def _on_commit_picked(self, rev: str | None) -> None:
+        """Callback from the commit log modal.
+
+        Writes the picked SHA/revision into the Switch-to field (so it
+        is visible) and runs the same switch_revision flow that F12
+        save would run — but without the full save+refresh dance which
+        would destroy the current screen before the log messages show.
+        """
+        if not rev:
+            return
+        # The SVN log returns revs as "r12345"; strip the leading 'r' so
+        # the value lands in Switch-to as a plain number and svn's
+        # -r argument stays happy.
+        if rev.startswith("r") and rev[1:].isdigit():
+            rev = rev[1:]
+        RepositoryScreen._last_switch_rev = rev
+        try:
+            self.query_one("#edit-repo-switch", Input).value = rev
+        except Exception:
+            pass
+        repo = self._get_selected_repo()
+        if not repo:
+            return
+        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+        if not mgr.state().exists:
+            self.notify(t("log_not_cloned"), severity="warning")
+            return
+        self._log_sync(f"[bold]Switching to {rev}...[/bold]")
+
+        def do_switch():
+            ok = mgr.switch_revision(rev, log=self._log)
+            if ok:
+                self._log("[green]Switch complete[/green]")
+            else:
+                self._log("[red]Switch failed[/red]")
+
+        self._run_in_thread(do_switch)
+
+    def _persist_detected_vcs(self, repo: RepoConfig) -> None:
+        """After a successful clone, write the detected vcs back into the config."""
+        try:
+            clone = self.app.paths.repos_dir / f"oscam-{repo.name}"
+            detected = ""
+            if (clone / ".git").is_dir():
+                detected = "git"
+            elif (clone / ".svn").is_dir():
+                detected = "svn"
+            if detected and detected != repo.vcs:
+                repo.vcs = detected
+                from core.repos_config import save_repos
+                save_repos(self._repos, self.app.paths.repos_config)
+                self._log_sync(f"  [dim]Detected vcs=[/dim][bold]{detected}[/bold]")
+        except Exception:
+            pass
+
+    def _current_vcs(self, repo: RepoConfig) -> str:
+        """Return vcs type: config.vcs wins, then local clone probe, then URL heuristic."""
+        from core.vcs_branches import detect_vcs
+        clone = self.app.paths.repos_dir / f"oscam-{repo.name}"
+        if repo.vcs:
+            return repo.vcs
+        return detect_vcs(repo.url, clone_path=clone)
+
+    def _apply_branch_options(self, branches: list, current: str) -> None:
+        """Populate the branch dropdown.
+
+        Entries:
+          1. "(default branch)" → empty string
+          2. the saved branch if not already in the fetched list (so the
+             current selection survives even before the first fetch)
+          3. every fetched branch (if any)
+
+        The user triggers a (re)fetch via the 🔄 button next to the
+        dropdown; there is no in-list "load" placeholder.
+        """
+        try:
+            sel = self.query_one("#edit-repo-branch", Select)
+            self._suppress_branch_changed = True
+            try:
+                # Merge saved branch into the fetched list (if not already
+                # present) and sort alphabetically. "(default branch)"
+                # stays at the very top.
+                merged = list(branches or [])
+                if current and current not in merged:
+                    merged.append(current)
+                merged.sort(key=str.lower)
+                from core.vcs_branches import get_default_branch
+                from rich.text import Text as _Text
+                repo = self._get_selected_repo()
+                default = get_default_branch(repo.url, self._current_vcs(repo)) if repo else ""
+                opts: list[tuple[object, str]] = [(t("ph_repo_branch"), "")]
+                for b in merged:
+                    label = _Text(b, style="bold") if b == default else b
+                    opts.append((label, b))
+                sel.set_options(opts)
+                sel.value = current if current else ""
+            finally:
+                self._suppress_branch_changed = False
+        except Exception:
+            pass
+
+    _suppress_branch_changed: bool = False
+
+    def _load_branches(self, force: bool = False) -> None:
+        """Fetch the branch list for the currently selected repo and
+        populate the dropdown. Runs the network call in a worker thread.
+        """
+        import threading
+        repo = self._get_selected_repo()
+        if not repo:
+            return
+        if not repo.url:
+            self.notify(t("branch_no_url"), severity="warning")
+            return
+        vcs = self._current_vcs(repo)
+        current_branch = self._get_branch_value()
+        current_url = repo.url
+        # Show a transient "loading…" option while the fetch runs
+        try:
+            sel = self.query_one("#edit-repo-branch", Select)
+            self._suppress_branch_changed = True
+            try:
+                placeholder = [(t("branch_loading"), "__loading__")]
+                if current_branch:
+                    placeholder.insert(0, (current_branch, current_branch))
+                else:
+                    placeholder.insert(0, (t("ph_repo_branch"), ""))
+                sel.set_options(placeholder)
+                sel.value = current_branch if current_branch else ""
+            finally:
+                self._suppress_branch_changed = False
+        except Exception:
+            pass
+
+        def do_fetch():
+            from core.vcs_branches import list_branches
+            branches = list_branches(current_url, vcs, force_refresh=force)
+            def apply():
+                try:
+                    sel_repo = self._get_selected_repo()
+                    if sel_repo and sel_repo.url == current_url:
+                        self._apply_branch_options(branches, current_branch)
+                        if not branches:
+                            self.notify(t("branch_fetch_failed"), severity="warning")
+                except Exception:
+                    pass
+            self.app.call_from_thread(apply)
+
+        threading.Thread(target=do_fetch, daemon=True).start()
+
+    def _get_branch_value(self) -> str:
+        """Read the current branch from the dropdown, normalising sentinels."""
+        try:
+            sel = self.query_one("#edit-repo-branch", Select)
+            val = sel.value
+            if val in ("__load__", "__loading__") or val is Select.BLANK:
+                return ""
+            return str(val) if val else ""
+        except Exception:
+            return ""
+
+    def on_select_changed(self, event: "Select.Changed") -> None:
+        """No-op: branch dropdown changes are read at save time."""
+        pass
 
     def _get_selected_patches(self) -> list[str]:
         """Get list of selected patch filenames from switches."""
@@ -261,9 +474,17 @@ class RepositoryScreen(Screen):
                 except Exception:
                     pass
 
+    _last_selected: str = ""
+    _last_switch_rev: str = ""
+
     def _full_refresh(self, select_name: str = "") -> None:
         """Reload the screen by replacing it."""
         self._save_patch_states()
+        # Remember which repo was active so the fresh instance can restore it.
+        RepositoryScreen._last_selected = (
+            select_name
+            or (self._get_selected_repo().name if self._get_selected_repo() else "")
+        )
         self.app.pop_screen()
         self.app.push_screen(RepositoryScreen())
 
@@ -303,6 +524,14 @@ class RepositoryScreen(Screen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id
 
+        if btn == "btn-branch-refresh":
+            self._load_branches(force=True)
+            return
+
+        if btn == "btn-repo-log":
+            self._open_commit_log()
+            return
+
         if btn == "btn-download":
             patches_yaml = self.app.paths.root / "data" / "patches.yaml"
             sources = load_patch_sources(patches_yaml)
@@ -327,6 +556,7 @@ class RepositoryScreen(Screen):
                     success = mgr.clone(log=self._log)
                     if success:
                         self._log("[green]Clone complete[/green]")
+                        self.app.call_from_thread(self._persist_detected_vcs, repo)
                     else:
                         self._log("[red]Clone failed[/red]")
 
@@ -425,8 +655,12 @@ class RepositoryScreen(Screen):
 
         new_name = self.query_one("#edit-repo-name", Input).value.strip()
         url = self.query_one("#edit-repo-url", Input).value.strip()
-        branch = self.query_one("#edit-repo-branch", Input).value.strip()
+        branch = self._get_branch_value()
         switch_rev = self.query_one("#edit-repo-switch", Input).value.strip()
+        # Update the persisted Switch-to echo so _fill_edit_fields on
+        # the next refresh shows whatever the user just typed, not a
+        # stale value from a previous commit pick.
+        RepositoryScreen._last_switch_rev = switch_rev
 
         if not new_name or not url:
             self.notify("Name and URL are required", severity="error")
@@ -453,37 +687,77 @@ class RepositoryScreen(Screen):
                 self._log_sync(f"[green]Renamed '{old_name}' → '{new_name}'[/green]")
 
         # Update config
+        old_branch = repo.branch
+        old_url = repo.url
         repo.url = url
         repo.branch = branch
+        # If the URL changed, drop the persisted vcs type so the next
+        # clone re-detects it from the fresh URL/checkout — otherwise
+        # switching e.g. a git entry to an SVN URL would still try git
+        # clone.
+        if url != old_url:
+            repo.vcs = ""
+        # For SVN: rewrite the URL to reflect the picked branch. SVN has
+        # no separate branch concept — the branch IS the URL. We still
+        # keep config.branch as a human-readable marker.
+        vcs = self._current_vcs(repo)
+        if vcs == "svn":
+            from core.repo import RepoManager as _RM
+            effective = _RM(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)._svn_effective_url()
+            if effective != repo.url:
+                repo.url = effective
+                try:
+                    self.query_one("#edit-repo-url", Input).value = effective
+                except Exception:
+                    pass
         save_repos(self._repos, self.app.paths.repos_config)
         if notify:
             self._log_sync(f"[green]Saved repo '{repo.name}'[/green]")
-        self._full_refresh(new_name)
+        # If the branch changed and the repo is already cloned, switch
+        # the working copy too so the config and on-disk state stay in
+        # sync. Runs in a worker — branch switch can be slow and may
+        # fail on a dirty working copy.
+        # Any async follow-up (branch switch or switch-to revision) runs
+        # in a single worker so _full_refresh only fires once AFTER the
+        # work is done — otherwise the refresh replaces the screen while
+        # the worker is still updating the on-disk state and the new
+        # instance reads a stale revision.
+        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+        needs_branch_switch = branch != old_branch and mgr.state().exists
+        needs_rev_switch = bool(switch_rev) and mgr.state().exists
 
-        # Switch revision if specified
-        if switch_rev:
-            mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-            if mgr.state().exists:
+        if needs_branch_switch or needs_rev_switch:
+            if needs_branch_switch:
+                self._log_sync(f"[bold]Switching to branch {branch or '(default)'}...[/bold]")
+            if needs_rev_switch:
                 self._log_sync(f"[bold]Switching to {switch_rev}...[/bold]")
 
-                def do_switch():
-                    success = mgr.switch_revision(switch_rev, log=self._log)
-                    if success:
+            def do_async():
+                if needs_branch_switch:
+                    if mgr.ensure_config_branch(log=self._log):
+                        self._log("[green]Branch switch complete[/green]")
+                    else:
+                        self._log("[red]Branch switch failed[/red]")
+                if needs_rev_switch:
+                    if mgr.switch_revision(switch_rev, log=self._log):
                         self._log("[green]Switch complete[/green]")
                     else:
                         self._log("[red]Switch failed[/red]")
 
-                self._run_in_thread(do_switch)
-            else:
-                self._log_sync("[yellow]Repo not checked out — clone first, then switch[/yellow]")
+            self._run_in_thread(do_async)
+            return
 
+        if switch_rev and not mgr.state().exists:
+            self._log_sync("[yellow]Repo not checked out — clone first, then switch[/yellow]")
+
+        self._full_refresh(new_name)
         self._refresh_status()
 
     def _handle_add_repo(self) -> None:
         """Add a new repo from edit fields."""
         name = self.query_one("#edit-repo-name", Input).value.strip()
         url = self.query_one("#edit-repo-url", Input).value.strip()
-        branch = self.query_one("#edit-repo-branch", Input).value.strip()
+        branch = self._get_branch_value()
 
         if not name or not url:
             self.notify("Name and URL are required", severity="error")
@@ -506,7 +780,7 @@ class RepositoryScreen(Screen):
                 return False
             name = self.query_one("#edit-repo-name", Input).value.strip()
             url = self.query_one("#edit-repo-url", Input).value.strip()
-            branch = self.query_one("#edit-repo-branch", Input).value.strip()
+            branch = self._get_branch_value()
             return (name != repo.name) or (url != repo.url) or (branch != (repo.branch or ""))
         except Exception:
             return False

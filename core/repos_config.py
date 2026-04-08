@@ -37,6 +37,7 @@ def load_repos(path: Path) -> list[RepoConfig]:
             url=entry.get("url", ""),
             branch=entry.get("branch", ""),
             clone_depth=entry.get("clone_depth", 0),
+            vcs=entry.get("vcs", ""),
         ))
     return repos
 
@@ -45,12 +46,13 @@ def save_repos(repos: list[RepoConfig], path: Path) -> None:
     """Save repos to YAML."""
     data = {
         "repos": [
-            {
+            {k: v for k, v in {
                 "name": r.name,
                 "url": r.url,
                 "branch": r.branch,
                 "clone_depth": r.clone_depth,
-            }
+                "vcs": r.vcs,
+            }.items() if v not in ("", 0, None)}
             for r in repos
         ]
     }

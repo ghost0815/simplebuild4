@@ -532,3 +532,7 @@ TextArea#tc-editor:focus {
 .repo-row Input {
     width: 1fr;
 }
+
+.repo-row Select {
+    width: 1fr;
+}
