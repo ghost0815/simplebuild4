@@ -48,9 +48,21 @@ class CrosstoolNG:
 
     @property
     def ct_ng(self) -> Path:
-        """Path to the ct-ng executable inside the install dir."""
+        """Path to the ct-ng executable inside the install dir.
+
+        Falls back to `<dir>/bin/ct-ng` (the layout produced by
+        ./configure --prefix=<dir> && make install) when the
+        local-build path does not exist.
+        """
         binary = (self.recipe.binary if self.recipe and self.recipe.binary else "ct-ng")
-        return self.ctng_dir / binary
+        candidates = [
+            self.ctng_dir / binary,
+            self.ctng_dir / "bin" / binary,
+        ]
+        for c in candidates:
+            if c.is_file():
+                return c
+        return candidates[0]
 
     def is_installed(self) -> bool:
         """True if the builder binary is built and ready."""
@@ -59,7 +71,17 @@ class CrosstoolNG:
     # ------------------------------------------------------------------ setup
 
     def setup(self) -> bool:
-        """Execute setup commands from the BuilderRecipe. Idempotent."""
+        """Execute setup commands from the BuilderRecipe. Idempotent.
+
+        Honours an existing user-supplied install at ctng_dir:
+          * If ct-ng (or bin/ct-ng) is already present and executable
+            → nothing to do.
+          * If the directory exists and is non-empty (a partial source
+            checkout, or a system install missing only the build) →
+            skip the clone step from the recipe and run the remaining
+            steps in place.
+          * Empty / missing directory → full setup.
+        """
         if self.is_installed():
             self.log(f"  [green]{self.ct_ng.name} already installed at {self.ctng_dir}[/green]")
             return True
@@ -67,6 +89,18 @@ class CrosstoolNG:
         if not self.recipe or not self.recipe.setup:
             self.log("[red]No builder recipe loaded — cannot set up crosstool-ng[/red]")
             return False
+
+        # Detect a non-empty pre-existing dir we should not overwrite
+        try:
+            preexisting = self.ctng_dir.is_dir() and any(self.ctng_dir.iterdir())
+        except Exception:
+            preexisting = False
+
+        if preexisting:
+            self.log(
+                f"  [yellow]{self.ctng_dir} already exists — reusing the existing tree, "
+                f"skipping clone[/yellow]"
+            )
 
         self.ctng_dir.parent.mkdir(parents=True, exist_ok=True)
 
@@ -82,9 +116,10 @@ class CrosstoolNG:
                 self.log(f"[yellow]Skipping invalid step: {raw_cmd!r}[/yellow]")
                 continue
             cmd = expand_tokens(raw_cmd, tokens)
-            # Determine cwd: if first arg is `git clone`, run from parent dir
-            # so the target dir doesn't have to exist yet. Otherwise run inside.
             is_clone = (len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "clone")
+            if is_clone and preexisting:
+                self.log(f"  [dim]skip clone (existing tree at {self.ctng_dir})[/dim]")
+                continue
             cwd = self.ctng_dir.parent if is_clone else self.ctng_dir
             if not is_clone and not self.ctng_dir.exists():
                 self.log(f"[red]Install dir missing: {self.ctng_dir}[/red]")
