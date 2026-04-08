@@ -13,9 +13,15 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 
 def cli_build(args: list[str]) -> int:
-    """CLI build: ./s4 build <target> [--make|--cmake] [USE_FLAGS...]"""
+    """CLI build: ./s4 build <target> [<target>...] [--make|--cmake] [USE_SSL USE_PCSC_off ...]
+
+    Multiple targets are built sequentially in the order they were
+    given on the command line. --make / --cmake (if supplied) override
+    the build system for ALL targets. Anything else not matching a
+    known target name is forwarded as a build override.
+    """
     if not args:
-        print("Usage: ./s4 build <target> [--make|--cmake] [USE_SSL USE_PCSC_off ...]")
+        print("Usage: ./s4 build <target> [<target>...] [--make|--cmake] [USE_SSL USE_PCSC_off ...]")
         return 1
 
     from pathlib import Path
@@ -27,84 +33,113 @@ def cli_build(args: list[str]) -> int:
     paths.ensure_dirs()
     settings = Settings.load(paths.root / "data" / "settings.yaml")
 
-    # Find target
-    target_name = args[0]
-    target_path = None
-    for name, path in Target.list_targets(paths.targets_dir):
-        if name == target_name:
-            target_path = path
-            break
+    available = dict(Target.list_targets(paths.targets_dir))
 
-    if not target_path:
-        # Try direct path
-        p = Path(target_name)
-        if p.exists():
-            target_path = p
-        else:
-            p = paths.targets_dir / f"{target_name}.yaml"
-            if p.exists():
-                target_path = p
-
-    if not target_path:
-        print(f"Target '{target_name}' not found")
-        print(f"Available: {', '.join(n for n, _ in Target.list_targets(paths.targets_dir))}")
-        return 1
-
-    target = Target.load(target_path)
-
-    # Parse remaining args
+    target_paths: list[Path] = []
+    overrides: list[str] = []
     build_system = None
-    overrides = []
-    for arg in args[1:]:
+    unknown: list[str] = []
+
+    for arg in args:
         if arg == "--make":
             build_system = "make"
-        elif arg == "--cmake":
+            continue
+        if arg == "--cmake":
             build_system = "cmake"
-        else:
+            continue
+        # Try as target name from registered list
+        if arg in available:
+            target_paths.append(available[arg])
+            continue
+        # Try as direct path
+        p = Path(arg)
+        if p.is_file() and p.suffix in (".yaml", ".yml"):
+            target_paths.append(p)
+            continue
+        # Try as relative to targets_dir
+        p2 = paths.targets_dir / f"{arg}.yaml"
+        if p2.exists():
+            target_paths.append(p2)
+            continue
+        # Looks like a build override (e.g. USE_SSL, MODULE_GBOX_off)
+        if arg.upper() == arg or arg.endswith("_off"):
             overrides.append(arg)
+            continue
+        unknown.append(arg)
 
-    # Override build system if specified
-    if build_system:
-        target.build.build_system = build_system
+    if unknown:
+        print(f"Unknown argument(s): {', '.join(unknown)}")
+        print(f"Available targets: {', '.join(sorted(available))}")
+        return 1
+    if not target_paths:
+        print("No target specified")
+        print(f"Available: {', '.join(sorted(available))}")
+        return 1
 
     build_overrides = " ".join(overrides)
 
-    # Log to stdout
     def log(msg: str):
         import re
         plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
         print(plain)
 
-    # Build
     from core.builder import BuildEngine
-    engine = BuildEngine(
-        target=target,
-        repos_dir=paths.repos_dir,
-        backup_dir=paths.backup_dir,
-        repos_config=paths.repos_config,
-        patches_dir=paths.patches_dir,
-        logs_dir=paths.logs_dir,
-        binaries_dir=paths.binaries_dir,
-        bin_dir=paths.bin_dir,
-        toolchains_dir=paths.toolchains_dir,
-        toolchains_local=paths.toolchains_local,
-        toolchains_defaults=paths.toolchains_defaults,
-        max_cpus=settings.max_cpus,
-        compiler_opt=settings.compiler_opt,
-        sign_cert=settings.sign_cert,
-        sign_key=settings.sign_key,
-        delete_debug=settings.delete_debug,
-        save_smargo=settings.save_smargo,
-        patch_webif=settings.patch_webif,
-        qemu_test=settings.qemu_test,
-        qemu_timeout=settings.qemu_timeout,
-        qemu_expect=settings.qemu_expect,
-        build_overrides=build_overrides,
-        log=log,
-    )
+    from datetime import datetime
 
-    success = engine.build()
-    return 0 if success else 1
+    total = len(target_paths)
+    results: list[tuple[str, bool, float]] = []
+    overall_start = datetime.now()
+
+    for idx, tpath in enumerate(target_paths, start=1):
+        target = Target.load(tpath)
+        if build_system:
+            target.build.build_system = build_system
+
+        print()
+        print(f"══ {idx}/{total}: {target.name} ══")
+        print()
+        started = datetime.now()
+        engine = BuildEngine(
+            target=target,
+            repos_dir=paths.repos_dir,
+            backup_dir=paths.backup_dir,
+            repos_config=paths.repos_config,
+            patches_dir=paths.patches_dir,
+            logs_dir=paths.logs_dir,
+            binaries_dir=paths.binaries_dir,
+            bin_dir=paths.bin_dir,
+            toolchains_dir=paths.toolchains_dir,
+            toolchains_local=paths.toolchains_local,
+            toolchains_defaults=paths.toolchains_defaults,
+            max_cpus=settings.max_cpus,
+            compiler_opt=settings.compiler_opt,
+            sign_cert=settings.sign_cert,
+            sign_key=settings.sign_key,
+            delete_debug=settings.delete_debug,
+            save_smargo=settings.save_smargo,
+            patch_webif=settings.patch_webif,
+            qemu_test=settings.qemu_test,
+            qemu_timeout=settings.qemu_timeout,
+            qemu_expect=settings.qemu_expect,
+            build_overrides=build_overrides,
+            log=log,
+        )
+        success = engine.build()
+        elapsed = (datetime.now() - started).total_seconds()
+        results.append((target.name, success, elapsed))
+
+    print()
+    print("══ Batch summary ══")
+    print()
+    ok = sum(1 for _, s, _ in results if s)
+    fail = sum(1 for _, s, _ in results if not s)
+    for name, success, elapsed in results:
+        marker = "OK" if success else "FAIL"
+        print(f"  [{marker}] {name}  ({elapsed:.0f}s)")
+    overall = (datetime.now() - overall_start).total_seconds()
+    print()
+    print(f"  {ok} ok, {fail} failed — total {overall:.0f}s")
+    return 0 if fail == 0 else 1
 
 
 def cli_version() -> int:
