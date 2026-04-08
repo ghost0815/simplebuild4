@@ -1026,6 +1026,32 @@ class TargetEditScreen(Screen):
             sec.add_class("all-on")
         else:
             sec.remove_class("all-on")
+        self._update_section_title(category)
+
+    def _update_section_title(self, category: str) -> None:
+        """Refresh the "(enabled/total)" counter in the Collapsible header
+        for the given options category."""
+        oscam = self._load_oscam_options()
+        items_map = {
+            "addons": (sorted(oscam.addons), "Addons", "col-addons"),
+            "protocols": (sorted(oscam.protocols), "Protocols", "col-protocols"),
+            "readers": (sorted(oscam.readers), "Readers", "col-readers"),
+            "card_readers": (sorted(oscam.card_readers), "Card Readers", "col-card-readers"),
+        }
+        if category not in items_map:
+            return
+        items, label, col_id = items_map[category]
+        removed = list(self._removed_opts.get(category, []))
+        if category == "addons":
+            all_items = items + removed
+            count = sum(1 for m in all_items if self._switch_on(f"m-{m}") or m in removed)
+        else:
+            count = sum(1 for m in items if self._switch_on(f"m-{m}"))
+        try:
+            col = self.query_one(f"#{col_id}", Collapsible)
+            col.title = f"{label} ({count}/{len(items)})"
+        except Exception:
+            pass
 
     def _do_section_toggle(self, category: str, new_state: bool) -> None:
         """Set every option in a category to new_state.
