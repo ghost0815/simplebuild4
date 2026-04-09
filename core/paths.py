@@ -69,9 +69,14 @@ class Paths:
 
         # seed default targets on first run — the shipped defaults/
         # directory holds target samples alongside registry files
-        # (toolchains.yaml, libraries.yaml, builders.yaml). Only the
-        # target samples should end up in data/targets/.
-        _not_targets = {"toolchains.yaml", "libraries.yaml", "builders.yaml"}
+        # (toolchains.yaml, libraries.yaml, builders.yaml, patches.yaml).
+        # Only the target samples should end up in data/targets/.
+        _not_targets = {
+            "toolchains.yaml",
+            "libraries.yaml",
+            "builders.yaml",
+            "patches.yaml",
+        }
         if self.defaults_dir.is_dir():
             for default in self.defaults_dir.glob("*.yaml"):
                 if default.name in _not_targets:
@@ -79,3 +84,11 @@ class Paths:
                 dest = self.targets_dir / default.name
                 if not dest.exists():
                     shutil.copy2(default, dest)
+
+        # seed data/patches.yaml from defaults/patches.yaml on first
+        # run so the Repository screen's Download button has a real
+        # (commented-out) config to start from.
+        patches_default = self.defaults_dir / "patches.yaml"
+        patches_dest = self.repos_config.parent / "patches.yaml"
+        if patches_default.exists() and not patches_dest.exists():
+            shutil.copy2(patches_default, patches_dest)

@@ -1,0 +1,26 @@
+# Patch download configuration for simplebuild4.
+#
+# This file is auto-seeded to data/patches.yaml on first run. Edit the
+# copy in data/patches.yaml — the one in defaults/ is only the template
+# and will not be touched again by the app.
+#
+# When you press the "Download" button on the Repository screen, every
+# entry below is fetched via wget (or curl as fallback) into
+# data/patches/ using `name` as the target filename. The file can then
+# be picked on the Repository screen like any other patch and applied
+# via "Patch".
+#
+# Entry format:
+#   - name: <filename>.patch    # how the file is stored in data/patches/
+#     url:  <https URL>         # direct download link
+#
+# Tip: you can also drop .patch files manually into data/patches/ —
+# they'll show up on the Repository screen without needing an entry
+# here. This file is only for patches you want to (re-)download from a
+# URL on demand.
+
+patches:
+  # - name: 0001-my-fix.patch
+  #   url: https://example.com/patches/0001-my-fix.patch
+  # - name: 0002-feature.patch
+  #   url: https://example.com/patches/0002-feature.patch
