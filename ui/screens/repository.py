@@ -127,7 +127,9 @@ class RepositoryScreen(Screen):
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_url')}", classes="repo-label")
                     yield Input(placeholder=t("ph_repo_url"), id="edit-repo-url")
-                    yield Button("📜", id="btn-repo-log", classes="tc-reset-btn")
+                    log_btn = Button("📜", id="btn-repo-log", classes="tc-reset-btn")
+                    log_btn.tooltip = t("tt_repo_log")
+                    yield log_btn
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_branch')}", classes="repo-label")
@@ -137,7 +139,9 @@ class RepositoryScreen(Screen):
                         allow_blank=False,
                         prompt=t("ph_repo_branch"),
                     )
-                    yield Button("🔄", id="btn-branch-refresh", classes="tc-reset-btn")
+                    refresh_btn = Button("🔄", id="btn-branch-refresh", classes="tc-reset-btn")
+                    refresh_btn.tooltip = t("tt_branch_refresh")
+                    yield refresh_btn
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_switch_to')}", classes="repo-label")

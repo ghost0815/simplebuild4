@@ -108,7 +108,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
                 self._rows = self._fetch_svn()
         except Exception as e:
             self._rows = []
-            self.app.call_from_thread(self.notify, f"Log failed: {e}", severity="error")
+            self.app.call_from_thread(self.notify, f"Log failed: {e}", severity="error", markup=False)
         self.app.call_from_thread(self._apply_rows)
 
     def _fetch_git(self) -> list[tuple[str, str, str, str, str]]:
@@ -116,7 +116,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
         cmd = ["git", "log", f"-n{self._limit}", f"--pretty=format:{fmt}"]
         if self._branch:
-            cmd.append(self._branch)
+            cmd += [self._branch, "--"]
         out = subprocess.check_output(
             cmd, cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=20,
         )
