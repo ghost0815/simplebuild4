@@ -350,7 +350,7 @@ all_checks_passed: "{name} — tutti i controlli OK"
 some_checks_failed: "{name} — alcuni controlli falliti"
 
 # Self-updater
-s4_update_available: "Aggiornamento s4 disponibile"
+s4_update_available: "Aggiornamento s4 disponibile ({count} nuovi commit) — premi u per aggiornare"
 update_busy: "Update non possibile: operazione in corso"
 update_dirty_warning: "Modifiche non salvate — salva e riavvia s4"
 update_done_restarting: "Update completato — riavvio s4..."

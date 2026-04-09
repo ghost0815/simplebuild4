@@ -25,6 +25,7 @@ class S4App(App):
         Binding("ctrl+c", "copy_text", show=False, priority=True),
         Binding("ctrl+a", "select_all", show=False),
         Binding("ctrl+p", "command_palette", show=False),
+        Binding("u", "quick_update", show=False),
         Binding("f12", "save_action", show=False),
         Binding("f1", "s4_settings", show=False),
         Binding("f2", "open_targets", show=False),
@@ -41,10 +42,16 @@ class S4App(App):
         super().__init__(**kwargs)
         self.paths = paths
         self.settings = Settings.load(paths.root / "data" / "settings.yaml")
+        self._update_available: bool = False
         # Build/library-update timer state (read by ui.footer.BuildTimerWidget)
         self._timer_screen: str | None = None
         self._timer_start: float | None = None
         self._timer_stopped_at: float | None = None
+
+    _UPDATE_NOTIFY_TIMEOUT = 10
+
+    def _expire_update_shortcut(self) -> None:
+        self._update_available = False
 
     # ---------------------------------------------------------------- timer
     def build_timer_start(self, screen: str) -> None:
@@ -173,11 +180,17 @@ class S4App(App):
                     lines.append(f"  … +{len(commits) - max_show} more")
                 header = t("s4_update_available", count=behind, s="s" if behind > 1 else "")
                 msg = f"[bold]{header}[/bold]\n\n" + "\n".join(lines)
+                self._update_available = True
                 self.call_from_thread(
                     self.notify,
                     msg,
                     severity="information",
-                    timeout=10,
+                    timeout=self._UPDATE_NOTIFY_TIMEOUT,
+                )
+                self.call_from_thread(
+                    self.set_timer,
+                    self._UPDATE_NOTIFY_TIMEOUT,
+                    self._expire_update_shortcut,
                 )
             else:
                 self.call_from_thread(
@@ -640,6 +653,17 @@ class S4App(App):
         except Exception:
             pass
         return (busy, dirty)
+
+    def action_quick_update(self) -> None:
+        """Shortcut 'u' — triggers s4 update only while the update notification is visible."""
+        from textual.widgets import Input, TextArea
+        # Don't intercept 'u' when typing in an input field
+        if isinstance(self.focused, (Input, TextArea)):
+            return
+        if not self._update_available:
+            return
+        self._update_available = False
+        self.action_s4_update()
 
     def action_s4_update(self) -> None:
         """Self-update s4 via git pull (handles force pushes). Output to main screen RichLog."""

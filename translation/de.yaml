@@ -350,7 +350,7 @@ all_checks_passed: "{name} — alle Prüfungen bestanden"
 some_checks_failed: "{name} — einige Prüfungen fehlgeschlagen"
 
 # Self-updater
-s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — Strg+p → Aktualisieren"
+s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — u drücken zum Aktualisieren"
 update_busy: "Update nicht möglich: Build- oder Bibliothek-Vorgang läuft"
 update_dirty_warning: "Ungespeicherte Änderungen erkannt — bitte speichern und s4 manuell neu starten"
 update_done_restarting: "Update fertig — s4 wird neu gestartet..."
