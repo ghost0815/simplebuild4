@@ -295,19 +295,21 @@ class MainScreen(Screen):
             self.notify(t("no_target_selected"), severity="warning")
             return
         target, path = result
-        now = time.time()
-        if now - self._remove_confirm_time < 3:
-            path.unlink(missing_ok=True)
-            self._refresh_targets()
-            self.query_one("#info", Static).update(
-                "  [bold]No target selected[/bold]\n"
-                "  Create a new target to get started."
-            )
-            self.notify(t("target_deleted", name=target.name))
-            self._remove_confirm_time = 0
-            return
-        self._remove_confirm_time = now
-        self.notify(t("confirm_remove_target", name=target.name), severity="warning", timeout=3)
+        if self.app.settings.confirm_dangerous:
+            now = time.time()
+            if now - self._remove_confirm_time < 3:
+                self._remove_confirm_time = 0
+            else:
+                self._remove_confirm_time = now
+                self.notify(t("confirm_remove_target", name=target.name), severity="warning", timeout=3)
+                return
+        path.unlink(missing_ok=True)
+        self._refresh_targets()
+        self.query_one("#info", Static).update(
+            "  [bold]No target selected[/bold]\n"
+            "  Create a new target to get started."
+        )
+        self.notify(t("target_deleted", name=target.name), severity="warning")
 
     _building = False
     _cancel_requested = False

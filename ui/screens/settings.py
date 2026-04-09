@@ -15,6 +15,7 @@ from ui.footer import S4Footer
 SWITCH_MAP = {
     "set-update-check": "update_check",
     "set-warn-unsaved": "warn_unsaved_on_exit",
+    "set-confirm-dangerous": "confirm_dangerous",
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
@@ -73,6 +74,7 @@ class SettingsScreen(Screen):
                 )
                 yield _switch_row(t("check_updates_start"), s.update_check, "set-update-check")
                 yield _switch_row(t("warn_unsaved_on_exit"), s.warn_unsaved_on_exit, "set-warn-unsaved")
+                yield _switch_row(t("confirm_dangerous"), s.confirm_dangerous, "set-confirm-dangerous")
 
             # Log retention
             with Collapsible(title=t('section_logs'), collapsed=True, id="col-logs"):

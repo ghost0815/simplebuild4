@@ -699,16 +699,19 @@ class RepositoryScreen(Screen):
         if repo.name == "default":
             self.notify(t("cannot_remove_default"), severity="error")
             return
-        now = time.time()
-        if now - self._remove_confirm_time < 3:
-            self._repos = [r for r in self._repos if r.name != repo.name]
-            save_repos(self._repos, self.app.paths.repos_config)
-            self._log_sync(f"[yellow]Removed repo '{repo.name}'[/yellow]")
-            self._full_refresh()
-            self._remove_confirm_time = 0
-            return
-        self._remove_confirm_time = now
-        self.notify(t("confirm_remove_repo", name=repo.name), severity="warning", timeout=3)
+        if self.app.settings.confirm_dangerous:
+            now = time.time()
+            if now - self._remove_confirm_time < 3:
+                self._remove_confirm_time = 0
+            else:
+                self._remove_confirm_time = now
+                self.notify(t("confirm_remove_repo", name=repo.name), severity="warning", timeout=3)
+                return
+        self._repos = [r for r in self._repos if r.name != repo.name]
+        save_repos(self._repos, self.app.paths.repos_config)
+        self._log_sync(f"[yellow]Removed repo '{repo.name}'[/yellow]")
+        self.notify(t("repo_removed", name=repo.name), severity="warning")
+        self._full_refresh()
 
     def _handle_save_repo(self, notify=True) -> bool:
         """Save edits to the currently selected repo. Returns True on success."""
