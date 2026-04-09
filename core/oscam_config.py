@@ -19,6 +19,61 @@ class OscamOptions:
     default_enabled: dict[str, list[str]] = field(default_factory=dict)
 
 
+def _parse_defconfig_defaults(config_sh: Path) -> dict[str, list[str]]:
+    """Parse the ``$defconfig`` shell variable out of ``config.sh`` and
+    return ``{category: [enabled_option_names]}`` for the four option
+    categories.
+
+    Unlike ``config.sh --show-enabled``, this reflects the oscam
+    *defaults* regardless of how ``config.h`` may have been modified by
+    a previous build. Pure text parsing, no side effects.
+    """
+    import re as _re
+
+    try:
+        text = config_sh.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+
+    # Valid option names per category (from the shell variables at the
+    # top of config.sh).
+    cat_map: dict[str, set[str]] = {}
+    for cat in ("addons", "protocols", "readers", "card_readers"):
+        m = _re.search(rf'^{cat}="([^"]*)"', text, _re.MULTILINE)
+        if m:
+            cat_map[cat] = set(m.group(1).split())
+
+    # The defconfig="..." heredoc-style variable.
+    m = _re.search(r'defconfig="\s*\n(.*?)\n"', text, _re.DOTALL)
+    if not m:
+        return {cat: [] for cat in ("addons", "protocols", "readers", "card_readers")}
+    block = m.group(1)
+
+    enabled: set[str] = set()
+    for line in block.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, val = line.partition("=")
+        if val.strip() != "y":
+            continue
+        name = key.strip()
+        if name.startswith("CONFIG_"):
+            name = name[len("CONFIG_"):]
+        if name:
+            enabled.add(name)
+
+    result: dict[str, list[str]] = {c: [] for c in ("addons", "protocols", "readers", "card_readers")}
+    for name in enabled:
+        for cat, opts in cat_map.items():
+            if name in opts:
+                result[cat].append(name)
+                break
+    return result
+
+
 def read_options(repo_dir: Path) -> OscamOptions | None:
     """Read all available options from a cloned oscam repo's config.sh.
 
@@ -41,10 +96,11 @@ def read_options(repo_dir: Path) -> OscamOptions | None:
         if valid is not None:
             setattr(opts, attr, valid.split())
 
-        # Get default enabled options
-        enabled = _run_config_sh(config_sh, ["--show-enabled", category])
-        if enabled is not None:
-            opts.default_enabled[category] = enabled.split()
+    # Parse true oscam defaults directly from the defconfig variable in
+    # config.sh (does not depend on the current state of config.h).
+    defaults = _parse_defconfig_defaults(config_sh)
+    for category in ("addons", "protocols", "readers", "card_readers"):
+        opts.default_enabled[category] = defaults.get(category, [])
 
     return opts
 
