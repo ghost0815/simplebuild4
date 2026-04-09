@@ -24,7 +24,7 @@ class Settings:
 
     # Build
     compiler_opt: str = "-O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-schedule-insns"
-    max_cpus: int = 16
+    max_cpus: int = 0
     patch_webif: bool = True
     delete_debug: bool = True
     save_smargo: bool = False
@@ -95,7 +95,7 @@ class Settings:
             warn_unsaved_on_exit=data.get("warn_unsaved_on_exit", False),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
-            max_cpus=data.get("max_cpus", 16),
+            max_cpus=data.get("max_cpus", 0),
             patch_webif=data.get("patch_webif", True),
             delete_debug=data.get("delete_debug", True),
             save_smargo=data.get("save_smargo", True),
