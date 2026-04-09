@@ -70,7 +70,7 @@ class RepositoryScreen(Screen):
             if available:
                 with Grid(id="patch-grid"):
                     for p in available:
-                        enabled = RepositoryScreen._patch_states.get(p.stem, True)
+                        enabled = RepositoryScreen._patch_states.get(p.stem, False)
                         yield Horizontal(
                             Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
                             Static(f" {p.name}", classes="patch-name"),
