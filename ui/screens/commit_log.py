@@ -219,11 +219,26 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         else:
             self._sort_col = col_index
             self._sort_reverse = False
+        # Remember selected row key before re-sort
+        tbl = self.query_one("#log-table", DataTable)
+        prev_key = None
+        try:
+            prev_key = tbl.get_row_at(tbl.cursor_row)
+            # get_row_at returns cells; use the row key from ordered_rows
+            prev_key = tbl.ordered_rows[tbl.cursor_row].key.value
+        except Exception:
+            pass
         self._current_rows.sort(
             key=lambda r: (r[key_idx] or "").lower(),
             reverse=self._sort_reverse,
         )
         self._rebuild_table(self._current_rows)
+        # Restore cursor to the previously selected row
+        if prev_key:
+            for idx, (rev, *_) in enumerate(self._current_rows):
+                if rev == prev_key:
+                    tbl.move_cursor(row=idx)
+                    break
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "log-filter":

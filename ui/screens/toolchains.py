@@ -86,6 +86,8 @@ class S4DataTable(DataTable):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._marker_row: int = -1
+        self._sort_col: int | None = None
+        self._sort_reverse: bool = False
 
     def add_columns(self, *labels):
         """Prepend a 1-char marker column before the user-supplied ones."""
@@ -96,7 +98,70 @@ class S4DataTable(DataTable):
 
     def clear(self, columns: bool = False):
         self._marker_row = -1
+        self._sort_col = None
+        self._sort_reverse = False
         return super().clear(columns=columns)
+
+    def sort_by_column(self, col_index: int) -> None:
+        """Sort all rows by the given column index, toggling direction."""
+        if col_index == 0:
+            return  # skip the marker column
+        if self.row_count == 0:
+            return
+        if self._sort_col == col_index:
+            self._sort_reverse = not self._sort_reverse
+        else:
+            self._sort_col = col_index
+            self._sort_reverse = False
+        num_cols = len(self.columns)
+        # Collect rows: list of (row_key, [cell_values])
+        row_keys = [row.key for row in self.ordered_rows]
+        rows = []
+        for row_idx, rk in enumerate(row_keys):
+            cells = []
+            for col_idx in range(num_cols):
+                try:
+                    cells.append(str(self.get_cell_at(Coordinate(row_idx, col_idx))))
+                except Exception:
+                    cells.append("")
+            rows.append((rk, cells))
+        # Sort by the selected column text
+        rows.sort(
+            key=lambda r: r[1][col_index].lower() if col_index < len(r[1]) else "",
+            reverse=self._sort_reverse,
+        )
+        # Remember which row key had the marker / cursor
+        prev_marker_key = None
+        if 0 <= self._marker_row < len(row_keys):
+            prev_marker_key = row_keys[self._marker_row].value
+        # Also remember cursor row key
+        prev_cursor_key = None
+        try:
+            prev_cursor_key = self.get_row_at(self.cursor_row)
+            # get_row_at returns cells; we need the key
+            if 0 <= self.cursor_row < len(row_keys):
+                prev_cursor_key = row_keys[self.cursor_row].value
+        except Exception:
+            pass
+
+        # Rebuild table
+        self._marker_row = -1
+        super().clear()
+        new_marker_row = -1
+        new_cursor_row = 0
+        for idx, (rk, cells) in enumerate(rows):
+            cells[0] = " "  # reset marker
+            super().add_row(*cells, key=rk.value)
+            if rk.value == prev_marker_key:
+                new_marker_row = idx
+            if rk.value == prev_cursor_key:
+                new_cursor_row = idx
+
+        # Restore marker and cursor position
+        if new_marker_row >= 0:
+            self.mark_row(new_marker_row)
+        if self.row_count:
+            self.move_cursor(row=new_cursor_row)
 
     def mark_row(self, row: int) -> None:
         """Paint the selection marker on `row`, clearing the previous one.
@@ -373,8 +438,8 @@ class ToolchainsScreen(Screen):
                     yield remove_btn
 
                 # Installed toolchains (always visible)
-                yield Static(f" [bold]{t('installed')}[/bold]", id="tc-installed-label")
-                yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
+                with Vertical(id="tc-installed-box"):
+                    yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
 
                 # PreBuild / SelfBuild tabs
                 with Horizontal(id="tc-left-tab-bar"):
@@ -420,6 +485,7 @@ class ToolchainsScreen(Screen):
                 # Details panel
                 detail = Static("", id="tc-detail")
                 detail.auto_links = False
+                detail.can_focus = True
                 yield detail
 
                 # Libraries panel (hidden by default)
@@ -469,6 +535,7 @@ class ToolchainsScreen(Screen):
                 )
             else:
                 tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+        tbl.sort_by_column(1)  # sort by Name
 
         # Populate category tables
         all_catalog = reg.catalog_toolchains()
@@ -486,6 +553,7 @@ class ToolchainsScreen(Screen):
                 for tc in tcs:
                     status = "●" if tc.installed else ""
                     tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+                tbl.sort_by_column(2)  # sort by Name
             except Exception:
                 pass
 
@@ -543,6 +611,13 @@ class ToolchainsScreen(Screen):
                         builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
                     except Exception:
                         pass
+        # Sort selfbuild tables by Name (col 2)
+        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
+            try:
+                self.query_one(f"#{sb_id}", DataTable).sort_by_column(2)
+            except Exception:
+                pass
+
         # Update collapsible titles with counts
         try:
             self.query_one("#cat-sb-local", Collapsible).title = f"Local ({local_count})"
@@ -553,6 +628,7 @@ class ToolchainsScreen(Screen):
             pass
 
         # Border titles
+        self.query_one("#tc-installed-box", Vertical).border_title = t("installed")
         tc_output = self.query_one("#tc-output", RichLog)
         tc_output.border_title = "Output"
         tc_output.write("")  # Prevent IndexError on empty RichLog click
@@ -627,6 +703,8 @@ class ToolchainsScreen(Screen):
             # First open — select first installed toolchain
             first_key = list(tbl.rows.keys())[0]
             ToolchainsScreen._selected_tc = first_key.value
+            tbl.move_cursor(row=0)
+            tbl.mark_row(0)
 
         # Restore previous right tab (Details / Editor / Libraries / Output)
         if ToolchainsScreen._active_right_tab and ToolchainsScreen._active_right_tab != "details":
@@ -751,6 +829,16 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._active_left_tab = tab
         # Refresh F5/F9 button states for the new tab
         self._update_f9_state()
+        # Focus first focusable widget in the new panel
+        panel_id = "#tc-browser" if tab == "prebuild" else "#tc-selfbuild"
+        try:
+            panel = self.query_one(panel_id)
+            for child in panel.query("*"):
+                if child.focusable:
+                    child.focus()
+                    break
+        except Exception:
+            pass
 
     def _set_tc_status(self, tc_name: str, status: str) -> None:
         """Update the status and row color of a toolchain in its category DataTable."""
@@ -896,6 +984,11 @@ class ToolchainsScreen(Screen):
             self._update_editor()
         else:
             self._update_detail()
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        tbl = event.data_table
+        if isinstance(tbl, S4DataTable):
+            tbl.sort_by_column(event.column_index)
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         if not self._mounted or self._building:
@@ -1643,6 +1736,19 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._active_right_tab = tab
         # Update F10 button state in footer
         self._update_f9_state()
+        # Focus the first interactive widget on the new tab.
+        first_focus = {
+            "details": "#tc-detail",
+            "editor": "#tc-editor",
+            "libs": "#tc-libs",
+            "log": "#tc-output",
+        }
+        fid = first_focus.get(tab)
+        if fid:
+            try:
+                self.query_one(fid).focus()
+            except Exception:
+                pass
 
     # -- YAML editor (Yaml tab) ---------------------------------------------
 

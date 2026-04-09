@@ -41,12 +41,23 @@ Screen {
     border-title-style: bold;
 }
 
+#info:focus {
+    border: heavy $primary;
+}
+
 #output {
     margin: 1 2;
     height: 1fr;
+    background: $boost;
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
+    scrollbar-gutter: stable;
+    overflow-y: auto;
+}
+
+#output:focus {
+    border: heavy $accent;
 }
 
 #main-tab-bar {
@@ -189,6 +200,14 @@ Switch.section-switch.all-on.-on > .switch--slider {
     padding: 1 3;
 }
 
+CollapsibleTitle {
+    color: $text;
+}
+
+Collapsible:focus-within > CollapsibleTitle {
+    text-style: bold;
+}
+
 .section-title {
     height: 1;
     margin: 1 0 0 0;
@@ -263,13 +282,22 @@ Switch.section-switch.all-on.-on > .switch--slider {
     border-title-style: bold;
 }
 
+#repo-info:focus {
+    border: heavy $primary;
+}
+
 #repo-output {
     margin: 0 1;
     height: 10;
+    background: $boost;
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
-    padding: 0 1;
+    overflow-y: auto;
+}
+
+#repo-output:focus {
+    border: heavy $accent;
 }
 
 .repo-section {
@@ -281,19 +309,18 @@ Switch.section-switch.all-on.-on > .switch--slider {
 #repo-box {
     margin: 1 1;
     border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
+    border-title-color: $text;
     height: auto;
-    padding: 0 1;
+    padding: 1 1;
 }
 
-#edit-box {
-    margin: 1 1;
-    border: solid #444444;
-    border-title-color: $accent;
+#repo-box:focus-within {
+    border: heavy #444444;
     border-title-style: bold;
-    height: auto;
-    padding: 0 1;
+}
+
+#col-edit {
+    margin: 1 1;
 }
 
 .repo-actions-row {
@@ -337,14 +364,14 @@ Switch.-on .switch--slider {
     height: auto;
 }
 
+#col-patches {
+    margin: 1 1;
+}
+
 #patch-grid {
     grid-size: 2;
     grid-gutter: 0 2;
-    margin: 1 1;
     height: auto;
-    border: solid #444444;
-    border-title-color: $accent;
-    border-title-style: bold;
     padding: 0 1;
 }
 
@@ -376,17 +403,23 @@ Switch.-on .switch--slider {
     width: 1fr;
 }
 
-#tc-installed-label {
-    height: 1;
+#tc-installed-box {
+    height: auto;
+    max-height: 26;
     margin: 1 1 0 1;
+    border: solid #444444;
+    border-title-color: $text;
+    padding: 1 1;
+}
+
+#tc-installed-box:focus-within {
+    border: heavy #444444;
+    border-title-style: bold;
 }
 
 #tbl-installed {
     height: auto;
     max-height: 24;
-    margin: 0 1;
-    border-left: solid #444444;
-    border-right: solid #444444;
 }
 
 #tc-left-tab-bar {
@@ -441,7 +474,6 @@ Switch.-on .switch--slider {
 
 #tc-filter {
     width: 20;
-    border: solid #444444;
 }
 
 #tc-libs-header {
@@ -493,8 +525,16 @@ Switch.-on .switch--slider {
     margin: 0;
     padding: 0 1;
     height: 1fr;
-    border: solid #444444;
+    background: $boost;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
     overflow-x: hidden;
+    overflow-y: auto;
+}
+
+#tc-detail:focus {
+    border: heavy $primary;
 }
 
 TextArea#tc-editor {
@@ -502,16 +542,25 @@ TextArea#tc-editor {
     margin: 0;
     padding: 0;
     height: 1fr;
-    border: solid #444444;
+    background: $boost;
+    border: solid $primary;
 }
 
 TextArea#tc-editor:focus {
-    border: solid #1e88e5;
+    background: $surface;
+    border: heavy $primary;
 }
 
 #tc-libs {
     display: none;
     padding: 0 1;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
+}
+
+#tc-libs:focus-within {
+    border: heavy $primary;
 }
 
 .lib-header-row {
@@ -551,10 +600,16 @@ TextArea#tc-editor:focus {
 #tc-output {
     margin: 0;
     height: 1fr;
+    background: $boost;
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
     padding: 0 1;
+    overflow-y: auto;
+}
+
+#tc-output:focus {
+    border: heavy $accent;
 }
 
 .repo-row {

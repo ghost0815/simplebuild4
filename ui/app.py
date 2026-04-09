@@ -189,11 +189,110 @@ class S4App(App):
             pass
 
     def action_copy_text(self) -> None:
-        """Copy selected text to clipboard via Ctrl+C."""
+        """Copy selected text to clipboard via Ctrl+C.
+
+        Priority:
+        1. Mouse text selection on any widget → copy selection.
+        2. Focused RichLog → copy all lines as plain text.
+        3. Focused Static → copy its rendered text.
+        4. Focused VerticalScroll containing a Static → copy child text.
+        """
+        from textual.widgets import RichLog, Static, TextArea
+        from textual.containers import VerticalScroll
+        import re as _re
+
         selection = self.screen.get_selected_text()
         if selection:
             self.copy_to_clipboard(selection)
             self.notify("Copied to clipboard")
+            return
+
+        focused = self.focused
+        def _box_title(widget) -> str:
+            """Return the border_title of the widget or its parent, or a fallback."""
+            for w in (widget, widget.parent):
+                if w and hasattr(w, 'border_title') and w.border_title:
+                    return str(w.border_title)
+            return "Content"
+
+        # RichLog: lines are Strip objects containing Segments.
+        if isinstance(focused, RichLog) and focused.lines:
+            plain_lines = []
+            for line in focused.lines:
+                try:
+                    plain_lines.append("".join(seg.text for seg in line))
+                except (TypeError, AttributeError):
+                    plain_lines.append(str(line))
+            plain = "\n".join(plain_lines)
+            if plain.strip():
+                self.copy_to_clipboard(plain)
+                self.notify(f"{_box_title(focused)} copied to clipboard")
+            return
+
+        # Static widget: strip Rich markup and copy.
+        if isinstance(focused, Static):
+            raw = str(focused._Static__content) if hasattr(focused, '_Static__content') else ""
+            plain = _re.sub(r'\[/?[a-z_ #0-9]+\]', '', raw)
+            if plain.strip():
+                self.copy_to_clipboard(plain)
+                self.notify(f"{_box_title(focused)} copied to clipboard")
+            return
+
+        # TextArea (e.g. tc-editor): copy full text.
+        if isinstance(focused, TextArea):
+            plain = focused.text
+            if plain.strip():
+                self.copy_to_clipboard(plain)
+                self.notify(f"{_box_title(focused)} copied to clipboard")
+            return
+
+        # VerticalScroll containing Static children (e.g. repo output, libraries).
+        container = focused if isinstance(focused, VerticalScroll) else None
+        if not container and focused and focused.parent:
+            p = focused.parent
+            # Walk up at most 2 levels (widget → Horizontal → VerticalScroll)
+            for _ in range(3):
+                if isinstance(p, VerticalScroll):
+                    container = p
+                    break
+                p = getattr(p, 'parent', None)
+                if p is None:
+                    break
+        if container is not None:
+            from textual.widgets import Select
+            # Libraries panel: collect status + action per row.
+            lib_statics = container.query(".lib-status")
+            if lib_statics:
+                lines = []
+                for st in lib_statics:
+                    raw = str(st._Static__content) if hasattr(st, '_Static__content') else ""
+                    text = _re.sub(r'\[/?[a-z_ #0-9.]+\]', '', raw).rstrip()
+                    # Find sibling Select in same row
+                    row = st.parent
+                    action = ""
+                    if row:
+                        try:
+                            sel = row.query_one(Select)
+                            val = str(sel.value) if sel.value and sel.value is not Select.BLANK else ""
+                            action = val
+                        except Exception:
+                            pass
+                    if action:
+                        lines.append(f"{text:<30s} {action}")
+                    else:
+                        lines.append(text)
+                plain = "\n".join(lines)
+            else:
+                # Generic: collect all Static text.
+                parts = []
+                for child in container.query(Static):
+                    raw = str(child._Static__content) if hasattr(child, '_Static__content') else ""
+                    parts.append(_re.sub(r'\[/?[a-z_ #0-9]+\]', '', raw))
+                plain = "\n".join(parts)
+            if plain.strip():
+                self.copy_to_clipboard(plain)
+                self.notify(f"{_box_title(container)} copied to clipboard")
+            return
 
     def action_show_help_panel(self) -> None:
         """Override Textual's default Keys to show our keyboard reference."""
@@ -367,8 +466,17 @@ class S4App(App):
             return
         screen = self.screen
         if hasattr(screen, 'do_save'):
+            # Remember focused widget so we can restore after save/refresh.
+            focus_id = self.focused.id if self.focused else None
             msg = screen.do_save()
-            self.notify(msg or "Saved")
+            if msg:
+                self.notify(msg)
+            # Restore focus after save (screen may have refreshed).
+            if focus_id:
+                try:
+                    self.screen.query_one(f"#{focus_id}").focus()
+                except Exception:
+                    pass
 
     def action_build(self) -> None:
         """Dispatch F5 Build to main screen."""

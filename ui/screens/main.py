@@ -17,7 +17,7 @@ from ui.footer import S4Footer
 
 class MainScreen(Screen):
     BINDINGS = [
-        Binding("c", "tab_compact", "Compact", show=False),
+        Binding("s", "tab_compact", "Summary", show=False),
         Binding("o", "tab_log", "Output", show=False),
     ]
 
@@ -49,7 +49,7 @@ class MainScreen(Screen):
 
             # Tabs
             with Horizontal(id="main-tab-bar"):
-                yield Static(" [b]C[/b]ompact ", id="main-tab-compact", classes="tab-active")
+                yield Static(" [b]S[/b]ummary ", id="main-tab-compact", classes="tab-active")
                 yield Static(" [b]O[/b]utput ", id="main-tab-log", classes="tab-inactive")
 
             # Info panel (hidden in Log tab)
@@ -58,6 +58,7 @@ class MainScreen(Screen):
                 "  Create a new target to get started.",
                 id="info",
             )
+            info.can_focus = True
             info.border_title = t("settings_title")
             yield info
 
@@ -90,6 +91,12 @@ class MainScreen(Screen):
         self.query_one("#info", Static).display = (tab == "compact")
         self.query_one("#main-tab-compact").set_classes("tab-active" if tab == "compact" else "tab-inactive")
         self.query_one("#main-tab-log").set_classes("tab-active" if tab == "log" else "tab-inactive")
+        # Focus first widget on new tab
+        fid = "#info" if tab == "compact" else "#output"
+        try:
+            self.query_one(fid).focus()
+        except Exception:
+            pass
 
     def on_click(self, event) -> None:
         """Handle tab clicks."""

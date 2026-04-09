@@ -390,7 +390,7 @@ class TargetEditScreen(Screen):
 
             # Toolchains
             tc_count = len(tgt.toolchains)
-            with Collapsible(title=f"Toolchains ({tc_count} {t('te_selected')})", collapsed=False, id="col-toolchains"):
+            with Collapsible(title=f"Toolchains ({tc_count} {t('te_selected')})", collapsed=True, id="col-toolchains"):
                 for tc in installed:
                     enabled = tc.name in tc_names
                     tcc = tc_map.get(tc.name, ToolchainConfig(name=tc.name))
@@ -1123,6 +1123,23 @@ class TargetEditScreen(Screen):
                 pass
         self._active_tab = tab
         self._update_footer_state()
+        # Focus the first focusable widget inside the active panel.
+        panel_ids = {
+            "general": "#te-panel-general",
+            "source": "#te-panel-source",
+            "oscam": "#te-panel-oscam",
+            "upload": "#te-panel-upload",
+        }
+        pid = panel_ids.get(tab)
+        if pid:
+            try:
+                panel = self.query_one(pid)
+                for child in panel.query("*"):
+                    if child.focusable:
+                        child.focus()
+                        break
+            except Exception:
+                pass
 
     def _update_footer_state(self) -> None:
         """F11 acts as Reset on the Options and General tabs."""

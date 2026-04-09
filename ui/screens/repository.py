@@ -7,7 +7,7 @@ import threading
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Select, Switch
+from textual.widgets import Static, Input, Button, Select, Switch, RichLog, Collapsible
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.repo import RepoConfig, RepoManager, RepoState
@@ -38,6 +38,10 @@ class RepositoryScreen(Screen):
     # Class-level state shared across screen instances
     _log_history: list[str] = []
     _patch_states: dict[str, bool] = {}  # patch stem -> enabled
+    _patches_collapsed: bool = True
+    _edit_collapsed: bool = True
+    _last_focus_id: str = ""
+    _adding_new: bool = False
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,27 +61,12 @@ class RepositoryScreen(Screen):
                 status_lines.append(self._format_status(repo, state))
             status_text = "\n".join(status_lines)
             info = Static(status_text, id="repo-info")
+            info.can_focus = True
             info.border_title = t("re_status")
             yield info
 
             # Output box
-            with VerticalScroll(id="repo-output"):
-                yield Static("", id="repo-output-text")
-
-            # Patches
-            patches_dir = self.app.paths.patches_dir
-            available = sorted(patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
-            if available:
-                with Grid(id="patch-grid"):
-                    for p in available:
-                        enabled = RepositoryScreen._patch_states.get(p.stem, False)
-                        yield Horizontal(
-                            Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
-                            Static(f" {p.name}", classes="patch-name"),
-                            classes="patch-item",
-                        )
-            else:
-                yield Static(f"  [dim]no .patch files in {patches_dir}[/dim]", classes="patch-info")
+            yield RichLog(id="repo-output", highlight=False, markup=True, wrap=True)
 
             # Repositories actions
             patch_sources = load_patch_sources(self.app.paths.root / "data" / "patches.yaml")
@@ -117,8 +106,25 @@ class RepositoryScreen(Screen):
                     clean_btn.tooltip = "Delete the checked-out repository from disk"
                     yield clean_btn
 
+            # Patches
+            patches_dir = self.app.paths.patches_dir
+            available = sorted(patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
+            patch_label = f"Patches ({len(available)})" if available else "Patches"
+            with Collapsible(title=patch_label, collapsed=RepositoryScreen._patches_collapsed, id="col-patches"):
+                if available:
+                    with Grid(id="patch-grid"):
+                        for p in available:
+                            enabled = RepositoryScreen._patch_states.get(p.stem, False)
+                            yield Horizontal(
+                                Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
+                                Static(f" {p.name}", classes="patch-name"),
+                                classes="patch-item",
+                            )
+                else:
+                    yield Static(f"  [dim]no .patch files in {patches_dir}[/dim]", classes="patch-info")
+
             # Edit / Add
-            with Vertical(id="edit-box"):
+            with Collapsible(title=t("re_edit_add"), collapsed=RepositoryScreen._edit_collapsed, id="col-edit"):
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_name')}", classes="repo-label")
                     yield Input(placeholder=t("ph_repo_name"), id="edit-repo-name")
@@ -161,17 +167,25 @@ class RepositoryScreen(Screen):
                 pass
             self._fill_edit_fields(repo)
         # Set border titles
-        self.query_one("#repo-output", VerticalScroll).border_title = t("output_title")
+        self.query_one("#repo-output", RichLog).border_title = t("output_title")
         try:
             self.query_one("#patch-grid", Grid).border_title = "Patches"
         except Exception:
             pass
         self.query_one("#repo-box", Vertical).border_title = t("repositories")
-        self.query_one("#edit-box", Vertical).border_title = t("re_edit_add")
+        # edit-box is now a Collapsible — title set in compose
         # Restore log history
         if RepositoryScreen._log_history:
             self._update_output()
-        self.query_one("#repo-select", Select).focus()
+        # Restore focus
+        if RepositoryScreen._last_focus_id:
+            try:
+                self.query_one(f"#{RepositoryScreen._last_focus_id}").focus()
+                RepositoryScreen._last_focus_id = ""
+            except Exception:
+                self.query_one("#repo-select", Select).focus()
+        else:
+            self.query_one("#repo-select", Select).focus()
 
     def _format_status(self, repo: RepoConfig, state: RepoState) -> str:
         from rich.markup import escape as _esc
@@ -476,7 +490,7 @@ class RepositoryScreen(Screen):
             pass
 
     def _save_patch_states(self) -> None:
-        """Save current patch switch states before refresh."""
+        """Save current patch switch states and collapsed state before refresh."""
         patches_dir = self.app.paths.patches_dir
         if patches_dir.is_dir():
             for p in patches_dir.glob("*.patch"):
@@ -485,6 +499,14 @@ class RepositoryScreen(Screen):
                     RepositoryScreen._patch_states[p.stem] = sw.value
                 except Exception:
                     pass
+        try:
+            RepositoryScreen._patches_collapsed = self.query_one("#col-patches", Collapsible).collapsed
+        except Exception:
+            pass
+        try:
+            RepositoryScreen._edit_collapsed = self.query_one("#col-edit", Collapsible).collapsed
+        except Exception:
+            pass
 
     _last_selected: str = ""
     _last_switch_rev: str = ""
@@ -492,6 +514,11 @@ class RepositoryScreen(Screen):
     def _full_refresh(self, select_name: str = "") -> None:
         """Reload the screen by replacing it."""
         self._save_patch_states()
+        # Remember focused widget
+        try:
+            RepositoryScreen._last_focus_id = self.app.focused.id if self.app.focused else ""
+        except Exception:
+            RepositoryScreen._last_focus_id = ""
         # Remember which repo was active so the fresh instance can restore it.
         RepositoryScreen._last_selected = (
             select_name
@@ -509,13 +536,12 @@ class RepositoryScreen(Screen):
         self._update_output()
 
     def _update_output(self) -> None:
-        """Update the output Static widget with all log lines."""
+        """Update the output RichLog widget with all log lines."""
         try:
-            text = "\n".join(RepositoryScreen._log_history)
-            self.query_one("#repo-output-text", Static).update(text)
-            # Auto-scroll to bottom
-            scroll = self.query_one("#repo-output", VerticalScroll)
-            scroll.scroll_end(animate=False)
+            log = self.query_one("#repo-output", RichLog)
+            log.clear()
+            for line in RepositoryScreen._log_history:
+                log.write(line)
         except Exception:
             pass
 
@@ -529,6 +555,7 @@ class RepositoryScreen(Screen):
     def on_select_changed(self, event: Select.Changed) -> None:
         """Fill edit fields when selecting a different repo."""
         if event.select.id == "repo-select":
+            RepositoryScreen._adding_new = False
             repo = self._get_selected_repo()
             if repo:
                 self._fill_edit_fields(repo)
@@ -632,8 +659,33 @@ class RepositoryScreen(Screen):
                 self._run_in_thread(do_patch)
 
     def do_add(self) -> None:
-        """F10 Add — add new repo from edit fields."""
-        self._handle_add_repo()
+        """F10 Add — clear fields for a new repo (keep URL), open editor, focus Name."""
+        RepositoryScreen._adding_new = True
+        # Keep the current URL as a convenience starting point
+        try:
+            url = self.query_one("#edit-repo-url", Input).value
+        except Exception:
+            url = ""
+        try:
+            self.query_one("#edit-repo-name", Input).value = ""
+            self.query_one("#edit-repo-url", Input).value = url
+            self.query_one("#edit-repo-switch", Input).value = ""
+            # Reset branch dropdown
+            sel = self.query_one("#edit-repo-branch", Select)
+            sel.set_options([(t("ph_repo_branch"), "")])
+            sel.value = ""
+        except Exception:
+            pass
+        # Expand the Edit/Add collapsible and focus the Name field
+        try:
+            col = self.query_one("#col-edit", Collapsible)
+            col.collapsed = False
+        except Exception:
+            pass
+        try:
+            self.query_one("#edit-repo-name", Input).focus()
+        except Exception:
+            pass
 
     _remove_confirm_time: float = 0
 
@@ -658,12 +710,12 @@ class RepositoryScreen(Screen):
         self._remove_confirm_time = now
         self.notify(t("confirm_remove_repo", name=repo.name), severity="warning", timeout=3)
 
-    def _handle_save_repo(self, notify=True) -> None:
-        """Save edits to the currently selected repo."""
+    def _handle_save_repo(self, notify=True) -> bool:
+        """Save edits to the currently selected repo. Returns True on success."""
         repo = self._get_selected_repo()
         if not repo:
             self.notify("No repo selected", severity="error")
-            return
+            return False
 
         new_name = self.query_one("#edit-repo-name", Input).value.strip()
         url = self.query_one("#edit-repo-url", Input).value.strip()
@@ -676,12 +728,12 @@ class RepositoryScreen(Screen):
 
         if not new_name or not url:
             self.notify("Name and URL are required", severity="error")
-            return
+            return False
 
         # Check name collision (if renamed)
         if new_name != repo.name and any(r.name == new_name for r in self._repos):
             self.notify(f"Repo '{new_name}' already exists", severity="error")
-            return
+            return False
 
         # Rename checkout directory if name changed and repo exists on disk
         if new_name != repo.name:
@@ -798,11 +850,27 @@ class RepositoryScreen(Screen):
             return False
 
     def do_save(self) -> str:
-        """Save current repo edits (called by App, no log output)."""
-        repo = self._get_selected_repo()
-        self._handle_save_repo(notify=False)
+        """Save current repo edits (called by App, no log output).
+
+        In add-mode (after F10): always create a new repo; error if name
+        already exists. Otherwise: update the selected repo.
+        """
         name = self.query_one("#edit-repo-name", Input).value.strip()
-        return f"Repository '{name or (repo.name if repo else '')}' saved"
+        url = self.query_one("#edit-repo-url", Input).value.strip()
+        if not name or not url:
+            self.notify("Name and URL are required", severity="error")
+            return ""
+        if RepositoryScreen._adding_new:
+            if any(r.name == name for r in self._repos):
+                self.notify(f"Repo '{name}' already exists", severity="error")
+                return ""
+            self._handle_add_repo()
+            RepositoryScreen._adding_new = False
+            return f"Repository '{name}' added"
+        else:
+            if not self._handle_save_repo(notify=False):
+                return ""
+            return f"Repository '{name}' saved"
 
     def action_go_back(self) -> None:
         RepositoryScreen._log_history.clear()
