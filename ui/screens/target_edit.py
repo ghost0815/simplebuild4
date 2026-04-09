@@ -1078,6 +1078,18 @@ class TargetEditScreen(Screen):
             setattr(target.build, target_attr, [])
         self._refresh_screen(target, "oscam")
 
+    def _do_reset_general_flags(self) -> None:
+        """Restore USE_*/STATIC_*/UPX flags on the General tab to their
+        Python-code defaults (LIBCRYPTO on, everything else off). F12 is
+        still required to persist the result.
+        """
+        target = self._collect()
+        target.build.use_flags = {"LIBCRYPTO": True}
+        target.build.static_flags = {}
+        target.build.use_compress = False
+        self._refresh_screen(target, "general")
+        self.notify(t("te_reset_done"), severity="information")
+
     def _do_reset_options(self) -> None:
         """Restore Options to the oscam defaults from the assigned
         repos and drop any stale (red) entries. F12 still required to
@@ -1113,12 +1125,12 @@ class TargetEditScreen(Screen):
         self._update_footer_state()
 
     def _update_footer_state(self) -> None:
-        """F11 acts as Reset for the Options tab — enabled there only."""
+        """F11 acts as Reset on the Options and General tabs."""
         try:
             from ui.footer import FooterItem
             for item in self.query(FooterItem):
                 if item._key == "F11":
-                    enabled = self._active_tab == "oscam"
+                    enabled = self._active_tab in ("oscam", "general")
                     item._label = t("te_reset")
                     item._disabled = not enabled
                     if enabled:
@@ -1130,10 +1142,11 @@ class TargetEditScreen(Screen):
             pass
 
     def do_remove(self) -> None:
-        """F11 in the Options tab → Reset oscam options to repo defaults."""
-        if self._active_tab != "oscam":
-            return
-        self._do_reset_options()
+        """F11 → Reset current tab to defaults (Options or General flags)."""
+        if self._active_tab == "oscam":
+            self._do_reset_options()
+        elif self._active_tab == "general":
+            self._do_reset_general_flags()
 
     def _collect(self) -> Target:
         """Collect all values from widgets into a Target."""
