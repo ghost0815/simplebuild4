@@ -190,12 +190,15 @@ class Target:
 
         build_data = data.get("build", {})
 
-        # Load use_flags/static_flags — support both new dict format and old field format
-        use_flags = build_data.get("use_flags", {})
-        static_flags = build_data.get("static_flags", {})
+        # Load use_flags/static_flags — support both new dict format and old field format.
+        # Important: distinguish "key missing" (legacy YAML → migrate) from
+        # "key present but empty" (modern YAML with everything off).
+        use_flags = build_data.get("use_flags", {}) or {}
+        static_flags = build_data.get("static_flags", {}) or {}
 
-        # Backward compat: migrate old individual fields into dicts
-        if not use_flags:
+        # Backward compat: migrate old individual fields into dicts only if
+        # the new key is not present in the YAML at all.
+        if "use_flags" not in build_data:
             _old_use = {
                 "LIBCRYPTO": ("use_libcrypto", True),
                 "SSL": ("use_ssl", False),
@@ -216,10 +219,7 @@ class Target:
                 val = build_data.get(field_name, default)
                 if val:
                     use_flags[flag] = True
-            # Ensure LIBCRYPTO default
-            if not use_flags:
-                use_flags["LIBCRYPTO"] = True
-        if not static_flags:
+        if "static_flags" not in build_data:
             _old_static = {
                 "LIBCRYPTO": ("static_libcrypto", False),
                 "SSL": ("static_ssl", False),
