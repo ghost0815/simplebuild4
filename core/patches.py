@@ -25,7 +25,7 @@ def load_patch_sources(path: Path) -> list[PatchSource]:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except yaml.YAMLError:
         return []
-    if not data or "patches" not in data:
+    if not data or not data.get("patches"):
         return []
     return [
         PatchSource(name=p.get("name", ""), url=p.get("url", ""))

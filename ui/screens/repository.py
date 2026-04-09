@@ -82,7 +82,13 @@ class RepositoryScreen(Screen):
             # Repositories actions
             patch_sources = load_patch_sources(self.app.paths.root / "data" / "patches.yaml")
             has_sources = len(patch_sources) > 0
-            dl_tooltip = f"{len(patch_sources)} patch URL(s) configured in patches.yaml" if has_sources else "No patches.yaml found"
+            patches_yaml = self.app.paths.root / "data" / "patches.yaml"
+            if has_sources:
+                dl_tooltip = f"{len(patch_sources)} patch URL(s) configured in patches.yaml"
+            elif patches_yaml.exists():
+                dl_tooltip = "No patch URLs configured in data/patches.yaml"
+            else:
+                dl_tooltip = "No patches.yaml found"
 
             with Vertical(id="repo-box"):
                 with Horizontal(classes="repo-actions-row"):
