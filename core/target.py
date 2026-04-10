@@ -13,15 +13,22 @@ from typing import Optional
 
 import yaml
 
+from core.credentials import encrypt as _encrypt, decrypt as _decrypt
+
 
 @dataclass
 class UploadConfig:
-    """SSH upload destination."""
+    """SSH upload destination for a specific source × toolchain build."""
 
+    name: str = ""                  # display name for the upload entry
+    enabled: bool = True            # False = skip during build upload
+    source: str = ""                # repo name
+    toolchain: str = ""             # toolchain name
     host: str = ""
     user: str = "root"
+    password: str = ""              # encrypted, for sshpass
     port: int = 22
-    key: str = ""
+    key: str = ""                   # SSH key path
     target_path: str = "/usr/bin/oscam"
     pre_cmd: str = ""
     post_cmd: str = ""
@@ -159,16 +166,22 @@ class Target:
                 "make_vars": self.build.make_vars,
             },
             "upload": [
-                {
+                {k: v for k, v in {
+                    "name": u.name,
+                    "enabled": u.enabled,
+                    "source": u.source,
+                    "toolchain": u.toolchain,
                     "host": u.host,
                     "user": u.user,
+                    "password": _encrypt(u.password),
                     "port": u.port,
                     "key": u.key,
                     "target_path": u.target_path,
                     "pre_cmd": u.pre_cmd,
                     "post_cmd": u.post_cmd,
-                }
+                }.items() if v not in ("", 0, None)}
                 for u in self.upload
+                if u.host  # only save entries with a host
             ],
         }
         path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")
@@ -252,8 +265,13 @@ class Target:
         uploads = []
         for u in data.get("upload", []):
             uploads.append(UploadConfig(
+                name=u.get("name", ""),
+                enabled=u.get("enabled", True),
+                source=u.get("source", ""),
+                toolchain=u.get("toolchain", ""),
                 host=u.get("host", ""),
                 user=u.get("user", "root"),
+                password=_decrypt(u.get("password", "")),
                 port=u.get("port", 22),
                 key=u.get("key", ""),
                 target_path=u.get("target_path", "/usr/bin/oscam"),

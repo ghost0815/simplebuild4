@@ -168,6 +168,18 @@ Switch.section-switch.all-on.-on > .switch--slider {
     margin: 0 0 0 2;
 }
 
+.up-grid {
+    grid-size: 2;
+    grid-columns: 2fr 3fr;
+    overflow: hidden;
+    grid-rows: 3;
+    height: auto;
+}
+
+.up-grid Select {
+    width: 1fr;
+}
+
 .tc-toggle-row {
     height: 3;
 }
