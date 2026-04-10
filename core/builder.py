@@ -969,6 +969,12 @@ class BuildEngine:
         # --- Output path (handles use_oscamname variants) ---
         bin_path = self._resolve_binary_path(repo_dir, src.name, tcc.name, is_native, b)
         bin_path.parent.mkdir(parents=True, exist_ok=True)
+        # Remove existing binary so make/copy doesn't fail on busy/locked files
+        if bin_path.exists():
+            try:
+                bin_path.unlink()
+            except OSError:
+                pass
 
         # --- Log common settings ---
         self._log(f"  Build system: {b.build_system}")
