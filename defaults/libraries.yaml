@@ -115,6 +115,8 @@ libraries:
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-udev"
     make: "make -j@CPUS@"
     install: "make install"
+    extra:
+      csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
     variants:
       - version: "1.0.29"
         label: "1.0.x (current)"
@@ -132,6 +134,7 @@ libraries:
     version_check: url:https://pcsclite.apdu.fr/files/
     pre_configure: "./bootstrap"
     extra:
+      csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
       resolve_libusb: 'export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
       fix_version: 'find . -name "configure.ac" -type f -exec sed -i "s/[0-9]\.[0-9]\.[0-9]/@VERSION@/g" {} \;'
       fix_wirecheck: 'find . -name "pcsc-wirecheck-main.c" -type f -exec sed -i "s/pcsc_assert_wire_constants ()/0/g" {} \;'
@@ -154,6 +157,7 @@ libraries:
     source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
     pre_configure: "./bootstrap"
     extra:
+      csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --sysconfdir=@PREFIX@/etc --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
@@ -176,6 +180,7 @@ libraries:
     make: "make -j@CPUS@"
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nincludedir=@PREFIX@/include\n\nName: libdvbcsa\nDescription: DVB Common Scrambling algorithm (${BITSLICE:-unknown})\nVersion: 1.1.0-${BATCHSIZE:-0}-${BITSLICE:-unknown}\nCflags: -I@PREFIX@/include\nLibs: -L@PREFIX@/lib -ldvbcsa\" > @PREFIX@/lib/pkgconfig/libdvbcsa.pc"
     extra:
+      csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
       auto_bitslice: |
         OPT=""; BATCHSIZE="32"; BITSLICE="uint32"
         echo "#include <altivec.h>" | @CC@ @CFLAGS@ -maltivec -c -x c -o /dev/null - 2>/dev/null && OPT="--enable-altivec" && BATCHSIZE="128" && BITSLICE="altivec"

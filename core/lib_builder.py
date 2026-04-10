@@ -388,38 +388,6 @@ def _do_build(
         script_parts.append(f"# pre_configure")
         script_parts.append(pre_configure)
 
-    # Update config.sub/config.guess AFTER pre_configure (which may run
-    # autoreconf that overwrites them) but BEFORE configure. Uses the
-    # system's automake copies if they recognize the target triple;
-    # otherwise downloads a current version from GNU savannah.
-    # Shipped fallback config.sub/config.guess for systems with old automake
-    _s4_defaults = Path(__file__).resolve().parent.parent / "defaults"
-    _config_sub_patch = f"""
-# patch config.sub/config.guess for uncommon architectures
-for f in $(find . -name config.sub -o -name config.guess); do
-    base=$(basename "$f")
-    replaced=0
-    # Try system automake version first
-    sys=$(ls /usr/share/automake-*/"$base" 2>/dev/null | tail -1)
-    if [ -n "$sys" ]; then
-        if [ "$base" = "config.sub" ] && "$sys" {target} >/dev/null 2>&1; then
-            cp "$sys" "$f" && replaced=1
-        elif [ "$base" = "config.guess" ]; then
-            cp "$sys" "$f" && replaced=1
-        fi
-    fi
-    # Fallback: use the version shipped with s4
-    if [ "$replaced" = "0" ] && [ -f "{_s4_defaults}/$base" ]; then
-        if [ "$base" = "config.sub" ] && "{_s4_defaults}/$base" {target} >/dev/null 2>&1; then
-            cp "{_s4_defaults}/$base" "$f"
-        elif [ "$base" = "config.guess" ]; then
-            cp "{_s4_defaults}/$base" "$f"
-        fi
-    fi
-done
-"""
-    script_parts.append(_config_sub_patch)
-
     if configure:
         script_parts.append(f"# configure")
         script_parts.append(configure)
@@ -526,6 +494,8 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
     if trait == "uclibc" and "uclibc" in prefix_lower:
         return True
     if trait == "android" and "android" in prefix_lower:
+        return True
+    if trait == "csky" and "csky" in prefix_lower:
         return True
     if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps", "fix_wirecheck", "fix_version"):
         return True  # Always run these
