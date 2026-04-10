@@ -185,7 +185,11 @@ def _do_build(
     configure = variant.get("configure", lib_defaults.get("configure", ""))
     make_cmd = variant.get("make", lib_defaults.get("make", ""))
     install_cmd = variant.get("install", lib_defaults.get("install", ""))
-    extra = variant.get("extra", lib_defaults.get("extra", {}))
+    # Merge extra commands: library-level defaults + variant overrides.
+    # Variant extras override same-key library extras, but library-level
+    # extras for other keys are preserved (e.g. csky patch + auto_bitslice).
+    extra = dict(lib_defaults.get("extra", {}))
+    extra.update(variant.get("extra", {}))
 
     def _cancelled() -> bool:
         return cancel_check() if cancel_check else False
