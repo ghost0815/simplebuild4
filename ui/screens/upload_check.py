@@ -88,8 +88,17 @@ class UploadCheckModal(ModalScreen[None]):
 
         for idx, u in enumerate(self._uploads):
             name = u.name or f"#{idx + 1}"
-            log(f"[bold]━━━ {name}: {u.user}@{u.host}:{u.target_path} ━━━[/bold]")
+            is_local = u.host in ("localhost", "127.0.0.1", "::1")
+
+            if is_local:
+                log(f"[bold]━━━ {name}: local → {u.target_path} ━━━[/bold]")
+            else:
+                log(f"[bold]━━━ {name}: {u.user}@{u.host}:{u.target_path} ━━━[/bold]")
             log("")
+
+            if is_local:
+                self._check_local(u, log)
+                continue
 
             # Build SSH base command
             ssh_base = ["ssh", "-p", str(u.port)] + self.SSH_OPTS
@@ -236,6 +245,89 @@ class UploadCheckModal(ModalScreen[None]):
             log("")
 
         log(f"[bold]Check complete: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/bold]")
+
+    def _check_local(self, u, log) -> None:
+        """Check a local upload destination (no SSH)."""
+        import platform, shutil, os
+
+        # Step 1: Local connection (always OK)
+        log("[bold]1. Local mode (no SSH)[/bold]")
+        log("  [green]Host is localhost — using file copy[/green]")
+
+        # Step 2: System info
+        log("[bold]2. Local system info...[/bold]")
+        log(f"  [dim]{platform.node()} {platform.system()} {platform.release()} {platform.machine()}[/dim]")
+        total, used, free = shutil.disk_usage(Path(u.target_path).parent if Path(u.target_path).parent.exists() else "/")
+        log(f"  [dim]Disk: {total // (1024**3)}G total, {used // (1024**3)}G used, {free // (1024**3)}G free[/dim]")
+
+        # Step 3: Target binary
+        log(f"[bold]3. Target binary: {u.target_path}[/bold]")
+        target = Path(u.target_path)
+        if target.exists():
+            stat = target.stat()
+            log(f"  [green]File exists ({stat.st_size} bytes)[/green]")
+            # Check if running
+            try:
+                result = subprocess.run(
+                    ["pidof", target.name], capture_output=True, text=True, timeout=5,
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    log(f"  [green]RUNNING pid={result.stdout.strip()}[/green]")
+                else:
+                    log(f"  [yellow]NOT RUNNING[/yellow]")
+            except Exception:
+                log(f"  [dim](could not check running state)[/dim]")
+        else:
+            log(f"  [yellow]File not found (first deploy)[/yellow]")
+
+        # Step 4: Pre install commands
+        if u.pre_cmd:
+            log(f"[bold]4. Pre install commands...[/bold]")
+            log(f"  [dim]$ {u.pre_cmd}[/dim]")
+            try:
+                result = subprocess.run(
+                    u.pre_cmd, shell=True, capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode == 0:
+                    if result.stdout.strip():
+                        for line in result.stdout.strip().splitlines():
+                            log(f"  {line}")
+                    log(f"  [green]OK (exit 0)[/green]")
+                else:
+                    err = result.stderr.strip() or result.stdout.strip()
+                    log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
+            except Exception as e:
+                log(f"  [red]Error: {e}[/red]")
+        else:
+            log(f"[bold]4. Pre install commands: [dim](none)[/dim][/bold]")
+
+        # Step 5: Dry-run copy
+        log(f"[bold]5. Copy (dry-run)...[/bold]")
+        log(f"  [dim]$ cp <binary> {u.target_path}[/dim]")
+        log(f"  [yellow]Skipped (dry-run — no binary to copy)[/yellow]")
+
+        # Step 6: Post install commands
+        if u.post_cmd:
+            log(f"[bold]6. Post install commands...[/bold]")
+            log(f"  [dim]$ {u.post_cmd}[/dim]")
+            try:
+                result = subprocess.run(
+                    u.post_cmd, shell=True, capture_output=True, text=True, timeout=30,
+                )
+                if result.returncode == 0:
+                    if result.stdout.strip():
+                        for line in result.stdout.strip().splitlines():
+                            log(f"  {line}")
+                    log(f"  [green]OK (exit 0)[/green]")
+                else:
+                    err = result.stderr.strip() or result.stdout.strip()
+                    log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
+            except Exception as e:
+                log(f"  [red]Error: {e}[/red]")
+        else:
+            log(f"[bold]6. Post install commands: [dim](none)[/dim][/bold]")
+
+        log("")
 
         # Write log file
         if self._logs_dir:
