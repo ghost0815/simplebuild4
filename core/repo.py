@@ -227,8 +227,11 @@ class RepoManager:
                 log(f"Clone failed: {e}")
             return False
 
-    def _svn_effective_url(self) -> str:
+    def _svn_effective_url(self, use_auth_url: bool = True) -> str:
         """Compute the real checkout URL for the configured branch.
+
+        When *use_auth_url* is True (default), the URL includes
+        embedded credentials (username) for HTTPS auth.
 
         config.url is treated as the root (typically ending in
         `/trunk`, `/branches/<x>` or `/tags/<x>`); config.branch
@@ -241,13 +244,14 @@ class RepoManager:
         - anything else                         → `<base>/branches/<x>`
         """
         from core.vcs_branches import svn_base_url
+        url = self._auth_url if use_auth_url else self.config.url
         target = (self.config.branch or "").strip()
-        base = svn_base_url(self.config.url)
+        base = svn_base_url(url)
         # Standard layout is detected when svn_base_url actually stripped
         # a trunk/branches/tags suffix off the configured URL.
-        is_standard = base.rstrip("/") != self.config.url.rstrip("/")
+        is_standard = base.rstrip("/") != url.rstrip("/")
         if not target:
-            return f"{base}/trunk" if is_standard else self.config.url
+            return f"{base}/trunk" if is_standard else url
         if target == "trunk":
             return f"{base}/trunk"
         if target.startswith("branches/") or target.startswith("tags/"):
@@ -259,9 +263,12 @@ class RepoManager:
         # URL; config.branch (if set) selects an alternate location in
         # the standard trunk/branches/tags layout.
         checkout_url = self._svn_effective_url()
+        clean_url = self._svn_effective_url(use_auth_url=False)
         cmd = ["svn", "checkout", "--non-interactive"] + self._svn_auth_args + [checkout_url, str(self.repo_path)]
         if log:
-            log(f"$ {' '.join(cmd)}")
+            # Log without credentials
+            log_cmd = f"$ svn checkout --non-interactive {clean_url} {self.repo_path}"
+            log(log_cmd)
             self._log_auth(log)
         try:
             proc = subprocess.Popen(

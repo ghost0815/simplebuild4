@@ -308,19 +308,6 @@ def _do_build(
             log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
         return False
 
-    # Update config.sub/config.guess in the source tree with the system's
-    # current versions. Library sources often bundle outdated copies that
-    # reject uncommon architectures (e.g. csky).
-    for _aux_file in ("config.sub", "config.guess"):
-        try:
-            import glob as _glob
-            system_file = _glob.glob(f"/usr/share/automake-*/{_aux_file}")
-            if system_file:
-                for old in build_dir.rglob(_aux_file):
-                    shutil.copy2(system_file[0], old)
-        except Exception:
-            pass
-
     # Prepare environment — put /usr/bin BEFORE toolchain bin so host pkg-config is found first
     env = os.environ.copy()
     original_path = env.get('PATH', '')
@@ -400,6 +387,27 @@ def _do_build(
     if pre_configure:
         script_parts.append(f"# pre_configure")
         script_parts.append(pre_configure)
+
+    # Update config.sub/config.guess AFTER pre_configure (which may run
+    # autoreconf that overwrites them) but BEFORE configure. Uses the
+    # system's automake copies if they recognize the target triple;
+    # otherwise downloads a current version from GNU savannah.
+    _config_sub_patch = f"""
+# patch config.sub/config.guess for uncommon architectures
+for f in $(find . -name config.sub -o -name config.guess); do
+    base=$(basename "$f")
+    sys=$(ls /usr/share/automake-*/"$base" 2>/dev/null | tail -1)
+    if [ -n "$sys" ]; then
+        # Test if system version recognizes our target
+        if [ "$base" = "config.sub" ] && "$sys" {target} >/dev/null 2>&1; then
+            cp "$sys" "$f"
+        elif [ "$base" = "config.guess" ]; then
+            cp "$sys" "$f"
+        fi
+    fi
+done
+"""
+    script_parts.append(_config_sub_patch)
 
     if configure:
         script_parts.append(f"# configure")
