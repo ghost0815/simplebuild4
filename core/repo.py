@@ -146,6 +146,14 @@ class RepoManager:
             config.auth_method, auth_user=config.auth_user,
             auth_pass=config.auth_pass)
 
+    def _log_auth(self, log: Optional[Callable[[str], None]]) -> None:
+        """Log which auth method is being used, if any."""
+        if not log or not self.config.auth_method:
+            return
+        info = {"ssh_key": f"SSH key ({self.config.ssh_key})",
+                "userpass": f"user '{self.config.auth_user}'"}
+        log(f"  [dim]Auth: {info.get(self.config.auth_method, self.config.auth_method)}[/dim]")
+
     def _run_git(self, *args: str) -> str:
         """Run git with auth environment. Convenience wrapper."""
         return _git(self.repo_path, *args, env=self._auth_env)
@@ -200,6 +208,7 @@ class RepoManager:
         if log:
             # Log command without embedded credentials
             log(f"$ {' '.join(cmd).replace(self._auth_url, self.config.url)}")
+            self._log_auth(log)
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -253,6 +262,7 @@ class RepoManager:
         cmd = ["svn", "checkout", "--non-interactive"] + self._svn_auth_args + [checkout_url, str(self.repo_path)]
         if log:
             log(f"$ {' '.join(cmd)}")
+            self._log_auth(log)
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -284,6 +294,7 @@ class RepoManager:
 
     def _git_update(self, log: Optional[Callable[[str], None]] = None) -> bool:
         try:
+            self._log_auth(log)
             # If the config has a branch set and the working copy is on a
             # different branch, fetch + checkout + pull — so that a simple
             # Update also applies a branch change saved in the editor.
@@ -319,6 +330,7 @@ class RepoManager:
 
     def _svn_update(self, log: Optional[Callable[[str], None]] = None) -> bool:
         try:
+            self._log_auth(log)
             # Revert local changes (patches) before update to avoid conflicts
             if log:
                 log("$ svn revert -R .")

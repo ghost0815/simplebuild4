@@ -49,44 +49,64 @@ def decrypt(stored: str) -> str:
 
 
 def build_git_env(auth_method: str, ssh_key: str = "",
-                  auth_token: str = "", auth_user: str = "",
-                  auth_pass: str = "") -> dict[str, str]:
+                  auth_user: str = "", auth_pass: str = "") -> dict[str, str]:
     """Build extra environment variables for git subprocess calls.
 
     Returns a dict that should be merged into ``os.environ`` via
     ``env={**os.environ, **build_git_env(...)}``.
+
+    For username+password auth, a temporary GIT_ASKPASS script is used
+    so the password is never embedded in the URL (which breaks with
+    special characters).
     """
+    import tempfile, stat
     env: dict[str, str] = {}
     if auth_method == "ssh_key" and ssh_key:
         env["GIT_SSH_COMMAND"] = f"ssh -i {ssh_key} -o StrictHostKeyChecking=no"
+    elif auth_method == "userpass" and auth_pass:
+        # Create a temporary askpass script that returns the password.
+        # GIT_ASKPASS is called by git with a prompt; we just echo the password.
+        askpass = tempfile.NamedTemporaryFile(
+            mode="w", prefix="s4-askpass-", suffix=".sh", delete=False,
+        )
+        askpass.write(f"#!/bin/sh\necho '{auth_pass}'\n")
+        askpass.close()
+        import os as _os
+        _os.chmod(askpass.name, stat.S_IRWXU)
+        env["GIT_ASKPASS"] = askpass.name
+        env["GIT_TERMINAL_PROMPT"] = "0"
     return env
 
 
 def apply_credentials_to_url(url: str, auth_method: str,
                              auth_user: str = "", auth_pass: str = "") -> str:
-    """Embed username/password into an HTTPS URL if needed.
+    """Embed only the username into an HTTPS URL if needed.
 
-    For git/svn HTTPS URLs with auth_method ``"userpass"``, the
-    credentials are embedded as ``https://user:pass@host/path``.
-    Returns the (possibly modified) URL.
+    The password is NOT embedded — it is supplied via GIT_ASKPASS
+    (for git) or --password (for svn) to avoid URL-encoding issues
+    with special characters.
     """
     if auth_method != "userpass" or not auth_user:
         return url
     p = urlparse(url)
     if p.scheme not in ("https", "http"):
         return url
-    cred = f"{auth_user}:{auth_pass}" if auth_pass else auth_user
-    return urlunparse(p._replace(netloc=f"{cred}@{p.hostname}"
+    return urlunparse(p._replace(netloc=f"{auth_user}@{p.hostname}"
                                  + (f":{p.port}" if p.port else "")))
 
 
 def build_svn_auth_args(auth_method: str, auth_user: str = "",
                         auth_pass: str = "") -> list[str]:
-    """Build extra CLI arguments for svn subprocess calls."""
+    """Build extra CLI arguments for svn subprocess calls.
+
+    ``--no-auth-cache`` prevents SVN from using (possibly stale) cached
+    credentials instead of the ones we supply.
+    """
     args: list[str] = []
     if auth_method == "userpass":
         if auth_user:
             args += ["--username", auth_user]
         if auth_pass:
             args += ["--password", auth_pass]
+        args += ["--no-auth-cache"]
     return args
