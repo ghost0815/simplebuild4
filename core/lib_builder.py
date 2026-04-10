@@ -308,6 +308,19 @@ def _do_build(
             log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
         return False
 
+    # Update config.sub/config.guess in the source tree with the system's
+    # current versions. Library sources often bundle outdated copies that
+    # reject uncommon architectures (e.g. csky).
+    for _aux_file in ("config.sub", "config.guess"):
+        try:
+            import glob as _glob
+            system_file = _glob.glob(f"/usr/share/automake-*/{_aux_file}")
+            if system_file:
+                for old in build_dir.rglob(_aux_file):
+                    shutil.copy2(system_file[0], old)
+        except Exception:
+            pass
+
     # Prepare environment — put /usr/bin BEFORE toolchain bin so host pkg-config is found first
     env = os.environ.copy()
     original_path = env.get('PATH', '')
@@ -444,8 +457,38 @@ def _find_prefix(sysroot_path: Path) -> Path:
 
 
 def _get_target(toolchain_dir: Path, prefix: str) -> str:
-    """Get the target triplet from the compiler prefix."""
-    # prefix is e.g. "arm-oe-linux-gnueabi-" → target "arm-oe-linux-gnueabi"
+    """Get the target triplet, preferring ``gcc -dumpmachine`` over the
+    raw prefix.  Some toolchains use a short prefix (e.g. ``csky-linux-``)
+    that is not a valid GNU triple; ``-dumpmachine`` returns the real one
+    (e.g. ``csky-unknown-linux-gnuabiv2``).
+    """
+    import subprocess, os
+    gcc = f"{prefix}gcc"
+    # Try gcc in the toolchain's bin/ directory first
+    for bin_dir in (toolchain_dir / "bin", ):
+        gcc_path = bin_dir / gcc
+        if gcc_path.exists():
+            try:
+                env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+                triple = subprocess.check_output(
+                    [str(gcc_path), "-dumpmachine"],
+                    text=True, stderr=subprocess.DEVNULL, timeout=5, env=env,
+                ).strip()
+                if triple:
+                    return triple
+            except Exception:
+                pass
+    # Try gcc on PATH (e.g. native toolchain)
+    try:
+        triple = subprocess.check_output(
+            [gcc, "-dumpmachine"],
+            text=True, stderr=subprocess.DEVNULL, timeout=5,
+        ).strip()
+        if triple:
+            return triple
+    except Exception:
+        pass
+    # Fallback: strip trailing dash from prefix
     return prefix.rstrip("-")
 
 
