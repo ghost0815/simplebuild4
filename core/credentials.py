@@ -99,14 +99,26 @@ def build_svn_auth_args(auth_method: str, auth_user: str = "",
                         auth_pass: str = "") -> list[str]:
     """Build extra CLI arguments for svn subprocess calls.
 
-    ``--no-auth-cache`` prevents SVN from using (possibly stale) cached
-    credentials instead of the ones we supply.
+    When a password is provided, ``--no-auth-cache`` is added to force
+    using the supplied credentials. When only a username is set
+    (password empty), no extra flags are added so SVN can prompt
+    interactively and cache credentials for future use.
+    ``--trust-server-cert`` is handled separately in RepoManager for
+    all HTTPS URLs regardless of auth method.
     """
     args: list[str] = []
     if auth_method == "userpass":
         if auth_user:
             args += ["--username", auth_user]
         if auth_pass:
-            args += ["--password", auth_pass]
-        args += ["--no-auth-cache", "--trust-server-cert"]
+            args += ["--password", auth_pass, "--no-auth-cache"]
     return args
+
+
+def svn_needs_interactive(auth_method: str, auth_pass: str = "") -> bool:
+    """Return True if SVN should run without --non-interactive.
+
+    When auth_method is userpass but password is empty, SVN needs to
+    prompt the user interactively for credentials.
+    """
+    return auth_method == "userpass" and not auth_pass

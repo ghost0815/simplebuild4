@@ -136,15 +136,18 @@ class RepoManager:
         self.backup_dir = backup_dir
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         # Pre-compute auth environment and URL for subprocess calls.
-        from core.credentials import build_git_env, apply_credentials_to_url, build_svn_auth_args
+        from core.credentials import build_git_env, apply_credentials_to_url, build_svn_auth_args, svn_needs_interactive
         self._auth_env = {**os.environ, **build_git_env(
-            config.auth_method, ssh_key=config.ssh_key)}
+            config.auth_method, ssh_key=config.ssh_key,
+            auth_user=config.auth_user, auth_pass=config.auth_pass)}
         self._auth_url = apply_credentials_to_url(
             config.url, config.auth_method,
             auth_user=config.auth_user, auth_pass=config.auth_pass)
         self._svn_auth_args = build_svn_auth_args(
             config.auth_method, auth_user=config.auth_user,
             auth_pass=config.auth_pass)
+        self._svn_interactive = svn_needs_interactive(
+            config.auth_method, auth_pass=config.auth_pass)
 
     def _log_auth(self, log: Optional[Callable[[str], None]]) -> None:
         """Log which auth method is being used, if any."""
@@ -159,8 +162,16 @@ class RepoManager:
         return _git(self.repo_path, *args, env=self._auth_env)
 
     def _svn_cmd(self, base_cmd: list[str]) -> list[str]:
-        """Append SVN auth args to an existing svn command list."""
-        return base_cmd + self._svn_auth_args
+        """Append SVN auth args. Remove --non-interactive when SVN needs
+        to prompt for credentials. Add --trust-server-cert for HTTPS
+        only when --non-interactive is present (SVN requires it)."""
+        cmd = list(base_cmd)
+        if self._svn_interactive:
+            cmd = [a for a in cmd if a != "--non-interactive"]
+        elif self.config.url.startswith("https://") and "--trust-server-cert" not in cmd:
+            cmd.append("--trust-server-cert")
+        cmd += self._svn_auth_args
+        return cmd
 
     @property
     def is_git(self) -> bool:
@@ -263,9 +274,27 @@ class RepoManager:
         # URL; config.branch (if set) selects an alternate location in
         # the standard trunk/branches/tags layout.
         checkout_url = self._svn_effective_url()
-        cmd = ["svn", "checkout", "--non-interactive"] + self._svn_auth_args + [checkout_url, str(self.repo_path)]
+
+        # Interactive SVN auth cannot work inside the TUI (Textual
+        # captures stdin). Show the manual command instead.
+        if self._svn_interactive:
+            manual_cmd = f"svn checkout --username {self.config.auth_user} {checkout_url} {self.repo_path}"
+            if log:
+                log(f"[yellow]This SVN server requires interactive login.[/yellow]")
+                log(f"[yellow]Please run this command once on the command line:[/yellow]")
+                log(f"")
+                log(f"  [bold]{manual_cmd}[/bold]")
+                log(f"")
+                log(f"[yellow]After entering your password, SVN will cache the credentials.[/yellow]")
+                log(f"[yellow]Then retry Clone in s4 with Auth set to None.[/yellow]")
+            return False
+
+        cmd = ["svn", "checkout", "--non-interactive"]
+        if self.config.url.startswith("https://"):
+            cmd.append("--trust-server-cert")
+        cmd += self._svn_auth_args + [checkout_url, str(self.repo_path)]
         if log:
-            log(f"$ svn checkout --non-interactive {checkout_url} {self.repo_path}")
+            log(f"$ svn checkout {checkout_url} {self.repo_path}")
             self._log_auth(log)
         try:
             proc = subprocess.Popen(
