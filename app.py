@@ -17,3 +17,11 @@ def main():
     paths = Paths.detect()
     app = S4App(paths=paths)
     app.run()
+
+    # Restore terminal state after Textual exits — prevents invisible
+    # input if the app crashed or exited uncleanly from raw mode.
+    try:
+        import subprocess
+        subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
