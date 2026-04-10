@@ -392,17 +392,28 @@ def _do_build(
     # autoreconf that overwrites them) but BEFORE configure. Uses the
     # system's automake copies if they recognize the target triple;
     # otherwise downloads a current version from GNU savannah.
+    # Shipped fallback config.sub/config.guess for systems with old automake
+    _s4_defaults = Path(__file__).resolve().parent.parent / "defaults"
     _config_sub_patch = f"""
 # patch config.sub/config.guess for uncommon architectures
 for f in $(find . -name config.sub -o -name config.guess); do
     base=$(basename "$f")
+    replaced=0
+    # Try system automake version first
     sys=$(ls /usr/share/automake-*/"$base" 2>/dev/null | tail -1)
     if [ -n "$sys" ]; then
-        # Test if system version recognizes our target
         if [ "$base" = "config.sub" ] && "$sys" {target} >/dev/null 2>&1; then
-            cp "$sys" "$f"
+            cp "$sys" "$f" && replaced=1
         elif [ "$base" = "config.guess" ]; then
-            cp "$sys" "$f"
+            cp "$sys" "$f" && replaced=1
+        fi
+    fi
+    # Fallback: use the version shipped with s4
+    if [ "$replaced" = "0" ] && [ -f "{_s4_defaults}/$base" ]; then
+        if [ "$base" = "config.sub" ] && "{_s4_defaults}/$base" {target} >/dev/null 2>&1; then
+            cp "{_s4_defaults}/$base" "$f"
+        elif [ "$base" = "config.guess" ]; then
+            cp "{_s4_defaults}/$base" "$f"
         fi
     fi
 done
