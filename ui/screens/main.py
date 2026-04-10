@@ -161,8 +161,20 @@ class MainScreen(Screen):
 
         # Build info text
         pad = 16  # label width for alignment
+        # Build count: sources × toolchains
+        n_sources = len(target.sources)
+        n_toolchains = len(target.toolchains)
+        build_count = n_sources * n_toolchains
+
+        # First line: name — description (builds)
+        header = f"  [bold]{target.name}[/bold]"
+        if target.description:
+            header += f" — {target.description}"
+        if build_count:
+            header += f" ({build_count} build{'s' if build_count != 1 else ''})"
+
         lines = [
-            f"  [bold]{target.name}[/bold] — {target.description}",
+            header,
             f"  {t('repositories') + ':':<{pad}} {repo_str}",
             f"  {t('toolchains') + ':':<{pad}} {tc_str}",
         ]

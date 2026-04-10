@@ -76,12 +76,13 @@ class TargetEditScreen(Screen):
 
     BINDINGS = [
         ("g", "switch_tab('general')", "General"),
-        ("r", "switch_tab('source')", "Repo/Toolchain"),
+        ("t", "switch_tab('source')", "Toolchain"),
         ("o", "switch_tab('oscam')", "Options"),
         ("u", "switch_tab('upload')", "Upload"),
     ]
 
     _collapsible_states: dict[str, bool] = {}  # class-level: id → collapsed
+    _tc_flags_editing: str = ""  # class-level: sid of the TC whose flags are shown
 
     def __init__(
         self,
@@ -184,7 +185,7 @@ class TargetEditScreen(Screen):
         # Tab bar
         with Horizontal(id="te-tab-bar"):
             yield Static(" [b]G[/b]eneral ", id="te-tab-general", classes="tab-active")
-            yield Static(" [b]R[/b]epo/Toolchain", id="te-tab-source", classes="tab-inactive")
+            yield Static(" [b]T[/b]oolchain", id="te-tab-source", classes="tab-inactive")
             yield Static(" [b]O[/b]ptions", id="te-tab-oscam", classes="tab-inactive")
             yield Static(" [b]U[/b]pload ", id="te-tab-upload", classes="tab-inactive")
 
@@ -266,103 +267,14 @@ class TargetEditScreen(Screen):
                     Input(value=b.confdir, id="t-confdir"),
                     classes="s-row",
                 )
-            if has_source:
-                mk_flags = self._load_makefile_flags()
-                mk_use = mk_flags.get("use", [])
-                has_dual_backend = "MBEDTLS" in mk_use and "OPENSSL" in mk_use
-
-                # Known flags that support STATIC_ linking (not in Makefile, passed as make vars)
-                _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
-
-                # Split into library and hardware flags
-                lib_flags = [f for f in mk_use if f not in self._HARDWARE_FLAGS and f not in ("MBEDTLS", "OPENSSL")]
-                hw_flags = [f for f in mk_use if f in self._HARDWARE_FLAGS]
-
-                with Collapsible(title=t("section_library_flags"), collapsed=True, id="col-lib-flags"):
-                    # Exclusive MBEDTLS ↔ OPENSSL pair (only if repo supports it)
-                    if has_dual_backend:
-                        openssl_on = b.use_flags.get("OPENSSL", False)
-                        mbedtls_on = b.use_flags.get("MBEDTLS", not openssl_on)
-                        yield Horizontal(
-                            Static(" USE_MBEDTLS", classes="flag-label"),
-                            Switch(value=mbedtls_on, id="f-use-MBEDTLS"),
-                            Static(" USE_OPENSSL", classes="flag-label"),
-                            Switch(value=openssl_on, id="f-use-OPENSSL"),
-                            classes="flag-row",
-                        )
-                    # Dynamic library flags with STATIC_ partner for known libs
-                    for flag in lib_flags:
-                        widgets = [
-                            Static(f" USE_{flag}", classes="flag-label"),
-                            Switch(value=b.use_flags.get(flag, False), id=f"f-use-{flag}"),
-                        ]
-                        if flag in _STATIC_CAPABLE:
-                            widgets += [
-                                Static(f" STATIC_{flag}", classes="flag-label"),
-                                Switch(value=b.static_flags.get(flag, False), id=f"f-static-{flag}"),
-                            ]
-                        yield Horizontal(*widgets, classes="flag-row")
-
-                with Collapsible(title=t("section_hardware_flags"), collapsed=True, id="col-hw-flags"):
-                    # STAPI row — with optional STAPI_LIB field inline
-                    if "STAPI" in hw_flags or "STAPI5" in hw_flags:
-                        _stapi_widgets = []
-                        if "STAPI" in hw_flags:
-                            _stapi_widgets += [
-                                Static(" USE_STAPI", classes="flag-label"),
-                                Switch(value=b.use_flags.get("STAPI", False), id="f-use-STAPI"),
-                            ]
-                        if "STAPI5" in hw_flags:
-                            _stapi5_sw = Switch(value=b.use_flags.get("STAPI5", False), id="f-use-STAPI5")
-                            _stapi_widgets += [
-                                Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
-                            ]
-                        if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
-                            _stapi_default = ""
-                            for _tc in installed:
-                                if _tc.name in tc_names:
-                                    _stapi_default = _tc.stapi_lib or ""
-                                    if _stapi_default:
-                                        break
-                            _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
-                            _stapi_is_default = (_stapi_val == _stapi_default)
-                            from textual.widgets import Button as _Btn
-                            _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
-                            _stapi_inp.styles.max_width = 25
-                            if _stapi_is_default:
-                                _stapi_inp.add_class("tc-default")
-                            _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
-                            _stapi_lbl.tooltip = "Path to precompiled STAPI library"
-                            _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
-                            _stapi_rst.tooltip = t("te_load_default")
-                            self._stapi_default = _stapi_default
-                            _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
-                        yield Horizontal(*_stapi_widgets, classes="flag-row")
-
-                    # Other hardware flags (2 per row)
-                    other_hw = [f for f in hw_flags if f not in ("STAPI", "STAPI5")]
-                    for i in range(0, len(other_hw), 2):
-                        widgets = []
-                        for f in other_hw[i:i+2]:
-                            widgets += [
-                                Static(f" USE_{f}", classes="flag-label"),
-                                Switch(value=b.use_flags.get(f, False), id=f"f-use-{f}"),
-                            ]
-                        yield Horizontal(*widgets, classes="flag-row")
-            else:
-                yield Static(f"  [dim]{t('te_select_source_flags')}[/dim]")
-
-        # === Tab 2: Repo/Toolchain===
-        with VerticalScroll(id="te-panel-source"):
-            # Sources
+            # Repositories (moved from Toolchain tab)
             src_names = [s.name for s in tgt.sources]
             src_map = {s.name: s for s in tgt.sources}
             src_count = len(tgt.sources)
-            # Available patches
             patches_dir = self.app.paths.patches_dir
             available_patches = sorted(p.name for p in patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
 
-            with Collapsible(title=f"Repositories ({src_count} {t('te_selected')})", collapsed=False, id="col-sources"):
+            with Collapsible(title=f"Repositories ({src_count} {t('te_selected')})", collapsed=True, id="col-sources"):
                 for r in repos:
                     enabled = r.name in src_names
                     sc = src_map.get(r.name, SourceConfig(name=r.name))
@@ -388,34 +300,61 @@ class TargetEditScreen(Screen):
                 if not repos:
                     yield Static(f"  [dim]{t('te_no_repos_hint')}[/dim]")
 
+        # === Tab 2: Toolchain ===
+        with VerticalScroll(id="te-panel-source"):
             # Toolchains
             tc_count = len(tgt.toolchains)
-            with Collapsible(title=f"Toolchains ({tc_count} {t('te_selected')})", collapsed=True, id="col-toolchains"):
-                for tc in installed:
+            with Collapsible(title=f"Toolchains ({tc_count} {t('te_selected')})", collapsed=False, id="col-toolchains"):
+                from textual.widgets import Button as Btn
+                editing_sid = TargetEditScreen._tc_flags_editing
+
+                def _tc_cell(tc):
+                    sid = _safe_id(tc.name)
                     enabled = tc.name in tc_names
-                    tcc = tc_map.get(tc.name, ToolchainConfig(name=tc.name))
+                    is_editing = (sid == editing_sid)
                     if tc.native:
                         label = f" [bold]{tc.name}[/bold] [dim]({tc.arch})[/dim]"
                     elif tc.arch:
                         label = f" {tc.name} [dim]({tc.arch})[/dim]"
                     else:
                         label = f" {tc.name}"
-                    yield Horizontal(
-                        Static(label, classes="src-name"),
-                        Switch(value=enabled, id=f"tc-{_safe_id(tc.name)}"),
-                        classes="src-row",
-                    )
+                    widgets = [
+                        Switch(value=enabled, id=f"tc-{sid}"),
+                        Static(label, classes="tc-toggle-label"),
+                    ]
                     if enabled:
-                        # Per-toolchain build flags (only shown when active)
-                        sid = _safe_id(tc.name)
-                        def_cc = tc.cc_opts or ""
-                        def_cf = tc.cflags or ""
-                        def_ld = tc.ldflags or ""
-                        def_mv = tc.make_vars or ""
-                        from textual.widgets import Button as Btn
+                        btn_label = "⚙" if not is_editing else "⚙"
+                        flags_btn = Btn(btn_label, id=f"tcflag-{sid}",
+                                        classes="tc-reset-btn tc-editing" if is_editing else "tc-reset-btn")
+                        flags_btn.tooltip = t("te_edit_tc_flags")
+                        widgets.append(flags_btn)
+                    return Horizontal(*widgets, classes="tc-toggle-cell")
+
+                # Two-column toggle rows with inline flag editor
+                i = 0
+                while i < len(installed):
+                    tc1 = installed[i]
+                    tc2 = installed[i + 1] if i + 1 < len(installed) else None
+                    yield Horizontal(
+                        _tc_cell(tc1),
+                        _tc_cell(tc2) if tc2 else Static("", classes="tc-toggle-cell"),
+                        classes="tc-toggle-row",
+                    )
+                    # Flag editor directly below this row if the editing TC is in this pair
+                    edit_tc = None
+                    for _candidate in (tc1, tc2):
+                        if _candidate and _safe_id(_candidate.name) == editing_sid and _candidate.name in tc_names:
+                            edit_tc = _candidate
+                            break
+                    if edit_tc:
+                        tcc = tc_map.get(edit_tc.name, ToolchainConfig(name=edit_tc.name))
+                        sid = editing_sid
+                        def_cc = edit_tc.cc_opts or ""
+                        def_cf = edit_tc.cflags or ""
+                        def_ld = edit_tc.ldflags or ""
+                        def_mv = edit_tc.make_vars or ""
 
                         def _tc_input(val: str, default: str, input_id: str) -> Input:
-                            """Create input: show override or default, style accordingly."""
                             display = val if val else default
                             is_override = val != "" and val != default
                             inp = Input(value=display, id=input_id)
@@ -454,12 +393,135 @@ class TargetEditScreen(Screen):
                             _rst_btn(f"rst-mv-{sid}"),
                             classes="tc-fields-row",
                         )
-                        # Store defaults for reset
                         self._tc_defaults[sid] = {"cc": def_cc, "cf": def_cf, "ld": def_ld, "mv": def_mv}
+                    i += 2
+
                 if not installed:
                     yield Static(f"  [dim]{t('te_no_tc_hint')}[/dim]")
 
-        # === Tab 2: Options (oscam modules) ===
+            # Library and Hardware flags (moved from General tab)
+            if has_source:
+                mk_flags = self._load_makefile_flags()
+                mk_use = mk_flags.get("use", [])
+                mk_use_set = set(mk_use)
+                has_dual_backend = "MBEDTLS" in mk_use and "OPENSSL" in mk_use
+
+                _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
+
+                lib_flags = [f for f in mk_use if f not in self._HARDWARE_FLAGS and f not in ("MBEDTLS", "OPENSSL")]
+                hw_flags = [f for f in mk_use if f in self._HARDWARE_FLAGS]
+
+                # Detect stale USE_* flags (enabled in target but no longer
+                # provided by any assigned repo) — shown in red like Options.
+                stale_lib = sorted(
+                    f for f, v in b.use_flags.items()
+                    if v and f not in mk_use_set
+                    and f not in self._HARDWARE_FLAGS
+                )
+                stale_hw = sorted(
+                    f for f, v in b.use_flags.items()
+                    if v and f not in mk_use_set
+                    and f in self._HARDWARE_FLAGS
+                )
+                stale_static = sorted(
+                    f for f, v in b.static_flags.items()
+                    if v and f not in mk_use_set
+                )
+
+                def _flag_label(name: str, stale: bool = False) -> str:
+                    if stale:
+                        return f" [red strike]{name}[/red strike]"
+                    return f" {name}"
+
+                # Merge normal + stale lib flags, sorted together.
+                # Always exclude MBEDTLS/OPENSSL from the main loop — they
+                # are rendered as a special pair row at the top (normal or stale).
+                stale_lib_set = set(stale_lib)
+                stale_static_set = set(stale_static)
+                all_lib_flags = sorted((set(lib_flags) | stale_lib_set) - {"MBEDTLS", "OPENSSL"})
+
+                with Collapsible(title=t("section_library_flags"), collapsed=True, id="col-lib-flags"):
+                    # MBEDTLS / OPENSSL pair — always at top, normal or stale.
+                    # They always appear together as a pair.
+                    stale_dual = "MBEDTLS" in stale_lib_set or "OPENSSL" in stale_lib_set
+                    if has_dual_backend or stale_dual:
+                        openssl_on = b.use_flags.get("OPENSSL", False)
+                        mbedtls_on = b.use_flags.get("MBEDTLS", not openssl_on if has_dual_backend else False)
+                        yield Horizontal(
+                            Static(_flag_label("USE_MBEDTLS", stale=stale_dual), classes="flag-label"),
+                            Switch(value=mbedtls_on, id="f-use-MBEDTLS"),
+                            Static(_flag_label("USE_OPENSSL", stale=stale_dual), classes="flag-label"),
+                            Switch(value=openssl_on, id="f-use-OPENSSL"),
+                            classes="flag-row",
+                        )
+                    for flag in all_lib_flags:
+                        is_stale = flag in stale_lib_set
+                        widgets = [
+                            Static(_flag_label(f"USE_{flag}", stale=is_stale), classes="flag-label"),
+                            Switch(value=b.use_flags.get(flag, False), id=f"f-use-{flag}"),
+                        ]
+                        if flag in _STATIC_CAPABLE:
+                            s_stale = is_stale or flag in stale_static_set
+                            widgets += [
+                                Static(_flag_label(f"STATIC_{flag}", stale=s_stale), classes="flag-label"),
+                                Switch(value=b.static_flags.get(flag, False), id=f"f-static-{flag}"),
+                            ]
+                        yield Horizontal(*widgets, classes="flag-row")
+
+                with Collapsible(title=t("section_hardware_flags"), collapsed=True, id="col-hw-flags"):
+                    if "STAPI" in hw_flags or "STAPI5" in hw_flags:
+                        _stapi_widgets = []
+                        if "STAPI" in hw_flags:
+                            _stapi_widgets += [
+                                Static(" USE_STAPI", classes="flag-label"),
+                                Switch(value=b.use_flags.get("STAPI", False), id="f-use-STAPI"),
+                            ]
+                        if "STAPI5" in hw_flags:
+                            _stapi5_sw = Switch(value=b.use_flags.get("STAPI5", False), id="f-use-STAPI5")
+                            _stapi_widgets += [
+                                Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
+                            ]
+                        if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
+                            _stapi_default = ""
+                            for _tc in installed:
+                                if _tc.name in tc_names:
+                                    _stapi_default = _tc.stapi_lib or ""
+                                    if _stapi_default:
+                                        break
+                            _stapi_val = b.stapi_lib if b.stapi_lib else _stapi_default
+                            _stapi_is_default = (_stapi_val == _stapi_default)
+                            from textual.widgets import Button as _Btn
+                            _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
+                            _stapi_inp.styles.max_width = 25
+                            if _stapi_is_default:
+                                _stapi_inp.add_class("tc-default")
+                            _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
+                            _stapi_lbl.tooltip = "Path to precompiled STAPI library"
+                            _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
+                            _stapi_rst.tooltip = t("te_load_default")
+                            self._stapi_default = _stapi_default
+                            _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
+                        yield Horizontal(*_stapi_widgets, classes="flag-row")
+
+                    # Merge normal + stale hw flags (excl. STAPI/STAPI5), sorted
+                    stale_hw_set = set(stale_hw)
+                    other_hw = sorted(
+                        set(f for f in hw_flags if f not in ("STAPI", "STAPI5"))
+                        | set(f for f in stale_hw if f not in ("STAPI", "STAPI5"))
+                    )
+                    for i in range(0, len(other_hw), 2):
+                        widgets = []
+                        for f in other_hw[i:i+2]:
+                            is_stale = f in stale_hw_set
+                            widgets += [
+                                Static(_flag_label(f"USE_{f}", stale=is_stale), classes="flag-label"),
+                                Switch(value=b.use_flags.get(f, False), id=f"f-use-{f}"),
+                            ]
+                        yield Horizontal(*widgets, classes="flag-row")
+            else:
+                yield Static(f"  [dim]{t('te_select_source_flags')}[/dim]")
+
+        # === Tab 3: Options (oscam modules) ===
         # Merge target config with oscam options:
         # - Untouched new target → seed with oscam defaults exactly once
         # - Existing target / touched new target → trust target.yaml
@@ -731,7 +793,10 @@ class TargetEditScreen(Screen):
         is_source = sid.startswith("src-") and not sid.startswith("src-upd-") and not sid.startswith("src-patch-")
         is_patch_toggle = sid.startswith("src-patch-")
         is_toolchain = sid.startswith("tc-") and not sid.startswith("tc-cc-") and not sid.startswith("tc-cf-") and not sid.startswith("tc-ld-") and not sid.startswith("tc-mv-")
-        if is_source or is_patch_toggle or is_toolchain:
+        if is_source or is_patch_toggle:
+            self._refresh_screen(self._collect(), "general", sid)
+            return
+        if is_toolchain:
             self._refresh_screen(self._collect(), "source", sid)
             return
 
@@ -787,6 +852,14 @@ class TargetEditScreen(Screen):
                 inp.add_class("tc-default")
             except Exception:
                 pass
+        elif event.button.id and event.button.id.startswith("tcflag-"):
+            # Toggle flag editor for this toolchain (only one at a time)
+            sid = event.button.id[len("tcflag-"):]
+            if TargetEditScreen._tc_flags_editing == sid:
+                TargetEditScreen._tc_flags_editing = ""
+            else:
+                TargetEditScreen._tc_flags_editing = sid
+            self._refresh_screen(self._collect(), "source", event.button.id)
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
 
@@ -1079,15 +1152,15 @@ class TargetEditScreen(Screen):
         self._refresh_screen(target, "oscam")
 
     def _do_reset_general_flags(self) -> None:
-        """Restore USE_*/STATIC_*/UPX flags on the General tab to their
+        """Restore USE_*/STATIC_* flags on the Toolchain tab to their
         Python-code defaults (LIBCRYPTO on, everything else off). F12 is
         still required to persist the result.
         """
+        focus_id = self.app.focused.id if self.app.focused else ""
         target = self._collect()
         target.build.use_flags = {"LIBCRYPTO": True}
         target.build.static_flags = {}
-        target.build.use_compress = False
-        self._refresh_screen(target, "general")
+        self._refresh_screen(target, "source", focus_id)
         self.notify(t("te_reset_done"), severity="information")
 
     def _do_reset_options(self) -> None:
@@ -1095,6 +1168,7 @@ class TargetEditScreen(Screen):
         repos and drop any stale (red) entries. F12 still required to
         persist the result.
         """
+        focus_id = self.app.focused.id if self.app.focused else ""
         target = self._collect()
         oscam = self._load_oscam_options()
         target.build.modules = list(oscam.default_enabled.get("addons", []))
@@ -1102,7 +1176,7 @@ class TargetEditScreen(Screen):
         target.build.readers = list(oscam.default_enabled.get("readers", []))
         target.build.card_readers = list(oscam.default_enabled.get("card_readers", []))
         self._removed_opts = {}
-        self._refresh_screen(target, "oscam", clear_stale=True)
+        self._refresh_screen(target, "oscam", focus_id, clear_stale=True)
         self.notify(t("te_reset_done"), severity="information")
 
     def action_switch_tab(self, tab: str) -> None:
@@ -1147,7 +1221,7 @@ class TargetEditScreen(Screen):
             from ui.footer import FooterItem
             for item in self.query(FooterItem):
                 if item._key == "F11":
-                    enabled = self._active_tab in ("oscam", "general")
+                    enabled = self._active_tab in ("oscam", "source")
                     item._label = t("te_reset")
                     item._disabled = not enabled
                     if enabled:
@@ -1162,7 +1236,7 @@ class TargetEditScreen(Screen):
         """F11 → Reset current tab to defaults (Options or General flags)."""
         if self._active_tab == "oscam":
             self._do_reset_options()
-        elif self._active_tab == "general":
+        elif self._active_tab == "source":
             self._do_reset_general_flags()
 
     def _collect(self) -> Target:

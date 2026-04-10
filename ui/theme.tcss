@@ -168,9 +168,35 @@ Switch.section-switch.all-on.-on > .switch--slider {
     margin: 0 0 0 2;
 }
 
+.tc-toggle-row {
+    height: 3;
+}
+
+.tc-toggle-cell {
+    width: 1fr;
+    height: 3;
+}
+
+.tc-toggle-label {
+    width: 1fr;
+    padding: 1 0;
+}
+
+.tc-editing {
+    background: $accent;
+    color: $text;
+}
+
+.tc-flags-header {
+    height: 1;
+    margin: 1 0 0 2;
+    color: $accent;
+}
+
 .tc-fields-row {
     height: 3;
     padding: 0 2 0 4;
+    margin: 0 0 1 0;
 }
 
 .tc-field-label {
