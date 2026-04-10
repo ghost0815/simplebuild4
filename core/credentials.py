@@ -108,5 +108,5 @@ def build_svn_auth_args(auth_method: str, auth_user: str = "",
             args += ["--username", auth_user]
         if auth_pass:
             args += ["--password", auth_pass]
-        args += ["--no-auth-cache"]
+        args += ["--no-auth-cache", "--trust-server-cert"]
     return args
