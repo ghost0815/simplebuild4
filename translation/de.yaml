@@ -360,6 +360,8 @@ s4_updated_restart: "s4 aktualisiert ({count} neue Änderungen) — bitte neu st
 update_failed: "Aktualisierung fehlgeschlagen: {error}"
 te_edit_tc_flags: "Compiler-Flags für diese Toolchain bearbeiten"
 confirm_dangerous: "Destruktive Aktionen bestätigen (2x drücken)"
+ascii_mode: "ASCII-Modus (Unicode+Emoji-Zeichen deaktivieren)"
+ascii_mode_restart: "ASCII-Modus geändert — bitte s4 neu starten"
 repo_removed: "Repository '{name}' entfernt"
 tc_removed: "Toolchain '{name}' entfernt"
 not_git_repo: "Kein Git-Repository — './s4 update' in der Shell verwenden"

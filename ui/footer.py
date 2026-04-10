@@ -141,10 +141,17 @@ class BuildTimerWidget(Static):
             if not text:
                 self.update("")
                 return
-            if running:
-                self.update(f"⏱ {text}")
+            from ui.icons import is_ascii
+            if is_ascii():
+                if running:
+                    self.update(f"{text}")
+                else:
+                    self.update(f"{text} [dim]done[/dim]")
             else:
-                self.update(f"⏱ {text} ⏹")
+                if running:
+                    self.update(f"⏱  {text}")
+                else:
+                    self.update(f"⏱  {text} ⏹")
         except Exception:
             pass
 

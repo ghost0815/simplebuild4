@@ -32,7 +32,12 @@ class S4DataTable(DataTable):
     table is not focused — no background colour required.
     """
 
-    MARKER = "▶"
+    @staticmethod
+    def _get_marker():
+        from ui.icons import icon
+        return icon("marker")
+
+    MARKER = "▶"  # class default; mark_row uses _get_marker()
 
     DEFAULT_CSS = """
     S4DataTable {
@@ -180,7 +185,7 @@ class S4DataTable(DataTable):
                     pass
             if 0 <= row < self.row_count:
                 try:
-                    self.update_cell_at(Coordinate(row, 0), self.MARKER, update_width=False)
+                    self.update_cell_at(Coordinate(row, 0), self._get_marker(), update_width=False)
                 except Exception:
                     pass
             self._marker_row = row

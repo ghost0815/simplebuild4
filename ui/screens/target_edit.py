@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from ui.icons import icon
 
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -228,7 +229,7 @@ class TargetEditScreen(Screen):
                     lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
                     lvl_inp.styles.max_width = 25
                     from textual.widgets import Button as _Btn
-                    upx_browse_btn = _Btn("📂", id="btn-upx-browse", classes="tc-reset-btn")
+                    upx_browse_btn = _Btn(icon("browse"), id="btn-upx-browse", classes="tc-reset-btn")
                     upx_browse_btn.tooltip = t("ph_browse_upx")
                     yield Horizontal(
                         Static(" USE_COMPRESS", classes="flag-label"),
@@ -259,7 +260,7 @@ class TargetEditScreen(Screen):
                 yield Horizontal(
                     Static(f" {t('te_oscam_binary_path')}", classes="s-label-tall"),
                     Input(value=b.use_oscamname, placeholder=t("ph_oscam_binary_path"), id="t-oscamname"),
-                    Button("📂", id="btn-binary-browse", classes="tc-reset-btn"),
+                    Button(icon("browse"), id="btn-binary-browse", classes="tc-reset-btn"),
                     classes="s-row",
                 )
                 yield Horizontal(
@@ -323,7 +324,7 @@ class TargetEditScreen(Screen):
                         Static(label, classes="tc-toggle-label"),
                     ]
                     if enabled:
-                        btn_label = "⚙" if not is_editing else "⚙"
+                        btn_label = icon("gear")
                         flags_btn = Btn(btn_label, id=f"tcflag-{sid}",
                                         classes="tc-reset-btn tc-editing" if is_editing else "tc-reset-btn")
                         flags_btn.tooltip = t("te_edit_tc_flags")
@@ -371,7 +372,7 @@ class TargetEditScreen(Screen):
                         lbl_mv = Static("  [dim]EXTRA_MAKE[/dim]", classes="tc-field-label")
                         lbl_mv.tooltip = "Additional make variable assignments (e.g. LIB_RT= EXTRA_TARGET=-mybox)"
                         def _rst_btn(bid: str) -> "Btn":
-                            b = Btn("↺", id=bid, classes="tc-reset-btn")
+                            b = Btn(icon("reset"), id=bid, classes="tc-reset-btn")
                             b.tooltip = t("te_load_default")
                             return b
 
@@ -497,7 +498,7 @@ class TargetEditScreen(Screen):
                                 _stapi_inp.add_class("tc-default")
                             _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
                             _stapi_lbl.tooltip = "Path to precompiled STAPI library"
-                            _stapi_rst = _Btn("↺", id="rst-stapi-lib", classes="tc-reset-btn")
+                            _stapi_rst = _Btn(icon("reset"), id="rst-stapi-lib", classes="tc-reset-btn")
                             _stapi_rst.tooltip = t("te_load_default")
                             self._stapi_default = _stapi_default
                             _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]

@@ -279,6 +279,22 @@ Collapsible:focus-within > CollapsibleTitle {
     margin: 0 0 0 2;
 }
 
+.s-toggle-grid {
+    grid-size: 2;
+    grid-columns: 50 1fr;
+    height: auto;
+    margin: 0 0 0 2;
+}
+
+.s-toggle-cell {
+    height: 3;
+}
+
+.s-toggle-label {
+    width: 30;
+    padding: 1 0;
+}
+
 .flag-row {
     height: 3;
     margin: 0 0 0 2;
@@ -381,9 +397,9 @@ Switch.-on .switch--slider {
 }
 
 .repo-auth-select {
-    width: 28;
-    min-width: 28;
-    max-width: 28;
+    width: 24;
+    min-width: 24;
+    max-width: 24;
 }
 
 .input-fixed {

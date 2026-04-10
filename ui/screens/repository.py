@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from ui.icons import icon
 import threading
 
 from textual.app import ComposeResult
@@ -132,7 +133,7 @@ class RepositoryScreen(Screen):
                     yield Static("", classes="repo-row-spacer")
 
                 # Auth + URL in one row
-                log_btn = Button("📜", id="btn-repo-log", classes="tc-reset-btn")
+                log_btn = Button(icon("log"), id="btn-repo-log", classes="tc-reset-btn")
                 log_btn.tooltip = t("tt_repo_log")
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_auth_url')}", classes="repo-label")
@@ -151,7 +152,7 @@ class RepositoryScreen(Screen):
                     yield log_btn
 
                 # SSH Key (shown when auth == ssh_key)
-                ssh_browse = Button("📂", id="btn-ssh-browse", classes="tc-reset-btn")
+                ssh_browse = Button(icon("browse"), id="btn-ssh-browse", classes="tc-reset-btn")
                 ssh_browse.tooltip = t("ph_browse_file")
                 with Horizontal(classes="repo-row", id="auth-ssh-row"):
                     yield Static(f" {t('re_ssh_key')}", classes="repo-label")
@@ -159,7 +160,7 @@ class RepositoryScreen(Screen):
                     yield ssh_browse
 
                 # Username + Password/Token (shown when auth == userpass)
-                show_pw_btn = Button("👁", id="btn-toggle-pw", classes="tc-reset-btn")
+                show_pw_btn = Button(icon("eye"), id="btn-toggle-pw", classes="tc-reset-btn")
                 show_pw_btn.tooltip = t("tt_show_password")
                 with Horizontal(classes="repo-row", id="auth-user-row"):
                     yield Static(f" {t('re_username')}", classes="repo-label")
@@ -176,7 +177,7 @@ class RepositoryScreen(Screen):
                         allow_blank=False,
                         prompt=t("ph_repo_branch"),
                     )
-                    refresh_btn = Button("🔄", id="btn-branch-refresh", classes="tc-reset-btn")
+                    refresh_btn = Button(icon("refresh"), id="btn-branch-refresh", classes="tc-reset-btn")
                     refresh_btn.tooltip = t("tt_branch_refresh")
                     yield refresh_btn
 

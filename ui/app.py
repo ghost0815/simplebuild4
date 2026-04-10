@@ -39,9 +39,13 @@ class S4App(App):
     ]
 
     def __init__(self, paths: Paths, **kwargs):
+        # Load settings early so we can configure CSS_PATH before super().__init__
+        settings = Settings.load(paths.root / "data" / "settings.yaml")
+        if settings.ascii_mode:
+            self.CSS_PATH = ["theme.tcss", "theme_compat.tcss"]
         super().__init__(**kwargs)
         self.paths = paths
-        self.settings = Settings.load(paths.root / "data" / "settings.yaml")
+        self.settings = settings
         self._update_available: bool = False
         # Build/library-update timer state (read by ui.footer.BuildTimerWidget)
         self._timer_screen: str | None = None
@@ -120,6 +124,24 @@ class S4App(App):
         # Load translations
         from translation import load as load_translations
         load_translations(self.settings.language)
+        # Initialize ASCII mode for icon helper
+        from ui.icons import init as _init_icons
+        _init_icons(self.settings.ascii_mode)
+        # Patch Collapsible symbols and scrollbar chars for ASCII mode
+        if self.settings.ascii_mode:
+            try:
+                import textual.widgets._collapsible as _col
+                _kw = _col.Collapsible.__init__.__kwdefaults__
+                if _kw and _kw.get("collapsed_symbol") == "▶":
+                    _kw["collapsed_symbol"] = "►"
+            except Exception:
+                pass
+            try:
+                from textual.scrollbar import ScrollBarRender
+                ScrollBarRender.VERTICAL_BARS = ["█", "█", "█", "█", "█", "█", "█", " "]
+                ScrollBarRender.HORIZONTAL_BARS = ["█", "█", "█", "█", "█", "█", "█", " "]
+            except Exception:
+                pass
         # Restore saved theme
         if self.settings.theme:
             self.theme = self.settings.theme

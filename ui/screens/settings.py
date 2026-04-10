@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Static, Select, Switch, Input, Collapsible
+from ui.icons import icon
 from textual.containers import Horizontal, VerticalScroll
 
 from translation import t, available_languages
@@ -16,6 +17,7 @@ SWITCH_MAP = {
     "set-update-check": "update_check",
     "set-warn-unsaved": "warn_unsaved_on_exit",
     "set-confirm-dangerous": "confirm_dangerous",
+    "set-ascii-mode": "ascii_mode",
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
@@ -39,6 +41,14 @@ INPUT_MAP = {
 SELECT_MAP = {
     "set-language": "language",
 }
+
+
+def _switch_cell(label: str, value: bool, widget_id: str) -> Horizontal:
+    return Horizontal(
+        Static(f" {label}", classes="s-toggle-label"),
+        Switch(value=value, id=widget_id),
+        classes="s-toggle-cell",
+    )
 
 
 def _switch_row(label: str, value: bool, widget_id: str) -> Horizontal:
@@ -72,9 +82,12 @@ class SettingsScreen(Screen):
                     Input(value=s.s4_url, id="set-s4-url"),
                     classes="s-row",
                 )
-                yield _switch_row(t("check_updates_start"), s.update_check, "set-update-check")
-                yield _switch_row(t("warn_unsaved_on_exit"), s.warn_unsaved_on_exit, "set-warn-unsaved")
-                yield _switch_row(t("confirm_dangerous"), s.confirm_dangerous, "set-confirm-dangerous")
+                from textual.containers import Grid
+                with Grid(classes="s-toggle-grid"):
+                    yield _switch_cell(t("check_updates_start"), s.update_check, "set-update-check")
+                    yield _switch_cell(t("warn_unsaved_on_exit"), s.warn_unsaved_on_exit, "set-warn-unsaved")
+                    yield _switch_cell(t("confirm_dangerous"), s.confirm_dangerous, "set-confirm-dangerous")
+                    yield _switch_cell(t("ascii_mode"), s.ascii_mode, "set-ascii-mode")
 
             # Log retention
             with Collapsible(title=t('section_logs'), collapsed=True, id="col-logs"):
@@ -112,9 +125,9 @@ class SettingsScreen(Screen):
 
             # Signing
             with Collapsible(title=t('section_signing'), collapsed=True, id="col-signing"):
-                cert_browse = _Btn("📂", id="btn-cert-browse", classes="tc-reset-btn")
+                cert_browse = _Btn(icon("browse"), id="btn-cert-browse", classes="tc-reset-btn")
                 cert_browse.tooltip = t("ph_browse_file")
-                key_browse = _Btn("📂", id="btn-key-browse", classes="tc-reset-btn")
+                key_browse = _Btn(icon("browse"), id="btn-key-browse", classes="tc-reset-btn")
                 key_browse.tooltip = t("ph_browse_file")
                 yield Horizontal(
                     Static(f" {t('signing_certificate')}", classes="s-label"),
@@ -149,7 +162,7 @@ class SettingsScreen(Screen):
                     ctng_default = str((self.app.paths.builders_dir / "crosstool-ng").relative_to(self.app.paths.root))
                 except Exception:
                     ctng_default = str(self.app.paths.builders_dir / "crosstool-ng")
-                ctng_browse = _Btn("📂", id="btn-ctng-browse", classes="tc-reset-btn")
+                ctng_browse = _Btn(icon("browse"), id="btn-ctng-browse", classes="tc-reset-btn")
                 ctng_browse.tooltip = t("ph_browse_dir")
                 yield Horizontal(
                     Static(f" {t('ctng_dir')}", classes="s-label"),
@@ -281,9 +294,12 @@ class SettingsScreen(Screen):
 
     def do_save(self) -> str:
         """Save settings (called by App)."""
+        old_ascii = self.app.settings.ascii_mode
         self._save()
         if self._language_changed:
             self.notify(t("language_changed"), severity="warning", timeout=5)
+        if self.app.settings.ascii_mode != old_ascii:
+            self.notify(t("ascii_mode_restart"), severity="warning", timeout=10)
         return t("settings_saved")
 
     def action_go_back(self) -> None:

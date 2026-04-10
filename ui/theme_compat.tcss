@@ -1,0 +1,93 @@
+/* ASCII-mode overrides — loaded when ascii_mode is enabled.
+   Replaces tall/dashed/wide borders with solid borders that render
+   correctly in terminals with limited Unicode support (e.g. PuTTY). */
+
+Input {
+    border: solid $surface-lighten-1;
+}
+Input:focus {
+    border: solid $primary;
+}
+Select {
+    border: solid $surface-lighten-1;
+}
+Select:focus {
+    border: solid $primary;
+}
+Select > SelectCurrent {
+    border: none;
+}
+Select:focus > SelectCurrent {
+    border: none;
+}
+Select SelectOverlay {
+    border: solid $primary;
+}
+OptionList {
+    border: solid $surface-lighten-1;
+}
+OptionList:focus {
+    border: solid $primary;
+}
+Switch {
+    border: solid $surface-lighten-1;
+    height: 3;
+    padding: 0 2;
+}
+Switch:focus {
+    border: solid $primary;
+    height: 3;
+    padding: 0 2;
+}
+/* Keep compact switches (Options grid) borderless */
+.s-compact Switch {
+    border: none;
+    height: 1;
+    min-height: 1;
+    padding: 0;
+}
+.s-compact Switch:focus {
+    border: none;
+    height: 1;
+    min-height: 1;
+    padding: 0;
+}
+.patch-item Switch {
+    border: none;
+    height: 1;
+    min-height: 1;
+    padding: 0;
+}
+.patch-item Switch:focus {
+    border: none;
+    height: 1;
+    min-height: 1;
+    padding: 0;
+}
+Button {
+    border: solid $surface-lighten-1;
+}
+Button:focus {
+    border: solid $primary;
+}
+Button.-primary {
+    border: solid $primary;
+}
+Button.-success {
+    border: solid $success;
+}
+Button.-error {
+    border: solid $error;
+}
+
+/* Widen icon buttons to fit text labels in ASCII mode */
+.tc-reset-btn {
+    min-width: 7;
+    max-width: 7;
+}
+.repo-row-spacer {
+    width: 7;
+    min-width: 7;
+    max-width: 7;
+}
+

@@ -18,6 +18,7 @@ class Settings:
     update_check: bool = True
     warn_unsaved_on_exit: bool = False  # Esc/F2 warn when a screen is dirty
     confirm_dangerous: bool = True     # require double-press for destructive actions
+    ascii_mode: bool = False           # replace emoji/unicode with ASCII-safe alternatives
     last_target: str = ""          # Last loaded target path (auto-saved)
 
     # Repository
@@ -57,6 +58,7 @@ class Settings:
             "update_check": self.update_check,
             "warn_unsaved_on_exit": self.warn_unsaved_on_exit,
             "confirm_dangerous": self.confirm_dangerous,
+            "ascii_mode": self.ascii_mode,
             "s4_url": self.s4_url,
             "compiler_opt": self.compiler_opt,
             "max_cpus": self.max_cpus,
@@ -96,6 +98,7 @@ class Settings:
             update_check=data.get("update_check", True),
             warn_unsaved_on_exit=data.get("warn_unsaved_on_exit", False),
             confirm_dangerous=data.get("confirm_dangerous", True),
+            ascii_mode=data.get("ascii_mode", False),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
             max_cpus=data.get("max_cpus", 0),
