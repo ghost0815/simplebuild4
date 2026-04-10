@@ -832,7 +832,7 @@ class TargetEditScreen(Screen):
 
         # STAPI toggle — refresh to show/hide stapi_lib field
         if sid in ("f-use-STAPI", "f-use-STAPI5"):
-            self._refresh_screen(self._collect(), "general", sid)
+            self._refresh_screen(self._collect(), "source", sid)
             return
 
         # UPX toggle — refresh to show/hide compress level field
