@@ -392,6 +392,18 @@ def _do_build(
         script_parts.append(f"# pre_configure")
         script_parts.append(pre_configure)
 
+    # Apply "post_preconfigure" extras — these run AFTER pre_configure
+    # (which may run autoreconf that overwrites config.sub) but BEFORE
+    # configure. Needed for patches like csky that modify config.sub.
+    if extra and isinstance(extra, dict):
+        for trait, cmd in extra.items():
+            if trait.startswith("post:") and _matches_trait(trait[5:], toolchain_prefix, toolchain_dir):
+                cmd = _replace(cmd, replacements)
+                script_parts.append(f"# extra post: {trait[5:]}")
+                script_parts.append(cmd)
+                if log:
+                    log(f"Extra post ({trait[5:]}): applied")
+
     if configure:
         script_parts.append(f"# configure")
         script_parts.append(configure)
