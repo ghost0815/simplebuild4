@@ -376,8 +376,14 @@ Switch.-on .switch--slider {
 }
 
 .repo-label-short {
-    width: 14;
+    width: 18;
     padding: 1 0;
+}
+
+.repo-auth-select {
+    width: 28;
+    min-width: 28;
+    max-width: 28;
 }
 
 .input-fixed {

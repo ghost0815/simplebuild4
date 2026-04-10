@@ -7,6 +7,7 @@ from pathlib import Path
 import yaml
 
 from core.repo import RepoConfig
+from core.credentials import encrypt, decrypt
 
 DEFAULT_REPOS = [
     RepoConfig(
@@ -38,12 +39,16 @@ def load_repos(path: Path) -> list[RepoConfig]:
             branch=entry.get("branch", ""),
             clone_depth=entry.get("clone_depth", 0),
             vcs=entry.get("vcs", ""),
+            auth_method=entry.get("auth_method", ""),
+            ssh_key=entry.get("ssh_key", ""),
+            auth_user=entry.get("auth_user", ""),
+            auth_pass=decrypt(entry.get("auth_pass", "")),
         ))
     return repos
 
 
 def save_repos(repos: list[RepoConfig], path: Path) -> None:
-    """Save repos to YAML."""
+    """Save repos to YAML. Tokens and passwords are encrypted."""
     data = {
         "repos": [
             {k: v for k, v in {
@@ -52,6 +57,10 @@ def save_repos(repos: list[RepoConfig], path: Path) -> None:
                 "branch": r.branch,
                 "clone_depth": r.clone_depth,
                 "vcs": r.vcs,
+                "auth_method": r.auth_method,
+                "ssh_key": r.ssh_key,
+                "auth_user": r.auth_user,
+                "auth_pass": encrypt(r.auth_pass),
             }.items() if v not in ("", 0, None)}
             for r in repos
         ]

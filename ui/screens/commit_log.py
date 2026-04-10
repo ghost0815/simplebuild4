@@ -58,12 +58,14 @@ class CommitLogModal(ModalScreen[Optional[str]]):
     }
     """
 
-    def __init__(self, repo_path: Path, vcs: str, branch: str = "", limit: int = 100) -> None:
+    def __init__(self, repo_path: Path, vcs: str, branch: str = "", limit: int = 100,
+                 auth_env: dict | None = None) -> None:
         super().__init__()
         self._repo_path = repo_path
         self._vcs = vcs
         self._branch = branch
         self._limit = limit
+        self._auth_env = auth_env
         self._rows: list[tuple[str, str, str, str, str]] = []  # (rev, date, author, subject, refs)
         self._current_rows: list[tuple[str, str, str, str, str]] = []
         self._sort_col: int | None = None
@@ -119,6 +121,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             cmd += [self._branch, "--"]
         out = subprocess.check_output(
             cmd, cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=20,
+            env=self._auth_env,
         )
         rows = []
         for line in out.splitlines():

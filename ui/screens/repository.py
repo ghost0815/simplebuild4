@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import threading
 
 from textual.app import ComposeResult
@@ -130,12 +131,42 @@ class RepositoryScreen(Screen):
                     yield Input(placeholder=t("ph_repo_name"), id="edit-repo-name")
                     yield Static("", classes="repo-row-spacer")
 
+                # Auth + URL in one row
+                log_btn = Button("📜", id="btn-repo-log", classes="tc-reset-btn")
+                log_btn.tooltip = t("tt_repo_log")
                 with Horizontal(classes="repo-row"):
-                    yield Static(f" {t('re_url')}", classes="repo-label")
+                    yield Static(f" {t('re_auth_url')}", classes="repo-label")
+                    yield Select(
+                        options=[
+                            (t("re_auth_none"), ""),
+                            (t("re_auth_ssh_key"), "ssh_key"),
+                            (t("re_auth_userpass"), "userpass"),
+                        ],
+                        value="",
+                        id="edit-repo-auth",
+                        allow_blank=False,
+                        classes="repo-auth-select",
+                    )
                     yield Input(placeholder=t("ph_repo_url"), id="edit-repo-url")
-                    log_btn = Button("📜", id="btn-repo-log", classes="tc-reset-btn")
-                    log_btn.tooltip = t("tt_repo_log")
                     yield log_btn
+
+                # SSH Key (shown when auth == ssh_key)
+                ssh_browse = Button("📂", id="btn-ssh-browse", classes="tc-reset-btn")
+                ssh_browse.tooltip = t("ph_browse_file")
+                with Horizontal(classes="repo-row", id="auth-ssh-row"):
+                    yield Static(f" {t('re_ssh_key')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_ssh_key_path"), id="edit-repo-ssh-key")
+                    yield ssh_browse
+
+                # Username + Password/Token (shown when auth == userpass)
+                show_pw_btn = Button("👁", id="btn-toggle-pw", classes="tc-reset-btn")
+                show_pw_btn.tooltip = t("tt_show_password")
+                with Horizontal(classes="repo-row", id="auth-user-row"):
+                    yield Static(f" {t('re_username')}", classes="repo-label")
+                    yield Input(placeholder=t("ph_username"), id="edit-repo-user")
+                    yield Static(f" {t('re_password')}", classes="repo-label-short")
+                    yield Input(placeholder=t("ph_password_token"), id="edit-repo-pass", password=True)
+                    yield show_pw_btn
 
                 with Horizontal(classes="repo-row"):
                     yield Static(f" {t('re_branch')}", classes="repo-label")
@@ -166,6 +197,9 @@ class RepositoryScreen(Screen):
             except Exception:
                 pass
             self._fill_edit_fields(repo)
+        # Hide auth rows by default if no repo selected
+        if not self._repos:
+            self._update_auth_visibility("")
         # Set border titles
         self.query_one("#repo-output", RichLog).border_title = t("output_title")
         try:
@@ -235,17 +269,22 @@ class RepositoryScreen(Screen):
         """Fill edit fields with repo data."""
         self.query_one("#edit-repo-name", Input).value = repo.name
         self.query_one("#edit-repo-url", Input).value = repo.url
-        # Keep the last picked switch value visible across refreshes;
-        # it only ever matches one repo, so guard by _last_selected.
         keep = (
             RepositoryScreen._last_switch_rev
             if RepositoryScreen._last_selected == repo.name
             else ""
         )
         self.query_one("#edit-repo-switch", Input).value = keep
-        # Populate the branch dropdown — either from session cache or,
-        # if nothing cached yet, with a minimal option set that shows
-        # the current value and a "click to load" entry.
+        # Auth fields
+        try:
+            self.query_one("#edit-repo-auth", Select).value = repo.auth_method or ""
+            self.query_one("#edit-repo-ssh-key", Input).value = repo.ssh_key
+            self.query_one("#edit-repo-user", Input).value = repo.auth_user
+            self.query_one("#edit-repo-pass", Input).value = repo.auth_pass
+        except Exception:
+            pass
+        self._update_auth_visibility(repo.auth_method or "")
+        # Populate the branch dropdown
         try:
             from core.vcs_branches import _cache as _branch_cache, _cache_key
             key = _cache_key(repo.url, self._current_vcs(repo)) if repo.url else ""
@@ -255,6 +294,56 @@ class RepositoryScreen(Screen):
                 self._apply_branch_options([], repo.branch)
         except Exception:
             pass
+
+    def _update_auth_visibility(self, method: str) -> None:
+        """Show/hide auth-related rows based on the selected method."""
+        try:
+            self.query_one("#auth-ssh-row").display = (method == "ssh_key")
+            self.query_one("#auth-user-row").display = (method == "userpass")
+        except Exception:
+            pass
+
+    def _get_auth_fields(self) -> dict:
+        """Collect auth field values from the UI."""
+        try:
+            auth_sel = self.query_one("#edit-repo-auth", Select)
+            method = str(auth_sel.value) if auth_sel.value and auth_sel.value is not Select.BLANK else ""
+        except Exception:
+            method = ""
+        try:
+            ssh_key = self.query_one("#edit-repo-ssh-key", Input).value.strip()
+        except Exception:
+            ssh_key = ""
+        try:
+            user = self.query_one("#edit-repo-user", Input).value.strip()
+        except Exception:
+            user = ""
+        try:
+            pw = self.query_one("#edit-repo-pass", Input).value
+        except Exception:
+            pw = ""
+        return {"auth_method": method, "ssh_key": ssh_key, "auth_user": user, "auth_pass": pw}
+
+    def _open_ssh_key_picker(self) -> None:
+        """Open file picker for SSH key."""
+        from ui.screens.toolchains import FilePickerScreen
+        from pathlib import Path as _P
+        ssh_dir = _P.home() / ".ssh"
+        start = str(ssh_dir) if ssh_dir.exists() else str(_P.home())
+        self.app.push_screen(
+            FilePickerScreen(start_path=start, title=t("re_ssh_key"), simple=True, select_label=t("select_btn")),
+            callback=self._on_ssh_key_selected,
+        )
+
+    def _on_ssh_key_selected(self, result) -> None:
+        if not result:
+            return
+        path = result[0] if isinstance(result, tuple) else result
+        if path:
+            try:
+                self.query_one("#edit-repo-ssh-key", Input).value = str(path)
+            except Exception:
+                pass
 
     def _open_commit_log(self) -> None:
         """Open the commit log modal for the currently selected repo."""
@@ -268,8 +357,10 @@ class RepositoryScreen(Screen):
         vcs = self._current_vcs(repo)
         branch = self._get_branch_value() if vcs == "git" else ""
         from ui.screens.commit_log import CommitLogModal
+        from core.credentials import build_git_env
+        auth_env = {**os.environ, **build_git_env(repo.auth_method, ssh_key=repo.ssh_key)} if repo.auth_method else None
         self.app.push_screen(
-            CommitLogModal(repo_path=repo_path, vcs=vcs, branch=branch),
+            CommitLogModal(repo_path=repo_path, vcs=vcs, branch=branch, auth_env=auth_env),
             callback=self._on_commit_picked,
         )
 
@@ -409,7 +500,15 @@ class RepositoryScreen(Screen):
 
         def do_fetch():
             from core.vcs_branches import list_branches
-            branches = list_branches(current_url, vcs, force_refresh=force)
+            from core.credentials import build_git_env, build_svn_auth_args
+            repo = self._get_selected_repo()
+            auth_env = None
+            svn_args = None
+            if repo and repo.auth_method:
+                auth_env = {**os.environ, **build_git_env(repo.auth_method, ssh_key=repo.ssh_key)}
+                svn_args = build_svn_auth_args(repo.auth_method, auth_user=repo.auth_user, auth_pass=repo.auth_pass)
+            branches = list_branches(current_url, vcs, force_refresh=force,
+                                     auth_env=auth_env, svn_auth_args=svn_args)
             def apply():
                 try:
                     sel_repo = self._get_selected_repo()
@@ -553,12 +652,14 @@ class RepositoryScreen(Screen):
         thread.start()
 
     def on_select_changed(self, event: Select.Changed) -> None:
-        """Fill edit fields when selecting a different repo."""
+        """Fill edit fields when selecting a different repo or auth method."""
         if event.select.id == "repo-select":
             RepositoryScreen._adding_new = False
             repo = self._get_selected_repo()
             if repo:
                 self._fill_edit_fields(repo)
+        elif event.select.id == "edit-repo-auth":
+            self._update_auth_visibility(str(event.value) if event.value else "")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id
@@ -569,6 +670,18 @@ class RepositoryScreen(Screen):
 
         if btn == "btn-repo-log":
             self._open_commit_log()
+            return
+
+        if btn == "btn-toggle-pw":
+            try:
+                pw = self.query_one("#edit-repo-pass", Input)
+                pw.password = not pw.password
+            except Exception:
+                pass
+            return
+
+        if btn == "btn-ssh-browse":
+            self._open_ssh_key_picker()
             return
 
         if btn == "btn-download":
@@ -670,10 +783,10 @@ class RepositoryScreen(Screen):
             self.query_one("#edit-repo-name", Input).value = ""
             self.query_one("#edit-repo-url", Input).value = url
             self.query_one("#edit-repo-switch", Input).value = ""
-            # Reset branch dropdown
             sel = self.query_one("#edit-repo-branch", Select)
             sel.set_options([(t("ph_repo_branch"), "")])
             sel.value = ""
+            # Keep auth fields as-is (same credentials for new repo)
         except Exception:
             pass
         # Expand the Edit/Add collapsible and focus the Name field
@@ -758,6 +871,12 @@ class RepositoryScreen(Screen):
         old_url = repo.url
         repo.url = url
         repo.branch = branch
+        # Auth fields
+        auth = self._get_auth_fields()
+        repo.auth_method = auth["auth_method"]
+        repo.ssh_key = auth["ssh_key"]
+        repo.auth_user = auth["auth_user"]
+        repo.auth_pass = auth["auth_pass"]
         # If the URL changed, drop the persisted vcs type so the next
         # clone re-detects it from the fresh URL/checkout — otherwise
         # switching e.g. a git entry to an SVN URL would still try git
@@ -833,7 +952,10 @@ class RepositoryScreen(Screen):
             self.notify(f"Repo '{name}' already exists", severity="error")
             return
 
-        new_repo = RepoConfig(name=name, url=url, branch=branch)
+        auth = self._get_auth_fields()
+        new_repo = RepoConfig(name=name, url=url, branch=branch,
+                              auth_method=auth["auth_method"], ssh_key=auth["ssh_key"],
+                              auth_user=auth["auth_user"], auth_pass=auth["auth_pass"])
         self._repos.append(new_repo)
         save_repos(self._repos, self.app.paths.repos_config)
         self._log_sync(f"[green]Added repo '{name}'[/green]")

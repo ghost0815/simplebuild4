@@ -29,6 +29,11 @@ class RepoConfig:
     branch: str = ""           # empty = default branch
     clone_depth: int = 0       # 0 = full clone
     vcs: str = ""              # "git" | "svn" | "" (auto-detect)
+    # Authentication
+    auth_method: str = ""      # "" | "ssh_key" | "userpass"
+    ssh_key: str = ""          # path to private key file
+    auth_user: str = ""        # username (plain)
+    auth_pass: str = ""        # encrypted password or token
 
 
 @dataclass
@@ -130,6 +135,24 @@ class RepoManager:
         self.repo_path = repos_dir / f"oscam-{config.name}"
         self.backup_dir = backup_dir
         self.backup_dir.mkdir(parents=True, exist_ok=True)
+        # Pre-compute auth environment and URL for subprocess calls.
+        from core.credentials import build_git_env, apply_credentials_to_url, build_svn_auth_args
+        self._auth_env = {**os.environ, **build_git_env(
+            config.auth_method, ssh_key=config.ssh_key)}
+        self._auth_url = apply_credentials_to_url(
+            config.url, config.auth_method,
+            auth_user=config.auth_user, auth_pass=config.auth_pass)
+        self._svn_auth_args = build_svn_auth_args(
+            config.auth_method, auth_user=config.auth_user,
+            auth_pass=config.auth_pass)
+
+    def _run_git(self, *args: str) -> str:
+        """Run git with auth environment. Convenience wrapper."""
+        return _git(self.repo_path, *args, env=self._auth_env)
+
+    def _svn_cmd(self, base_cmd: list[str]) -> list[str]:
+        """Append SVN auth args to an existing svn command list."""
+        return base_cmd + self._svn_auth_args
 
     @property
     def is_git(self) -> bool:
@@ -172,13 +195,15 @@ class RepoManager:
             cmd += ["--depth", str(self.config.clone_depth)]
         if self.config.branch:
             cmd += ["--branch", self.config.branch]
-        cmd += [self.config.url, str(self.repo_path)]
+        cmd += [self._auth_url, str(self.repo_path)]
 
         if log:
-            log(f"$ {' '.join(cmd)}")
+            # Log command without embedded credentials
+            log(f"$ {' '.join(cmd).replace(self._auth_url, self.config.url)}")
         try:
             proc = subprocess.Popen(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                env=self._auth_env,
             )
             for line in proc.stdout:
                 if log:
@@ -225,7 +250,7 @@ class RepoManager:
         # URL; config.branch (if set) selects an alternate location in
         # the standard trunk/branches/tags layout.
         checkout_url = self._svn_effective_url()
-        cmd = ["svn", "checkout", "--non-interactive", checkout_url, str(self.repo_path)]
+        cmd = ["svn", "checkout", "--non-interactive"] + self._svn_auth_args + [checkout_url, str(self.repo_path)]
         if log:
             log(f"$ {' '.join(cmd)}")
         try:
@@ -265,24 +290,24 @@ class RepoManager:
             target = (self.config.branch or "").strip()
             if target:
                 try:
-                    current = _git(self.repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+                    current = self._run_git("rev-parse", "--abbrev-ref", "HEAD")
                 except subprocess.CalledProcessError:
                     current = ""
                 if current != target:
                     if log:
                         log("$ git reset --hard")
-                    _git(self.repo_path, "reset", "--hard")
+                    self._run_git("reset", "--hard")
                     if log:
                         log(f"$ git fetch origin {target}")
-                    _git(self.repo_path, "fetch", "origin", target)
+                    self._run_git("fetch", "origin", target)
                     if log:
                         log(f"$ git checkout -B {target} origin/{target}")
-                    out = _git(self.repo_path, "checkout", "-B", target, f"origin/{target}")
+                    out = self._run_git("checkout", "-B", target, f"origin/{target}")
                     if log and out:
                         log(out)
             if log:
                 log("$ git pull")
-            output = _git(self.repo_path, "pull")
+            output = self._run_git("pull")
             if log and output:
                 log(output)
             self._backup(log)
@@ -298,18 +323,14 @@ class RepoManager:
             if log:
                 log("$ svn revert -R .")
             subprocess.run(
-                ["svn", "revert", "-R", "."],
+                self._svn_cmd(["svn", "revert", "-R", "."]),
                 cwd=self.repo_path, capture_output=True, text=True, timeout=120,
             )
-            # If the config branch points at a different URL than what is
-            # currently checked out, switch to it before updating. The
-            # branch field stores a path relative to the base URL, e.g.
-            # "trunk" or "branches/<name>".
             target = (self.config.branch or "").strip()
             if target:
                 try:
                     info = subprocess.check_output(
-                        ["svn", "info", "--show-item", "url", "--non-interactive"],
+                        self._svn_cmd(["svn", "info", "--show-item", "url", "--non-interactive"]),
                         cwd=self.repo_path, text=True, stderr=subprocess.DEVNULL,
                     ).strip()
                 except Exception:
@@ -319,7 +340,7 @@ class RepoManager:
                     if log:
                         log(f"$ svn switch {target_url}")
                     out = subprocess.check_output(
-                        ["svn", "switch", "--non-interactive", "--accept", "postpone", target_url],
+                        self._svn_cmd(["svn", "switch", "--non-interactive", "--accept", "postpone", target_url]),
                         cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
                     )
                     if log and out:
@@ -327,7 +348,7 @@ class RepoManager:
             if log:
                 log("$ svn update")
             output = subprocess.check_output(
-                ["svn", "update", "--non-interactive"],
+                self._svn_cmd(["svn", "update", "--non-interactive"]),
                 cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
             )
             if log and output:
@@ -351,7 +372,7 @@ class RepoManager:
         target = (self.config.branch or "").strip()
         if self.is_git:
             try:
-                current = _git(self.repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+                current = self._run_git("rev-parse", "--abbrev-ref", "HEAD")
             except subprocess.CalledProcessError:
                 return False
             # Empty branch for git → resolve to the remote default
@@ -363,6 +384,7 @@ class RepoManager:
                     out = subprocess.check_output(
                         ["git", "ls-remote", "--symref", self.config.url, "HEAD"],
                         text=True, stderr=subprocess.DEVNULL, timeout=10,
+                        env=self._auth_env,
                     )
                     target = ""
                     for line in out.splitlines():
@@ -383,15 +405,15 @@ class RepoManager:
                 # the checkout can proceed without a dirty WC refusal.
                 if log:
                     log("$ git reset --hard")
-                _git(self.repo_path, "reset", "--hard")
+                self._run_git("reset", "--hard")
                 if log:
                     log(f"$ git fetch origin {target}")
-                _git(self.repo_path, "fetch", "origin", target)
+                self._run_git("fetch", "origin", target)
                 # Prefer the remote-tracking ref so the checkout works
                 # even if no local branch exists yet.
                 if log:
                     log(f"$ git checkout -B {target} origin/{target}")
-                out = _git(self.repo_path, "checkout", "-B", target, f"origin/{target}")
+                out = self._run_git("checkout", "-B", target, f"origin/{target}")
                 if log and out:
                     log(out)
                 return True
@@ -403,7 +425,7 @@ class RepoManager:
             # SVN — translate the branch value to a URL and svn switch
             try:
                 info = subprocess.check_output(
-                    ["svn", "info", "--show-item", "url", "--non-interactive"],
+                    self._svn_cmd(["svn", "info", "--show-item", "url", "--non-interactive"]),
                     cwd=self.repo_path, text=True, stderr=subprocess.DEVNULL,
                 ).strip()
             except Exception:
@@ -412,29 +434,24 @@ class RepoManager:
             if info.rstrip("/") == target_url.rstrip("/"):
                 return True
             try:
-                # Drop any lingering patches before the switch — a dirty
-                # working copy causes the switch to error out.
                 if log:
                     log("$ svn revert -R .")
                 subprocess.run(
-                    ["svn", "revert", "-R", "."],
+                    self._svn_cmd(["svn", "revert", "-R", "."]),
                     cwd=self.repo_path, capture_output=True, text=True, timeout=120,
                 )
                 if log:
                     log(f"$ svn switch {target_url}")
                 out = subprocess.check_output(
-                    ["svn", "switch", "--non-interactive", "--accept", "postpone", "--ignore-ancestry", target_url],
+                    self._svn_cmd(["svn", "switch", "--non-interactive", "--accept", "postpone", "--ignore-ancestry", target_url]),
                     cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
                 )
                 if log and out:
                     log(out)
-                # svn switch brings the WC to HEAD of the new URL already,
-                # but run an explicit update so the revision is visibly
-                # advanced even on edge cases.
                 if log:
                     log("$ svn update")
                 out = subprocess.check_output(
-                    ["svn", "update", "--non-interactive"],
+                    self._svn_cmd(["svn", "update", "--non-interactive"]),
                     cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
                 )
                 if log and out:
@@ -458,7 +475,7 @@ class RepoManager:
             try:
                 if log:
                     log(f"$ git checkout {rev}")
-                output = _git(self.repo_path, "checkout", rev)
+                output = self._run_git("checkout", rev)
                 if log and output:
                     log(output)
                 return True
@@ -471,7 +488,7 @@ class RepoManager:
                 if log:
                     log(f"$ svn update -r {rev}")
                 output = subprocess.check_output(
-                    ["svn", "update", "--non-interactive", "--accept", "postpone", f"-r{rev}"],
+                    self._svn_cmd(["svn", "update", "--non-interactive", "--accept", "postpone", f"-r{rev}"]),
                     cwd=self.repo_path, text=True, stderr=subprocess.STDOUT,
                 )
                 if log and output:
@@ -793,9 +810,10 @@ class RepoManager:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _git(repo_path: Path, *args: str) -> str:
+def _git(repo_path: Path, *args: str, env: Optional[dict] = None) -> str:
     """Run a git command and return stripped stdout."""
     return subprocess.check_output(
         ["git"] + list(args),
         cwd=repo_path, text=True, stderr=subprocess.DEVNULL,
+        env=env,
     ).strip()
