@@ -14,7 +14,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, Input, Button, OptionList
 from textual.widgets.option_list import Option
 
-from core.uploader import SSH_OPTS
+from core.deployer import SSH_OPTS
 from translation import t
 from ui.icons import icon, is_ascii
 
