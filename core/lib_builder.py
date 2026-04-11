@@ -235,6 +235,12 @@ def _do_build(
     make_cmd = _replace(make_cmd, replacements)
     install_cmd = _replace(install_cmd, replacements)
 
+    # Native builds: replace hardcoded cross-compile targets with auto-detection
+    # e.g. OpenSSL's "./Configure linux-generic32" → "./Configure" (auto-detect host)
+    if native and "linux-generic32" in configure:
+        configure = configure.replace("linux-generic32 ", "").replace("linux-generic32", "")
+        log(f"Native: removed linux-generic32 from configure (auto-detect host)")
+
     # Log resolved build commands
     log(f"--- Resolved Build Commands ---")
     log(f"Source:        {source}")
