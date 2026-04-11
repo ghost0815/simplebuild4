@@ -929,6 +929,27 @@ class BuildEngine:
         ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
         extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
 
+        # --- Native toolchain: prepend local include/lib paths so the build
+        #     finds libraries installed into data/toolchains/native/ ---
+        self._native_env_backup = {}
+        if is_native:
+            # Find the prefix (native/ or native/usr/)
+            _usr = tc_dir / "usr"
+            _prefix = _usr if _usr.is_dir() else tc_dir
+            _inc = _prefix / "include"
+            _lib = _prefix / "lib"
+            if _inc.is_dir():
+                cflags = f"-I{_inc} {cflags}".strip()
+            if _lib.is_dir():
+                ldflags = f"-L{_lib} {ldflags}".strip()
+            pkg_dirs = [str(d) for d in tc_dir.glob("**/pkgconfig") if d.is_dir()]
+            if pkg_dirs:
+                pkg_path = ":".join(pkg_dirs)
+                old_pkg = os.environ.get("PKG_CONFIG_PATH", "")
+                self._native_env_backup["PKG_CONFIG_PATH"] = old_pkg
+                os.environ["PKG_CONFIG_PATH"] = f"{pkg_path}:{old_pkg}" if old_pkg else pkg_path
+                self._log(f"  PKG_CONFIG_PATH: {os.environ['PKG_CONFIG_PATH']}")
+
         # --- USE_FLAGS (dynamic from dict) ---
         use_flags = []
         for flag, enabled in b.use_flags.items():
@@ -1048,6 +1069,14 @@ class BuildEngine:
             )
         elapsed = (datetime.now() - started).total_seconds()
 
+        # Restore environment after native build
+        for key, val in self._native_env_backup.items():
+            if val:
+                os.environ[key] = val
+            else:
+                os.environ.pop(key, None)
+        self._native_env_backup = {}
+
         if ok and bin_path and bin_path.exists():
             size_kb = bin_path.stat().st_size / 1024
             self._log("")
@@ -1152,6 +1181,12 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         # Toolchain
         if toolchain_file:
             cmake_cmd.append(f"-DCMAKE_TOOLCHAIN_FILE={toolchain_file}")
+
+        # Native: help cmake find libs in data/toolchains/native/
+        if is_native:
+            _usr = tc_dir / "usr"
+            _prefix = _usr if _usr.is_dir() else tc_dir
+            cmake_cmd.append(f"-DCMAKE_PREFIX_PATH={_prefix}")
 
         # Compiler flags (only for native builds — cross uses toolchain file)
         if not toolchain_file:
