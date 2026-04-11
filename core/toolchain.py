@@ -261,6 +261,194 @@ def _read_pc_version(pc_file: Path) -> str:
     return ""
 
 
+def _parse_pc_libs(pc_file: Path) -> list[str]:
+    """Parse Libs: line from .pc file and return library base names (e.g. ['crypto', 'ssl'])."""
+    try:
+        for line in pc_file.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("Libs:"):
+                return [t[2:] for t in line.split() if t.startswith("-l")]
+    except Exception:
+        pass
+    return []
+
+
+def _parse_pc_include_dir(pc_file: Path) -> str:
+    """Parse Cflags: line from .pc and resolve the include directory path."""
+    try:
+        # First read prefix= and includedir= variables
+        variables = {}
+        content = pc_file.read_text(encoding="utf-8", errors="replace")
+        for line in content.splitlines():
+            if "=" in line and not line.startswith("Name") and not line.startswith("Description"):
+                key, _, val = line.partition("=")
+                key = key.strip()
+                val = val.strip()
+                if not key.startswith("#"):
+                    variables[key] = val
+        # Resolve ${var} references
+        def _resolve(s: str) -> str:
+            for k, v in variables.items():
+                s = s.replace(f"${{{k}}}", v)
+            return s
+        for line in content.splitlines():
+            if line.startswith("Cflags:"):
+                for token in line.split():
+                    if token.startswith("-I"):
+                        return _resolve(token[2:])
+    except Exception:
+        pass
+    return ""
+
+
+def remove_library(install_dir: Path, sysroot: str, lib_name: str,
+                   libraries_yaml: Path = None, libraries_local: Path = None,
+                   log=None) -> bool:
+    """Remove an installed library from a toolchain sysroot.
+
+    Parses the .pc file to find library files (.a/.so) and include dirs,
+    then deletes them. Returns True if anything was removed.
+    """
+    import shutil
+    import yaml as _yaml
+
+    if log is None:
+        log = lambda msg: None
+
+    # Find the library's pc_file name from KNOWN_LIBS
+    pc_name = ""
+    static_name = ""
+    for kl_name, kl_pc, kl_static in KNOWN_LIBS:
+        if kl_name == lib_name:
+            pc_name = kl_pc
+            static_name = kl_static or ""
+            break
+    if not pc_name:
+        log(f"  [red]Unknown library: {lib_name}[/red]")
+        return False
+
+    # Load removal config from libraries.yaml if available
+    removal_config = {}
+    for yaml_path in [libraries_local, libraries_yaml]:
+        if yaml_path and yaml_path.exists():
+            try:
+                data = _yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                for lib in (data or {}).get("libraries", []):
+                    if lib.get("name") == lib_name and "removal" in lib:
+                        removal_config = lib["removal"]
+                        break
+            except Exception:
+                pass
+            if removal_config:
+                break
+
+    removed_count = 0
+
+    def _delete(path: Path, label: str = ""):
+        nonlocal removed_count
+        try:
+            if path.is_dir():
+                shutil.rmtree(path)
+                log(f"  Removed dir:  {label or path}")
+                removed_count += 1
+            elif path.exists():
+                path.unlink()
+                log(f"  Removed file: {label or path}")
+                removed_count += 1
+        except Exception as e:
+            log(f"  [red]Failed to remove {path}: {e}[/red]")
+
+    # Find .pc file(s)
+    pc_files = list(install_dir.glob(f"**/pkgconfig/{pc_name}"))
+    lib_names = []
+    include_dir = ""
+
+    # Parse .pc before deleting
+    for pc in pc_files:
+        lib_names.extend(_parse_pc_libs(pc))
+        if not include_dir:
+            include_dir = _parse_pc_include_dir(pc)
+
+    # Delete .pc files
+    for pc in pc_files:
+        _delete(pc, f"pkgconfig/{pc_name}")
+    # Also delete related .pc files (e.g. openssl has libcrypto.pc + libssl.pc + openssl.pc)
+    if lib_names:
+        for ln in lib_names:
+            for extra_pc in install_dir.glob(f"**/pkgconfig/lib{ln}.pc"):
+                if extra_pc not in pc_files:
+                    _delete(extra_pc, f"pkgconfig/{extra_pc.name}")
+
+    # Delete static libraries (.a)
+    if static_name:
+        for f in install_dir.glob(f"**/{static_name}"):
+            _delete(f, static_name)
+    for ln in lib_names:
+        for f in install_dir.glob(f"**/lib{ln}.a"):
+            _delete(f, f"lib{ln}.a")
+
+    # Delete dynamic libraries (.so*)
+    for ln in lib_names:
+        for f in install_dir.glob(f"**/lib{ln}.so*"):
+            _delete(f, f.name)
+
+    # Delete include directory (from Cflags -I)
+    if include_dir:
+        inc_path = Path(include_dir)
+        if inc_path.is_dir() and str(inc_path).startswith(str(install_dir)):
+            _delete(inc_path, f"include/{inc_path.name}/")
+
+    # Delete individual include files from removal config
+    for inc_file in removal_config.get("include_files", []):
+        for f in install_dir.glob(f"**/include/{inc_file}"):
+            _delete(f, f"include/{inc_file}")
+
+    # Delete extra directories from removal config
+    for extra_dir in removal_config.get("extra_dirs", []):
+        d = install_dir / extra_dir
+        if d.is_dir():
+            _delete(d, extra_dir + "/")
+
+    if removed_count:
+        log(f"  [green]Removed {removed_count} file(s)/dir(s)[/green]")
+    else:
+        log(f"  [yellow]Nothing to remove[/yellow]")
+    return removed_count > 0
+
+
+def check_remove_allowed(lib_name: str, installed_libs: list[LibraryInfo],
+                         libraries_yaml: Path,
+                         libraries_local: Path = None) -> list[str]:
+    """Check if a library can be removed (no installed dependents).
+
+    Returns list of installed library names that depend on lib_name.
+    Empty list = removal allowed.
+    """
+    import yaml as _yaml
+
+    # Load dependency graph from libraries.yaml
+    deps_map: dict[str, list[str]] = {}  # lib_name → [depends_on...]
+    for yaml_path in [libraries_local, libraries_yaml]:
+        if yaml_path and yaml_path.exists():
+            try:
+                data = _yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
+                for lib in (data or {}).get("libraries", []):
+                    name = lib.get("name", "")
+                    depends = lib.get("depends", [])
+                    if name and depends:
+                        deps_map[name] = depends
+            except Exception:
+                pass
+
+    # Find installed libs that depend on the target lib
+    installed_names = {lib.name for lib in installed_libs if lib.found}
+    dependents = []
+    for dep_name, dep_list in deps_map.items():
+        if lib_name in dep_list and dep_name in installed_names:
+            dependents.append(dep_name)
+
+    return sorted(dependents)
+
+
 def _get_version_branch(version: str) -> str:
     """Extract the version branch for update comparison.
 

@@ -1263,9 +1263,27 @@ class ToolchainsScreen(Screen):
                 if lib.found and lib.up_to_date:
                     options.append((t("lib_skip_uptodate"), "skip"))
                     options.append((f"{t('lib_reinstall')} {lib.version}", f"reinstall:{lib.version}"))
+                    # Remove option — only if no installed libs depend on this one
+                    from core.toolchain import check_remove_allowed
+                    dependents = check_remove_allowed(
+                        lib.name, libs,
+                        self.app.paths.defaults_dir / "libraries.yaml",
+                        self.app.paths.libraries_local,
+                    )
+                    if not dependents:
+                        options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
                 elif lib.found and lib.update_version:
                     options.append((t("lib_skip"), "skip"))
                     options.append((f"→ {lib.update_version} ({t('lib_recommended')})", f"update:{lib.update_version}"))
+                    # Remove option
+                    from core.toolchain import check_remove_allowed
+                    dependents = check_remove_allowed(
+                        lib.name, libs,
+                        self.app.paths.defaults_dir / "libraries.yaml",
+                        self.app.paths.libraries_local,
+                    )
+                    if not dependents:
+                        options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
                 elif not lib.found and lib.update_version:
                     options.append((t("lib_skip"), "skip"))
                     options.append((f"{t('lib_install')} {lib.update_version} ({t('lib_recommended')})", f"install:{lib.update_version}"))
@@ -1576,7 +1594,15 @@ class ToolchainsScreen(Screen):
         self.app.build_timer_start("toolchains")
         self._update_f9_state()
         order = ", ".join(name for name, _ in actions)
-        self._log_sync(f"[bold]Building {len(actions)} libraries for {tc.name}:[/bold] {order}")
+        has_remove = any(a.startswith("remove:") for _, a in actions)
+        has_build = any(not a.startswith("remove:") for _, a in actions)
+        if has_remove and not has_build:
+            verb = "Removing"
+        elif has_remove and has_build:
+            verb = "Processing"
+        else:
+            verb = "Building"
+        self._log_sync(f"[bold]{verb} {len(actions)} libraries for {tc.name}:[/bold] {order}")
 
         def cancel_check() -> bool:
             return self._cancel_requested
@@ -1604,6 +1630,26 @@ class ToolchainsScreen(Screen):
                     if len(parts) != 2:
                         continue
                     action_type, version = parts
+
+                    # Handle remove action
+                    if action_type == "remove":
+                        _set_lib_status(lib_name, f"[bold yellow]{lib_name:<15s}[/bold yellow] [yellow]removing...[/yellow]")
+                        self._log(f"\n[bold]remove: {lib_name} {version}[/bold]")
+                        from core.toolchain import remove_library
+                        success = remove_library(
+                            install_dir=self.app.paths.toolchains_dir / tc.name,
+                            sysroot=tc.sysroot,
+                            lib_name=lib_name,
+                            libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
+                            libraries_local=self.app.paths.libraries_local,
+                            log=self._log,
+                        )
+                        if success:
+                            built_libs.add(lib_name)
+                            _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]removed[/green]")
+                        else:
+                            _set_lib_status(lib_name, f"[bold red]{lib_name:<15s}[/bold red] [red]failed[/red]")
+                        continue
 
                     # Show building indicator
                     _set_lib_status(lib_name, f"[bold yellow]{lib_name:<15s}[/bold yellow] [yellow]building...[/yellow]")

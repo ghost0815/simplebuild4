@@ -153,6 +153,8 @@ libraries:
 
   - name: ccid
     pc_file: libccid.pc
+    removal:
+      extra_dirs: [lib/pcsc, etc/reader.conf.d]
     version_check: url:https://ccid.apdu.fr/files/
     source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
     pre_configure: "./bootstrap"
@@ -208,6 +210,8 @@ libraries:
 
   - name: zlib
     pc_file: zlib.pc
+    removal:
+      include_files: [zlib.h, zconf.h]
     version_check: github:madler/zlib
     source: https://github.com/madler/zlib/releases/download/v@VERSION@/zlib-@VERSION@.tar.gz
     configure: "CROSS_PREFIX=@CROSS@ ./configure --prefix=@PREFIX@"

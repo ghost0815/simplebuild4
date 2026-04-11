@@ -211,7 +211,7 @@ class MainScreen(Screen):
                 + (f"  [dim]Static: {static_str}[/dim]" if static_str else "")
             )
         else:
-            lines.append(f"  {_lbl('libraries', 0):<{pad}} no libraries integrated")
+            lines.append(f"  {_lbl('libraries', 0):<{pad}} no integrated libraries")
         if hw_flags:
             lines.append(self._wrap_values(f"  {_lbl('hardware', len(hw_flags)):<{pad}} ", hw_flags))
         if b.use_compress:
