@@ -1522,8 +1522,8 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         ("GEN\t",   "cyan",         "GEN --------> "),
         ("WIKI\t",  "cyan",         "WIKI -------> "),
         ("CONF\t",  "cyan",         "CONFIG -----> "),
-        ("LINK\t",  "magenta",      "LINK -------> "),
-        ("STRIP\t", "magenta",      "STRIP ------> "),
+        ("LINK\t",  "plum1", "LINK -------> "),
+        ("STRIP\t", "plum1", "STRIP ------> "),
         ("RM\t",    "red",          "REMOVE -----> "),
         ("UPX\t",   "bright_green", "UPX --------> "),
         ("UPX ",    "bright_green", "UPX --------> "),
@@ -1556,7 +1556,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
             rest = stripped.split("]", 1)[1].strip() if "]" in stripped else stripped
             pct = stripped.split("]")[0].strip("[ %")
             if "Linking" in rest:
-                return f"[magenta]LINK -------> \\[{pct}%][/magenta] {rich_escape(rest)}"
+                return f"[plum1]LINK -------> \\[{pct}%][/plum1] {rich_escape(rest)}"
             elif "Built target" in rest:
                 return f"[green]DONE -------> \\[{pct}%][/green] {rich_escape(rest)}"
             elif "Building" in rest:
