@@ -1059,7 +1059,7 @@ class BuildEngine:
             ok, bin_path = self._build_cmake(
                 repo_dir, bin_path, cross, sysroot, cross_sysroot,
                 cc_opts, cflags, ldflags, confdir, use_flags, static_libs,
-                stapi_lib, is_native, tc, tcc,
+                stapi_lib, is_native, tc, tcc, tc_dir,
             )
         else:
             ok, bin_path = self._build_make(
@@ -1127,7 +1127,7 @@ class BuildEngine:
 
     def _build_cmake(self, repo_dir, bin_path, cross, sysroot, cross_sysroot,
                      cc_opts, cflags, ldflags, confdir, use_flags, static_libs,
-                     stapi_lib, is_native, tc, tcc):
+                     stapi_lib, is_native, tc, tcc, tc_dir):
         """Build using cmake."""
         import shutil as _shutil
 
