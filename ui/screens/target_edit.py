@@ -726,10 +726,16 @@ class TargetEditScreen(Screen):
                             _eye_sp,
                             classes="s-row",
                         )
-                        # Row 3 left: Target path
+                        # Row 3 left: Target path + browse
+                        _path_browse = Button(icon("browse"), id=f"btn-up-browse-path-{idx}", classes="tc-reset-btn")
+                        _path_browse.tooltip = t("rfp_browse_remote")
+                        _path_sp = Static("")
+                        _path_sp.styles.width = 1
                         yield Horizontal(
                             Static(f" {t('te_target_path')}", classes="s-label-tall"),
                             Input(value=up.target_path, id=f"t-up-path-{idx}"),
+                            _path_browse,
+                            _path_sp,
                             classes="s-row",
                         )
                         # Row 3 right: SSH Key + browse + small spacer
@@ -957,6 +963,9 @@ class TargetEditScreen(Screen):
         elif event.button.id and event.button.id.startswith("btn-up-key-"):
             idx = event.button.id.split("-")[-1]
             self._open_upload_key_picker(idx)
+        elif event.button.id and event.button.id.startswith("btn-up-browse-path-"):
+            idx = event.button.id.split("-")[-1]
+            self._open_remote_path_picker(idx)
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
 
@@ -980,6 +989,61 @@ class TargetEditScreen(Screen):
         if path and idx:
             try:
                 self.query_one(f"#t-up-key-{idx}", Input).value = str(path)
+            except Exception:
+                pass
+
+    def _open_remote_path_picker(self, idx: str) -> None:
+        """Open remote file picker for upload target path."""
+        try:
+            host = self.query_one(f"#t-up-host-{idx}", Input).value.strip()
+        except Exception:
+            host = ""
+        if not host:
+            self.notify(t("te_no_host"), severity="warning")
+            return
+        # Localhost → local file picker
+        if host in ("localhost", "127.0.0.1", "::1"):
+            from ui.screens.toolchains import FilePickerScreen
+            current = self.query_one(f"#t-up-path-{idx}", Input).value.strip()
+            start = str(Path(current).parent) if current else "/usr/bin"
+            self._upload_path_idx = idx
+            self.app.push_screen(
+                FilePickerScreen(start_path=start, title=f"Local: {host}",
+                                 simple=True, select_label=t("rfp_select")),
+                callback=self._on_remote_path_selected,
+            )
+            return
+        # Remote → SSH file picker
+        from ui.screens.remote_file_picker import RemoteFilePickerScreen
+        from core.credentials import decrypt
+        try:
+            user = self.query_one(f"#t-up-user-{idx}", Input).value.strip() or "root"
+            password = decrypt(self.query_one(f"#t-up-pass-{idx}", Input).value.strip())
+            port = int(self.query_one(f"#t-up-port-{idx}", Input).value.strip() or "22")
+            key = self.query_one(f"#t-up-key-{idx}", Input).value.strip()
+        except Exception:
+            user, password, port, key = "root", "", 22, ""
+        current = self.query_one(f"#t-up-path-{idx}", Input).value.strip()
+        self._upload_path_idx = idx
+        self.app.push_screen(
+            RemoteFilePickerScreen(
+                host=host, user=user, password=password,
+                port=port, key=key,
+                start_path="/usr/bin",
+                current_value=current,
+            ),
+            callback=self._on_remote_path_selected,
+        )
+
+    def _on_remote_path_selected(self, result) -> None:
+        """Callback for remote/local path picker."""
+        if not result:
+            return
+        path = result[0] if isinstance(result, tuple) else result
+        idx = getattr(self, '_upload_path_idx', '')
+        if path and idx:
+            try:
+                self.query_one(f"#t-up-path-{idx}", Input).value = str(path)
             except Exception:
                 pass
 

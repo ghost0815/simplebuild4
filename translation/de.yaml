@@ -404,3 +404,12 @@ uc_destinations: "Ziele: {count}"
 uc_complete: "Abgeschlossen: {time}"
 uc_separator_local: "{name}: lokal → {path}"
 uc_separator_remote: "{name}: {user}@{host}:{path}"
+
+# Remote file picker
+rfp_loading: "Laden..."
+rfp_connect_failed: "Verbindung fehlgeschlagen: {error}"
+rfp_empty: "(leer)"
+rfp_up: "Hoch"
+rfp_select: "Auswählen"
+rfp_browse_remote: "Remote-Datei suchen"
+te_no_host: "Kein Host konfiguriert"
