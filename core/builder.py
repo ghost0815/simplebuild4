@@ -81,6 +81,7 @@ class BuildEngine:
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
         self._log_file = None  # set in build()
+        self._warning_count = 0  # per-build warning counter
 
     def _log_file_only(self, msg: str) -> None:
         """Write a line only to the log file, not to the GUI."""
@@ -287,6 +288,7 @@ class BuildEngine:
         self._log("[bold]PHASE 4: Build[/bold]")
         success_count = 0
         fail_count = 0
+        total_warnings = 0
         for src in sources:
             if src.name not in repo_dirs:
                 fail_count += len(toolchains)
@@ -301,6 +303,7 @@ class BuildEngine:
                     fail_count += 1
                     continue
                 bin_path = self._phase4_build(src, repo_dirs[src.name], tcc, tc)
+                total_warnings += self._warning_count
                 if bin_path:
                     # PHASE 5: Deploy matching destinations
                     deploy_ok = self._phase5_deploy(src, tcc, bin_path)
@@ -311,7 +314,7 @@ class BuildEngine:
                 else:
                     fail_count += 1
 
-        self._log(f"\n[bold]Build complete: {success_count} succeeded, {fail_count} failed[/bold]")
+        self._log(f"\n[bold]Build complete: {success_count} succeeded, {total_warnings} warning{'s' if total_warnings != 1 else ''}, {fail_count} failed[/bold]")
         return fail_count == 0
 
     # -------------------------------------------------------------------------
@@ -1075,7 +1078,8 @@ class BuildEngine:
                 except Exception:
                     pass
 
-        # --- Dispatch to make or cmake ---
+        # --- Reset warning counter and dispatch ---
+        self._warning_count = 0
         started = datetime.now()
         if b.build_system == "cmake":
             ok, bin_path = self._build_cmake(
@@ -1102,7 +1106,8 @@ class BuildEngine:
         if ok and bin_path and bin_path.exists():
             size_kb = bin_path.stat().st_size / 1024
             self._log("")
-            self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s[/green]")
+            warn_str = f", {self._warning_count} warning{'s' if self._warning_count != 1 else ''}" if self._warning_count else ""
+            self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s{warn_str}[/green]")
 
             # Post-build: immediately after each build (before distclean of next build)
             self._postbuild_single(bin_path, repo_dir, cross, sysroot, is_native)
@@ -1603,8 +1608,11 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
             rest = stripped.split("]", 1)[1].strip()
             return f"[bright_green]UPX --------> [/bright_green]{rich_escape(rest)}"
 
-        # Error/warning lines
-        if any(kw in stripped.lower() for kw in ("error", "warning", "fatal", "undefined")):
+        # Error/warning lines (colon suffix avoids false positives from filenames)
+        lower = stripped.lower()
+        if any(kw in lower for kw in ("error:", "warning:", "fatal:", "undefined")):
+            if "warning:" in lower:
+                self._warning_count += 1
             return f"[red]{rich_escape(stripped)}[/red]"
 
         # Skip unknown lines (noise from compiler, BFD warnings, etc.)
