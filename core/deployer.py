@@ -199,6 +199,29 @@ class Deployer:
         except Exception as e:
             self._log(f"  [red]Error: {e}[/red]")
 
+    def _mask_password(self, text: str) -> str:
+        """Replace any occurrence of su_password or ssh password in text with ***."""
+        result = text
+        if self.config.su_password:
+            result = result.replace(self.config.su_password, "***")
+        if self.config.password:
+            result = result.replace(self.config.password, "***")
+        return result
+
+    def _wrap_su(self, cmd: str) -> tuple[str, str]:
+        """Wrap a command with su -c if su_password is set.
+
+        Returns (actual_cmd, display_cmd) where display_cmd has the password masked.
+        """
+        su_pwd = self.config.su_password
+        if not su_pwd:
+            return cmd, cmd
+        # Escape single quotes in the command for su -c '...'
+        escaped = cmd.replace("'", "'\\''")
+        actual = f"echo '{su_pwd}' | su -c '{escaped}'"
+        display = f"echo '***' | su -c '{escaped}'"
+        return actual, display
+
     def step_pre_install(self) -> None:
         """Step 4: Execute pre deploy commands."""
         cmd = self.config.pre_cmd
@@ -212,22 +235,23 @@ class Deployer:
         stripped = cmd.strip()
         if stripped.endswith("&") or stripped.startswith("nohup "):
             self._log("  [yellow]Warning: background command in pre-deploy may race with deploy[/yellow]")
-        self._log(f"  [dim]$ {cmd}[/dim]")
+        actual_cmd, display_cmd = self._wrap_su(cmd)
+        self._log(f"  [dim]$ {display_cmd}[/dim]")
         try:
             if self.is_local:
-                result = self._run_local(cmd, timeout=10)
+                result = self._run_local(actual_cmd, timeout=10)
             else:
-                result = self._ssh(cmd, timeout=10)
+                result = self._ssh(actual_cmd, timeout=10)
             if result.returncode == 0:
                 if result.stdout.strip():
                     for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
+                        self._log(f"  {self._mask_password(line)}")
                 self._log("  [green]OK (exit 0)[/green]")
             else:
                 err = result.stderr.strip() or result.stdout.strip()
-                self._log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
+                self._log(f"  [red]Failed (exit {result.returncode}): {self._mask_password(err)}[/red]")
         except Exception as e:
-            self._log(f"  [red]Error: {e}[/red]")
+            self._log(f"  [red]Error: {self._mask_password(str(e))}[/red]")
 
     def step_deploy(self) -> bool:
         """Step 5: Deploy/copy the binary. Returns True on success."""
@@ -288,22 +312,23 @@ class Deployer:
             return
 
         self._log("[bold]6. Post deploy commands... [dim](timeout: 10s)[/dim][/bold]")
-        self._log(f"  [dim]$ {cmd}[/dim]")
+        actual_cmd, display_cmd = self._wrap_su(cmd)
+        self._log(f"  [dim]$ {display_cmd}[/dim]")
         try:
             if self.is_local:
-                result = self._run_local(cmd, timeout=10)
+                result = self._run_local(actual_cmd, timeout=10)
             else:
-                result = self._ssh(cmd, timeout=10)
+                result = self._ssh(actual_cmd, timeout=10)
             if result.returncode == 0:
                 if result.stdout.strip():
                     for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
+                        self._log(f"  {self._mask_password(line)}")
                 self._log("  [green]OK (exit 0)[/green]")
             else:
                 err = result.stderr.strip() or result.stdout.strip()
-                self._log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
+                self._log(f"  [red]Failed (exit {result.returncode}): {self._mask_password(err)}[/red]")
         except Exception as e:
-            self._log(f"  [red]Error: {e}[/red]")
+            self._log(f"  [red]Error: {self._mask_password(str(e))}[/red]")
 
     # -- Full run -------------------------------------------------------------
 

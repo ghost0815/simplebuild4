@@ -778,12 +778,18 @@ class TargetEditScreen(Screen):
                     _tc_sel = Select(options=tc_options, value=_tc_val, id=f"t-dep-tc-{idx}", allow_blank=False)
                     _tc_sel.styles.width = "1fr"
                     _port_inp = Input(value=str(up.port), id=f"t-dep-port-{idx}", type="integer")
-                    _port_inp.styles.width = 9
-                    _port_inp.styles.min_width = 9
-                    _port_inp.styles.max_width = 9
+                    _port_inp.styles.width = 12
+                    _port_inp.styles.min_width = 12
+                    _port_inp.styles.max_width = 12
                     _pass_inp = Input(value=up.password, placeholder=t("ph_password"), id=f"t-dep-pass-{idx}", password=True)
                     _key_browse = Button(icon("browse"), id=f"btn-dep-key-{idx}", classes="tc-reset-btn")
                     _key_browse.tooltip = t("ph_browse_file")
+                    def _sp():
+                        s = Static("")
+                        s.styles.width = 1
+                        s.styles.min_width = 1
+                        return s
+
                     with Grid(classes="up-grid"):
                         # Row 1 left: Checkbox + Name
                         from textual.widgets import Checkbox
@@ -800,15 +806,12 @@ class TargetEditScreen(Screen):
                             Input(value=up.name, placeholder=f"#{idx + 1}", id=f"t-dep-name-{idx}"),
                             classes="s-row",
                         )
-                        # Row 1 right: Repository / Toolchain + spacer (align with eye btn below)
-                        _tc_sp = Static("")
-                        _tc_sp.styles.width = 5
-                        _tc_sp.styles.min_width = 5
+                        # Row 1 right: Repository / Toolchain
                         yield Horizontal(
                             Static(f" {t('te_source')} / {t('te_toolchain')}", classes="s-label-tall"),
                             _src_sel,
                             _tc_sel,
-                            _tc_sp,
+                            _sp(), _sp(),
                             classes="s-row",
                         )
                         # Row 2 left: Host / Port
@@ -821,39 +824,46 @@ class TargetEditScreen(Screen):
                         # Row 2 right: User / Password + eye toggle
                         _eye_btn = Button(icon("eye"), id=f"btn-dep-eye-{idx}", classes="tc-reset-btn")
                         _eye_btn.tooltip = t("tt_show_password")
-                        _eye_sp = Static("")
-                        _eye_sp.styles.width = 1
                         yield Horizontal(
-                            Static(f" {t('te_user')} / {t('te_password')}", classes="s-label-tall"),
+                            Static(f" {t('te_user')} / {t('te_password')}(phrase)", classes="s-label-tall"),
                             Input(value=up.user, id=f"t-dep-user-{idx}"),
                             _pass_inp,
                             _eye_btn,
-                            _eye_sp,
+                            _sp(), _sp(), _sp(),
                             classes="s-row",
                         )
-                        # Row 3 left: Target path + browse
-                        _path_browse = Button(icon("browse"), id=f"btn-dep-browse-path-{idx}", classes="tc-reset-btn")
-                        _path_browse.tooltip = t("rfp_browse_remote")
-                        _path_sp = Static("")
-                        _path_sp.styles.width = 1
-                        yield Horizontal(
-                            Static(f" {t('te_target_path')}", classes="s-label-tall"),
-                            Input(value=up.target_path, id=f"t-dep-path-{idx}"),
-                            _path_browse,
-                            _path_sp,
-                            classes="s-row",
-                        )
-                        # Row 3 right: SSH Key + browse + small spacer
-                        _key_sp = Static("")
-                        _key_sp.styles.width = 1
+                        # Row 3 left: (empty placeholder for grid alignment)
+                        yield Horizontal(classes="s-row")
+                        # Row 3 right: SSH Key + browse
                         yield Horizontal(
                             Static(f" {t('te_ssh_key')}", classes="s-label-tall"),
                             Input(value=up.key, placeholder=t("ph_ssh_key"), id=f"t-dep-key-{idx}"),
                             _key_browse,
-                            _key_sp,
+                            _sp(), _sp(), _sp(),
                             classes="s-row",
                         )
-                        # Row 4 left: Pre command
+                        # Row 4 left: Target path + browse
+                        _path_browse = Button(icon("browse"), id=f"btn-dep-browse-path-{idx}", classes="tc-reset-btn")
+                        _path_browse.tooltip = t("rfp_browse_remote")
+                        yield Horizontal(
+                            Static(f" {t('te_target_path')}", classes="s-label-tall"),
+                            Input(value=up.target_path, id=f"t-dep-path-{idx}"),
+                            _path_browse,
+                            _sp(),
+                            classes="s-row",
+                        )
+                        # Row 4 right: SU password + eye toggle
+                        _su_eye_btn = Button(icon("eye"), id=f"btn-dep-su-eye-{idx}", classes="tc-reset-btn")
+                        _su_eye_btn.tooltip = t("tt_show_password")
+                        _su_pass_inp = Input(value=up.su_password, placeholder=t("ph_su_password"), id=f"t-dep-su-pass-{idx}", password=True)
+                        yield Horizontal(
+                            Static(f" {t('te_su_password')}", classes="s-label-tall"),
+                            _su_pass_inp,
+                            _su_eye_btn,
+                            _sp(), _sp(), _sp(),
+                            classes="s-row",
+                        )
+                        # Row 5 left: Pre command
                         _pre_inp = Input(value=up.pre_cmd, placeholder=t("ph_pre_cmd"), id=f"t-dep-pre-{idx}")
                         _pre_inp.tooltip = t("tt_pre_cmd")
                         yield Horizontal(
@@ -861,16 +871,13 @@ class TargetEditScreen(Screen):
                             _pre_inp,
                             classes="s-row",
                         )
-                        # Row 4 right: Post command + spacer (align with eye btn)
+                        # Row 5 right: Post command
                         _post_inp = Input(value=up.post_cmd, placeholder=t("ph_post_cmd"), id=f"t-dep-post-{idx}")
                         _post_inp.tooltip = t("tt_post_cmd")
-                        _post_sp = Static("")
-                        _post_sp.styles.width = 5
-                        _post_sp.styles.min_width = 5
                         yield Horizontal(
                             Static(f" {t('te_post_command')}", classes="s-label-tall"),
                             _post_inp,
-                            _post_sp,
+                            _sp(), _sp(),
                             classes="s-row",
                         )
 
@@ -1076,6 +1083,14 @@ class TargetEditScreen(Screen):
             idx = event.button.id.split("-")[-1]
             try:
                 pw = self.query_one(f"#t-dep-pass-{idx}", Input)
+                pw.password = not pw.password
+            except Exception:
+                pass
+            return
+        elif event.button.id and event.button.id.startswith("btn-dep-su-eye-"):
+            idx = event.button.id.split("-")[-1]
+            try:
+                pw = self.query_one(f"#t-dep-su-pass-{idx}", Input)
                 pw.password = not pw.password
             except Exception:
                 pass
@@ -1895,6 +1910,10 @@ class TargetEditScreen(Screen):
             except Exception:
                 password = ""
             try:
+                su_password = self.query_one(f"#t-dep-su-pass-{idx}", Input).value
+            except Exception:
+                su_password = ""
+            try:
                 up_name = self.query_one(f"#t-dep-name-{idx}", Input).value.strip()
             except Exception:
                 up_name = ""
@@ -1914,6 +1933,7 @@ class TargetEditScreen(Screen):
                 port=port,
                 key=self.query_one(f"#t-dep-key-{idx}", Input).value.strip(),
                 target_path=self.query_one(f"#t-dep-path-{idx}", Input).value.strip(),
+                su_password=su_password,
                 pre_cmd=self.query_one(f"#t-dep-pre-{idx}", Input).value.strip(),
                 post_cmd=self.query_one(f"#t-dep-post-{idx}", Input).value.strip(),
             ))

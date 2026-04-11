@@ -172,7 +172,7 @@ Switch.section-switch.all-on.-on > .switch--slider {
     grid-size: 2;
     grid-columns: 9fr 11fr;
     overflow: hidden;
-    grid-rows: 3;
+    grid-rows: 3 3 3 3 3;
     height: auto;
 }
 

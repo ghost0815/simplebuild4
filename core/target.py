@@ -30,6 +30,7 @@ class DeploymentConfig:
     port: int = 22
     key: str = ""                   # SSH key path
     target_path: str = "/usr/bin/oscam"
+    su_password: str = ""              # encrypted, root password for su -c wrapping
     pre_cmd: str = ""
     post_cmd: str = ""
 
@@ -196,6 +197,7 @@ class Target:
                     "port": u.port,
                     "key": u.key,
                     "target_path": u.target_path,
+                    "su_password": _encrypt(u.su_password),
                     "pre_cmd": u.pre_cmd,
                     "post_cmd": u.post_cmd,
                 }.items() if not (v == "" or v is None or (v == 0 and v is not False))}
@@ -296,6 +298,7 @@ class Target:
                 port=u.get("port", 22),
                 key=u.get("key", ""),
                 target_path=u.get("target_path", "/usr/bin/oscam"),
+                su_password=_decrypt(u.get("su_password", "")),
                 pre_cmd=u.get("pre_cmd", ""),
                 post_cmd=u.get("post_cmd", ""),
             ))
