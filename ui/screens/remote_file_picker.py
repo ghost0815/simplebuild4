@@ -87,7 +87,12 @@ class RemoteFilePickerScreen(ModalScreen[str]):
             self._ssh_base += ["-i", key]
         self._ssh_target = f"{user}@{host}"
         self._sshpass: list[str] = []
-        if password:
+        if key and password:
+            # SSH key with passphrase
+            if shutil.which("sshpass"):
+                self._sshpass = ["sshpass", "-P", "Enter passphrase", "-p", password]
+        elif not key and password:
+            # Password auth (no key)
             if shutil.which("sshpass"):
                 self._sshpass = ["sshpass", "-p", password]
 

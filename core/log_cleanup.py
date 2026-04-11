@@ -10,7 +10,7 @@ types:
     lib:<toolchain>       {ts}.{toolchain}.{lib}-{version}.log
     selfbuild:<template>  {ts}.{template}.selfbuild.log
     backup:<toolchain>    {ts}.{toolchain}.backup.log
-    upload:<target>       {ts}.{target}.{uploads}.upload-check.log
+    deploy:<target>       {ts}.{target}.{dests}.deployment-check.log
     __s4__                {ts}.s4-update.log
 
 Within each bucket the newest file is always preserved so the user
@@ -48,9 +48,9 @@ def _classify(name: str) -> Tuple[str, str]:
     if len(rest) >= 2 and rest[-1].startswith("build-"):
         tgt = ".".join(rest[:-1])
         return ("build", f"build:{tgt}")
-    if len(rest) >= 2 and rest[-1] == "upload-check":
+    if len(rest) >= 2 and rest[-1] in ("upload-check", "deployment-check"):
         tgt = ".".join(rest[:-1])
-        return ("upload", f"upload:{tgt}")
+        return ("deploy", f"deploy:{tgt}")
     if len(rest) >= 2:
         # Library build log: {toolchain}.{lib}-{version}
         return ("lib", f"lib:{rest[0]}")

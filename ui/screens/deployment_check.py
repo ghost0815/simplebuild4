@@ -1,4 +1,4 @@
-"""Upload check modal — test SSH connectivity and optionally upload a binary."""
+"""Deployment check modal — test SSH connectivity and optionally deploy a binary."""
 
 from __future__ import annotations
 
@@ -13,19 +13,19 @@ from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button, Select
 
-from core.target import UploadConfig
-from core.uploader import Uploader
+from core.target import DeploymentConfig
+from core.deployer import Deployer
 from translation import t
 from ui.icons import is_ascii
 
 
-class UploadCheckModal(ModalScreen[None]):
-    """Modal that tests SSH connectivity and performs upload check or real upload."""
+class DeploymentCheckModal(ModalScreen[None]):
+    """Modal that tests SSH connectivity and performs deployment check or real deployment."""
 
     BINDINGS = [("escape", "close", "Close")]
 
     DEFAULT_CSS = """
-    UploadCheckModal {
+    DeploymentCheckModal {
         align: center middle;
     }
     #check-box {
@@ -67,21 +67,21 @@ class UploadCheckModal(ModalScreen[None]):
     }
     """
 
-    def __init__(self, uploads: list[UploadConfig], target_name: str,
+    def __init__(self, deployments: list[DeploymentConfig], target_name: str,
                  binaries_dir: Optional[Path] = None,
                  logs_dir: Optional[Path] = None,
                  toolchain_filter: str = "") -> None:
         super().__init__()
-        self._uploads = [u for u in uploads if u.host]
+        self._deployments = [d for d in deployments if d.host]
         self._target_name = target_name
         self._binaries_dir = binaries_dir
         self._logs_dir = logs_dir
-        self._toolchain_filter = toolchain_filter or (self._uploads[0].toolchain if self._uploads else "")
+        self._toolchain_filter = toolchain_filter or (self._deployments[0].toolchain if self._deployments else "")
         self._check_running = False
         self._binary_path: Optional[Path] = None
 
     def compose(self) -> ComposeResult:
-        bin_options = [(t("uc_dry_run"), "dry-run")]
+        bin_options = [(t("dc_dry_run"), "dry-run")]
         if self._binaries_dir and self._binaries_dir.is_dir():
             tc = self._toolchain_filter
             _hostname = socket.gethostname()
@@ -100,20 +100,20 @@ class UploadCheckModal(ModalScreen[None]):
                 bin_options.append((label, str(f)))
 
         with Vertical(id="check-box"):
-            yield Static(f"[bold]Upload — {self._target_name}[/bold]", id="check-title")
+            yield Static(f"[bold]Deployment — {self._target_name}[/bold]", id="check-title")
             with Horizontal(id="check-select-row"):
-                yield Static(f" {t('uc_binary')}", classes="s-label-tall")
+                yield Static(f" {t('dc_binary')}", classes="s-label-tall")
                 yield Select(options=bin_options, value="dry-run", id="check-binary", allow_blank=False)
             log = RichLog(id="check-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             with Horizontal(id="check-buttons"):
-                yield Button(t("uc_start"), id="check-start", variant="primary")
+                yield Button(t("dc_start"), id="check-start", variant="primary")
                 yield Button(t("cancel"), id="check-close")
 
     def on_mount(self) -> None:
         self._log_widget = self.query_one("#check-log", RichLog)
-        self._log_widget.write(f"[dim]{t('uc_press_start')}[/dim]")
+        self._log_widget.write(f"[dim]{t('dc_press_start')}[/dim]")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "check-close":
@@ -125,7 +125,7 @@ class UploadCheckModal(ModalScreen[None]):
         if self._check_running:
             return
         self._check_running = True
-        self._log_widget.write(f"[bold]{t('uc_starting')}[/bold]")
+        self._log_widget.write(f"[bold]{t('dc_starting')}[/bold]")
         try:
             binary_val = self.query_one("#check-binary", Select).value
             self._binary_path = None if binary_val == "dry-run" else Path(str(binary_val))
@@ -155,43 +155,43 @@ class UploadCheckModal(ModalScreen[None]):
     def _run_checks(self, binary_path: Optional[Path] = None) -> None:
         log_lines: list[str] = []
         is_dry_run = binary_path is None
-        _arrow = "->" if is_ascii() else "→"
-        _sep = "---" if is_ascii() else "━━━"
+        _arrow = "->" if is_ascii() else "\u2192"
+        _sep = "---" if is_ascii() else "\u2501\u2501\u2501"
 
         def log(msg: str) -> None:
             log_lines.append(msg)
             self._log(msg)
 
-        mode = t("uc_mode_dry") if is_dry_run else t("uc_mode_upload").format(name=binary_path.name)
+        mode = t("dc_mode_dry") if is_dry_run else t("dc_mode_deploy").format(name=binary_path.name)
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log(f"[bold]{t('uc_upload_started').format(time=now)}[/bold]")
-        log(t("uc_target").format(name=self._target_name))
-        log(t("uc_mode").format(mode=mode))
-        log(t("uc_destinations").format(count=len(self._uploads)))
+        log(f"[bold]{t('dc_deploy_started').format(time=now)}[/bold]")
+        log(t("dc_target").format(name=self._target_name))
+        log(t("dc_mode").format(mode=mode))
+        log(t("dc_destinations").format(count=len(self._deployments)))
         log("")
 
-        for idx, u in enumerate(self._uploads):
-            name = u.name or f"#{idx + 1}"
-            is_local = u.host in ("localhost", "127.0.0.1", "::1")
+        for idx, d in enumerate(self._deployments):
+            name = d.name or f"#{idx + 1}"
+            is_local = d.host in ("localhost", "127.0.0.1", "::1")
 
             if is_local:
-                header = t("uc_separator_local").format(name=name, path=u.target_path).replace("→", _arrow)
+                header = t("dc_separator_local").format(name=name, path=d.target_path).replace("\u2192", _arrow)
             else:
-                header = t("uc_separator_remote").format(
-                    name=name, user=u.user, host=u.host, path=u.target_path)
+                header = t("dc_separator_remote").format(
+                    name=name, user=d.user, host=d.host, path=d.target_path)
             log(f"[bold]{_sep} {header} {_sep}[/bold]")
             log("")
 
-            uploader = Uploader(
-                config=u, log=log,
+            deployer = Deployer(
+                config=d, log=log,
                 binary_path=binary_path,
                 dry_run=is_dry_run,
             )
-            uploader.run()
+            deployer.run()
             log("")
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        log(f"[bold]{t('uc_complete').format(time=now)}[/bold]")
+        log(f"[bold]{t('dc_complete').format(time=now)}[/bold]")
 
         # Write log file
         if self._logs_dir:
@@ -199,11 +199,11 @@ class UploadCheckModal(ModalScreen[None]):
                 import re
                 self._logs_dir.mkdir(parents=True, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-                upload_names = "-".join(
-                    (u.name or u.host).replace(" ", "_").replace("/", "_")
-                    for u in self._uploads
+                deploy_names = "-".join(
+                    (d.name or d.host).replace(" ", "_").replace("/", "_")
+                    for d in self._deployments
                 )
-                log_path = self._logs_dir / f"{timestamp}.{self._target_name}.{upload_names}.upload-check.log"
+                log_path = self._logs_dir / f"{timestamp}.{self._target_name}.{deploy_names}.deployment-check.log"
                 plain_lines = [re.sub(r'\[/?[a-z_ #0-9]+\]', '', line) for line in log_lines]
                 log_path.write_text("\n".join(plain_lines) + "\n", encoding="utf-8")
                 log(f"Log: {log_path}")

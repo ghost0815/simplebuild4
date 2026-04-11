@@ -133,7 +133,7 @@ class MainScreen(Screen):
     def _update_info(self, target: Target) -> None:
         """Update the info panel with target details."""
         b = target.build
-        upload_str = ", ".join(f"{u.user}@{u.host}" for u in target.upload) or "none"
+        deploy_str = ", ".join(f"{d.user}@{d.host}" for d in target.deployment) or "none"
 
         # Options: modules + protocols + readers + card_readers
         all_opts = b.modules + b.protocols + b.readers + b.card_readers

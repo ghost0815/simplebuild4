@@ -10,7 +10,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Switch, Input, Collapsible, Select, Button
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
-from core.target import Target, BuildSettings, UploadConfig, SourceConfig, ToolchainConfig
+from core.target import Target, BuildSettings, DeploymentConfig, SourceConfig, ToolchainConfig
 from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
 from core.oscam_config import read_options, merge_options, OscamOptions, parse_makefile_flags
@@ -79,7 +79,7 @@ class TargetEditScreen(Screen):
         ("g", "switch_tab('general')", "General"),
         ("t", "switch_tab('source')", "Toolchain"),
         ("o", "switch_tab('oscam')", "Options"),
-        ("u", "switch_tab('upload')", "Upload"),
+        ("d", "switch_tab('deploy')", "Deployment"),
     ]
 
     _collapsible_states: dict[str, bool] = {}  # class-level: id → collapsed
@@ -187,7 +187,7 @@ class TargetEditScreen(Screen):
             yield Static(" [b]G[/b]eneral ", id="te-tab-general", classes="tab-active")
             yield Static(" [b]T[/b]oolchain", id="te-tab-source", classes="tab-inactive")
             yield Static(" [b]O[/b]ptions", id="te-tab-oscam", classes="tab-inactive")
-            yield Static(" [b]U[/b]pload ", id="te-tab-upload", classes="tab-inactive")
+            yield Static(" [b]D[/b]eployment ", id="te-tab-deploy", classes="tab-inactive")
 
         # === Tab 1: General ===
         # UPX detection (once)
@@ -655,44 +655,44 @@ class TargetEditScreen(Screen):
         src_options = [(s.name, s.name) for s in tgt.sources] or [("(none)", "(none)")]
         tc_options = [(tc.name, tc.name) for tc in tgt.toolchains] or [("(none)", "(none)")]
 
-        with VerticalScroll(id="te-panel-upload"):
+        with VerticalScroll(id="te-panel-deploy"):
             # Ensure at least one upload entry, pre-filled with first source/toolchain
-            if not tgt.upload:
+            if not tgt.deployment:
                 default_src = tgt.sources[0].name if tgt.sources else ""
                 default_tc = tgt.toolchains[0].name if tgt.toolchains else ""
-                tgt.upload.append(UploadConfig(source=default_src, toolchain=default_tc))
-            upload_count = len([u for u in tgt.upload if u.host])
-            for idx, up in enumerate(tgt.upload):
+                tgt.deployment.append(DeploymentConfig(source=default_src, toolchain=default_tc))
+            deploy_count = len([u for u in tgt.deployment if u.host])
+            for idx, up in enumerate(tgt.deployment):
                 up_name = up.name or f"#{idx + 1}"
-                up_title = f"Upload {up_name}" if up.enabled else f"Upload {up_name} (disabled)"
-                with Collapsible(title=up_title, collapsed=idx > 0, id=f"col-up-{idx}"):
+                up_title = f"Deploy {up_name}" if up.enabled else f"Deploy {up_name} (disabled)"
+                with Collapsible(title=up_title, collapsed=idx > 0, id=f"col-dep-{idx}"):
                     _src_val = up.source if up.source and any(v == up.source for _, v in src_options) else (src_options[0][1] if src_options else "")
                     _tc_val = up.toolchain if up.toolchain and any(v == up.toolchain for _, v in tc_options) else (tc_options[0][1] if tc_options else "")
-                    _src_sel = Select(options=src_options, value=_src_val, id=f"t-up-src-{idx}", allow_blank=False)
+                    _src_sel = Select(options=src_options, value=_src_val, id=f"t-dep-src-{idx}", allow_blank=False)
                     _src_sel.styles.width = "1fr"
-                    _tc_sel = Select(options=tc_options, value=_tc_val, id=f"t-up-tc-{idx}", allow_blank=False)
+                    _tc_sel = Select(options=tc_options, value=_tc_val, id=f"t-dep-tc-{idx}", allow_blank=False)
                     _tc_sel.styles.width = "1fr"
-                    _port_inp = Input(value=str(up.port), id=f"t-up-port-{idx}", type="integer")
+                    _port_inp = Input(value=str(up.port), id=f"t-dep-port-{idx}", type="integer")
                     _port_inp.styles.width = 9
                     _port_inp.styles.min_width = 9
                     _port_inp.styles.max_width = 9
-                    _pass_inp = Input(value=up.password, placeholder=t("ph_password"), id=f"t-up-pass-{idx}", password=True)
-                    _key_browse = Button(icon("browse"), id=f"btn-up-key-{idx}", classes="tc-reset-btn")
+                    _pass_inp = Input(value=up.password, placeholder=t("ph_password"), id=f"t-dep-pass-{idx}", password=True)
+                    _key_browse = Button(icon("browse"), id=f"btn-dep-key-{idx}", classes="tc-reset-btn")
                     _key_browse.tooltip = t("ph_browse_file")
                     with Grid(classes="up-grid"):
                         # Row 1 left: Checkbox + Name
                         from textual.widgets import Checkbox
-                        _cb = Checkbox("", value=up.enabled, id=f"t-up-enabled-{idx}")
+                        _cb = Checkbox("", value=up.enabled, id=f"t-dep-enabled-{idx}")
                         _cb.styles.width = 5
                         _cb.styles.min_width = 5
                         _cb.styles.max_width = 5
                         _cb.styles.height = 3
                         _cb.styles.padding = (0, 0)
-                        _cb.tooltip = t("te_upload_active") if up.enabled else t("te_upload_disabled")
+                        _cb.tooltip = t("te_deploy_active") if up.enabled else t("te_deploy_disabled")
                         yield Horizontal(
                             Static(f" {t('re_name')}", classes="s-label-tall"),
                             _cb,
-                            Input(value=up.name, placeholder=f"#{idx + 1}", id=f"t-up-name-{idx}"),
+                            Input(value=up.name, placeholder=f"#{idx + 1}", id=f"t-dep-name-{idx}"),
                             classes="s-row",
                         )
                         # Row 1 right: Repository / Toolchain + spacer (align with eye btn below)
@@ -709,31 +709,31 @@ class TargetEditScreen(Screen):
                         # Row 2 left: Host / Port
                         yield Horizontal(
                             Static(f" {t('te_host')} / {t('te_port')}", classes="s-label-tall"),
-                            Input(value=up.host, placeholder=t("ph_host"), id=f"t-up-host-{idx}"),
+                            Input(value=up.host, placeholder=t("ph_host"), id=f"t-dep-host-{idx}"),
                             _port_inp,
                             classes="s-row",
                         )
                         # Row 2 right: User / Password + eye toggle
-                        _eye_btn = Button(icon("eye"), id=f"btn-up-eye-{idx}", classes="tc-reset-btn")
+                        _eye_btn = Button(icon("eye"), id=f"btn-dep-eye-{idx}", classes="tc-reset-btn")
                         _eye_btn.tooltip = t("tt_show_password")
                         _eye_sp = Static("")
                         _eye_sp.styles.width = 1
                         yield Horizontal(
                             Static(f" {t('te_user')} / {t('te_password')}", classes="s-label-tall"),
-                            Input(value=up.user, id=f"t-up-user-{idx}"),
+                            Input(value=up.user, id=f"t-dep-user-{idx}"),
                             _pass_inp,
                             _eye_btn,
                             _eye_sp,
                             classes="s-row",
                         )
                         # Row 3 left: Target path + browse
-                        _path_browse = Button(icon("browse"), id=f"btn-up-browse-path-{idx}", classes="tc-reset-btn")
+                        _path_browse = Button(icon("browse"), id=f"btn-dep-browse-path-{idx}", classes="tc-reset-btn")
                         _path_browse.tooltip = t("rfp_browse_remote")
                         _path_sp = Static("")
                         _path_sp.styles.width = 1
                         yield Horizontal(
                             Static(f" {t('te_target_path')}", classes="s-label-tall"),
-                            Input(value=up.target_path, id=f"t-up-path-{idx}"),
+                            Input(value=up.target_path, id=f"t-dep-path-{idx}"),
                             _path_browse,
                             _path_sp,
                             classes="s-row",
@@ -743,7 +743,7 @@ class TargetEditScreen(Screen):
                         _key_sp.styles.width = 1
                         yield Horizontal(
                             Static(f" {t('te_ssh_key')}", classes="s-label-tall"),
-                            Input(value=up.key, placeholder=t("ph_ssh_key"), id=f"t-up-key-{idx}"),
+                            Input(value=up.key, placeholder=t("ph_ssh_key"), id=f"t-dep-key-{idx}"),
                             _key_browse,
                             _key_sp,
                             classes="s-row",
@@ -751,7 +751,7 @@ class TargetEditScreen(Screen):
                         # Row 4 left: Pre command
                         yield Horizontal(
                             Static(f" {t('te_pre_command')}", classes="s-label-tall"),
-                            Input(value=up.pre_cmd, placeholder=t("ph_pre_cmd"), id=f"t-up-pre-{idx}"),
+                            Input(value=up.pre_cmd, placeholder=t("ph_pre_cmd"), id=f"t-dep-pre-{idx}"),
                             classes="s-row",
                         )
                         # Row 4 right: Post command + spacer (align with eye btn)
@@ -760,7 +760,7 @@ class TargetEditScreen(Screen):
                         _post_sp.styles.min_width = 5
                         yield Horizontal(
                             Static(f" {t('te_post_command')}", classes="s-label-tall"),
-                            Input(value=up.post_cmd, placeholder=t("ph_post_cmd"), id=f"t-up-post-{idx}"),
+                            Input(value=up.post_cmd, placeholder=t("ph_post_cmd"), id=f"t-dep-post-{idx}"),
                             _post_sp,
                             classes="s-row",
                         )
@@ -845,22 +845,22 @@ class TargetEditScreen(Screen):
                 self._show_tab("source")
             elif widget.id == "te-tab-oscam":
                 self._show_tab("oscam")
-            elif widget.id == "te-tab-upload":
-                self._show_tab("upload")
+            elif widget.id == "te-tab-deploy":
+                self._show_tab("deploy")
 
     _suppress_section_sync: bool = False
 
     def on_checkbox_changed(self, event) -> None:
         """Upload enabled checkbox → update Collapsible title + tooltip."""
         cid = event.checkbox.id or ""
-        if cid.startswith("t-up-enabled-"):
+        if cid.startswith("t-dep-enabled-"):
             try:
                 idx = cid.split("-")[-1]
-                name_inp = self.query_one(f"#t-up-name-{idx}", Input)
+                name_inp = self.query_one(f"#t-dep-name-{idx}", Input)
                 name = name_inp.value.strip() or f"#{int(idx) + 1}"
-                title = f"Upload {name}" if event.value else f"Upload {name} (disabled)"
-                self.query_one(f"#col-up-{idx}", Collapsible).title = title
-                event.checkbox.tooltip = t("te_upload_active") if event.value else t("te_upload_disabled")
+                title = f"Deploy {name}" if event.value else f"Deploy {name} (disabled)"
+                self.query_one(f"#col-dep-{idx}", Collapsible).title = title
+                event.checkbox.tooltip = t("te_deploy_active") if event.value else t("te_deploy_disabled")
             except Exception:
                 pass
 
@@ -952,50 +952,50 @@ class TargetEditScreen(Screen):
             else:
                 TargetEditScreen._tc_flags_editing = sid
             self._refresh_screen(self._collect(), "source", event.button.id)
-        elif event.button.id and event.button.id.startswith("btn-up-eye-"):
+        elif event.button.id and event.button.id.startswith("btn-dep-eye-"):
             idx = event.button.id.split("-")[-1]
             try:
-                pw = self.query_one(f"#t-up-pass-{idx}", Input)
+                pw = self.query_one(f"#t-dep-pass-{idx}", Input)
                 pw.password = not pw.password
             except Exception:
                 pass
             return
-        elif event.button.id and event.button.id.startswith("btn-up-key-"):
+        elif event.button.id and event.button.id.startswith("btn-dep-key-"):
             idx = event.button.id.split("-")[-1]
-            self._open_upload_key_picker(idx)
-        elif event.button.id and event.button.id.startswith("btn-up-browse-path-"):
+            self._open_deploy_key_picker(idx)
+        elif event.button.id and event.button.id.startswith("btn-dep-browse-path-"):
             idx = event.button.id.split("-")[-1]
             self._open_remote_path_picker(idx)
         elif event.button.id and event.button.id.startswith("rst-"):
             self._do_reset_field(event.button.id)
 
-    def _open_upload_key_picker(self, idx: str) -> None:
+    def _open_deploy_key_picker(self, idx: str) -> None:
         """Open file picker for upload SSH key."""
         from ui.screens.toolchains import FilePickerScreen
         from pathlib import Path as _P
         ssh_dir = _P.home() / ".ssh"
         start = str(ssh_dir) if ssh_dir.exists() else str(_P.home())
-        self._upload_key_idx = idx
+        self._deploy_key_idx = idx
         self.app.push_screen(
             FilePickerScreen(start_path=start, title=t("te_ssh_key"), simple=True, select_label=t("select_btn")),
-            callback=self._on_upload_key_selected,
+            callback=self._on_deploy_key_selected,
         )
 
-    def _on_upload_key_selected(self, result) -> None:
+    def _on_deploy_key_selected(self, result) -> None:
         if not result:
             return
         path = result[0] if isinstance(result, tuple) else result
-        idx = getattr(self, '_upload_key_idx', '')
+        idx = getattr(self, '_deploy_key_idx', '')
         if path and idx:
             try:
-                self.query_one(f"#t-up-key-{idx}", Input).value = str(path)
+                self.query_one(f"#t-dep-key-{idx}", Input).value = str(path)
             except Exception:
                 pass
 
     def _open_remote_path_picker(self, idx: str) -> None:
         """Open remote file picker for upload target path."""
         try:
-            host = self.query_one(f"#t-up-host-{idx}", Input).value.strip()
+            host = self.query_one(f"#t-dep-host-{idx}", Input).value.strip()
         except Exception:
             host = ""
         if not host:
@@ -1004,9 +1004,9 @@ class TargetEditScreen(Screen):
         # Localhost → local file picker
         if host in ("localhost", "127.0.0.1", "::1"):
             from ui.screens.toolchains import FilePickerScreen
-            current = self.query_one(f"#t-up-path-{idx}", Input).value.strip()
+            current = self.query_one(f"#t-dep-path-{idx}", Input).value.strip()
             start = str(Path(current).parent) if current else "/usr/bin"
-            self._upload_path_idx = idx
+            self._deploy_path_idx = idx
             self.app.push_screen(
                 FilePickerScreen(start_path=start, title=f"Local: {host}",
                                  simple=True, select_label=t("rfp_select")),
@@ -1017,14 +1017,14 @@ class TargetEditScreen(Screen):
         from ui.screens.remote_file_picker import RemoteFilePickerScreen
         from core.credentials import decrypt
         try:
-            user = self.query_one(f"#t-up-user-{idx}", Input).value.strip() or "root"
-            password = decrypt(self.query_one(f"#t-up-pass-{idx}", Input).value.strip())
-            port = int(self.query_one(f"#t-up-port-{idx}", Input).value.strip() or "22")
-            key = self.query_one(f"#t-up-key-{idx}", Input).value.strip()
+            user = self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or "root"
+            password = decrypt(self.query_one(f"#t-dep-pass-{idx}", Input).value.strip())
+            port = int(self.query_one(f"#t-dep-port-{idx}", Input).value.strip() or "22")
+            key = self.query_one(f"#t-dep-key-{idx}", Input).value.strip()
         except Exception:
             user, password, port, key = "root", "", 22, ""
-        current = self.query_one(f"#t-up-path-{idx}", Input).value.strip()
-        self._upload_path_idx = idx
+        current = self.query_one(f"#t-dep-path-{idx}", Input).value.strip()
+        self._deploy_path_idx = idx
         self.app.push_screen(
             RemoteFilePickerScreen(
                 host=host, user=user, password=password,
@@ -1040,22 +1040,22 @@ class TargetEditScreen(Screen):
         if not result:
             return
         path = result[0] if isinstance(result, tuple) else result
-        idx = getattr(self, '_upload_path_idx', '')
+        idx = getattr(self, '_deploy_path_idx', '')
         if path and idx:
             try:
-                self.query_one(f"#t-up-path-{idx}", Input).value = str(path)
+                self.query_one(f"#t-dep-path-{idx}", Input).value = str(path)
             except Exception:
                 pass
 
-    def _add_upload_entry(self) -> None:
+    def _add_deployment_entry(self) -> None:
         """Add a new upload entry, copying the last one as template."""
         target = self._collect()
         default_src = target.sources[0].name if target.sources else ""
         default_tc = target.toolchains[0].name if target.toolchains else ""
-        new_idx = len(target.upload) + 1
-        if target.upload:
-            last = target.upload[-1]
-            new = UploadConfig(
+        new_idx = len(target.deployment) + 1
+        if target.deployment:
+            last = target.deployment[-1]
+            new = DeploymentConfig(
                 name=f"#{new_idx}",
                 source=last.source or default_src,
                 toolchain=last.toolchain or default_tc,
@@ -1064,29 +1064,29 @@ class TargetEditScreen(Screen):
                 pre_cmd=last.pre_cmd, post_cmd=last.post_cmd,
             )
         else:
-            new = UploadConfig(name=f"#{new_idx}", source=default_src, toolchain=default_tc)
-        target.upload.append(new)
-        self._refresh_screen(target, "upload")
+            new = DeploymentConfig(name=f"#{new_idx}", source=default_src, toolchain=default_tc)
+        target.deployment.append(new)
+        self._refresh_screen(target, "deploy")
 
-    def _delete_upload_entry(self, idx: int) -> None:
+    def _delete_deployment_entry(self, idx: int) -> None:
         """Delete upload entry at index (keep at least one)."""
         target = self._collect()
-        if len(target.upload) > 1 and 0 <= idx < len(target.upload):
-            target.upload.pop(idx)
-            self._refresh_screen(target, "upload")
+        if len(target.deployment) > 1 and 0 <= idx < len(target.deployment):
+            target.deployment.pop(idx)
+            self._refresh_screen(target, "deploy")
 
-    def _delete_last_upload_entry(self) -> None:
+    def _delete_last_deployment_entry(self) -> None:
         """Delete the last upload entry (F11). Keep at least one."""
         target = self._collect()
-        if len(target.upload) > 1:
-            target.upload.pop()
-            self._refresh_screen(target, "upload")
+        if len(target.deployment) > 1:
+            target.deployment.pop()
+            self._refresh_screen(target, "deploy")
         else:
             # Clear the single remaining entry instead of deleting
             default_src = target.sources[0].name if target.sources else ""
             default_tc = target.toolchains[0].name if target.toolchains else ""
-            target.upload = [UploadConfig(source=default_src, toolchain=default_tc)]
-            self._refresh_screen(target, "upload")
+            target.deployment = [DeploymentConfig(source=default_src, toolchain=default_tc)]
+            self._refresh_screen(target, "deploy")
 
     # ---------------------------------------------------- oscam binary path
     def _normalize_binary_path(self, raw: str) -> tuple[str, str | None]:
@@ -1244,14 +1244,14 @@ class TargetEditScreen(Screen):
         """Track input changes for dynamic UI updates."""
         iid = event.input.id or ""
         # Update upload collapsible title when name changes
-        if iid.startswith("t-up-name-"):
+        if iid.startswith("t-dep-name-"):
             try:
                 idx = iid.split("-")[-1]
                 name = event.value.strip() or f"#{int(idx) + 1}"
                 from textual.widgets import Checkbox
-                enabled = self.query_one(f"#t-up-enabled-{idx}", Checkbox).value
-                title = f"Upload {name}" if enabled else f"Upload {name} (disabled)"
-                self.query_one(f"#col-up-{idx}", Collapsible).title = title
+                enabled = self.query_one(f"#t-dep-enabled-{idx}", Checkbox).value
+                title = f"Deploy {name}" if enabled else f"Deploy {name} (disabled)"
+                self.query_one(f"#col-dep-{idx}", Collapsible).title = title
             except Exception:
                 pass
             return
@@ -1424,7 +1424,7 @@ class TargetEditScreen(Screen):
             "general": ("#te-panel-general", "#te-tab-general"),
             "source": ("#te-panel-source", "#te-tab-source"),
             "oscam": ("#te-panel-oscam", "#te-tab-oscam"),
-            "upload": ("#te-panel-upload", "#te-tab-upload"),
+            "deploy": ("#te-panel-deploy", "#te-tab-deploy"),
         }
         for key, (panel_id, tab_id) in panels.items():
             try:
@@ -1439,7 +1439,7 @@ class TargetEditScreen(Screen):
             "general": "#te-panel-general",
             "source": "#te-panel-source",
             "oscam": "#te-panel-oscam",
-            "upload": "#te-panel-upload",
+            "deploy": "#te-panel-deploy",
         }
         pid = panel_ids.get(tab)
         if pid:
@@ -1458,8 +1458,8 @@ class TargetEditScreen(Screen):
             from ui.footer import FooterItem
             for item in self.query(FooterItem):
                 if item._key == "F9":
-                    if self._active_tab == "upload":
-                        item._label = t("te_check_upload")
+                    if self._active_tab == "deploy":
+                        item._label = t("te_check_deploy")
                         item._disabled = False
                         item.remove_class("disabled")
                     else:
@@ -1467,8 +1467,8 @@ class TargetEditScreen(Screen):
                         item.add_class("disabled")
                     item.refresh()
                 if item._key == "F11":
-                    if self._active_tab == "upload":
-                        item._label = t("te_delete_upload")
+                    if self._active_tab == "deploy":
+                        item._label = t("te_delete_deploy")
                         item._disabled = False
                         item.remove_class("disabled")
                     elif self._active_tab in ("oscam", "source"):
@@ -1481,7 +1481,7 @@ class TargetEditScreen(Screen):
                         item.add_class("disabled")
                     item.refresh()
                 if item._key == "F10":
-                    enabled = self._active_tab == "upload"
+                    enabled = self._active_tab == "deploy"
                     item._disabled = not enabled
                     if enabled:
                         item.remove_class("disabled")
@@ -1493,28 +1493,28 @@ class TargetEditScreen(Screen):
 
     def do_tc_update(self) -> None:
         """F9 on Upload tab → check upload connectivity."""
-        if self._active_tab == "upload":
-            self._check_upload()
+        if self._active_tab == "deploy":
+            self._check_deployment()
 
-    def _check_upload(self) -> None:
+    def _check_deployment(self) -> None:
         """Open the upload check modal for the focused upload entry."""
         target = self._collect()
         # Find which upload collapsible is expanded/focused
         focused_idx = 0
-        for idx in range(len(target.upload)):
+        for idx in range(len(target.deployment)):
             try:
-                col = self.query_one(f"#col-up-{idx}", Collapsible)
+                col = self.query_one(f"#col-dep-{idx}", Collapsible)
                 if not col.collapsed:
                     focused_idx = idx
                     break
             except Exception:
                 pass
-        if focused_idx >= len(target.upload) or not target.upload[focused_idx].host:
+        if focused_idx >= len(target.deployment) or not target.deployment[focused_idx].host:
             self.notify("No host configured for this upload entry", severity="warning")
             return
-        from ui.screens.upload_check import UploadCheckModal
-        self.app.push_screen(UploadCheckModal(
-            uploads=[target.upload[focused_idx]],
+        from ui.screens.deployment_check import DeploymentCheckModal
+        self.app.push_screen(DeploymentCheckModal(
+            deployments=[target.deployment[focused_idx]],
             target_name=target.name,
             binaries_dir=self.app.paths.binaries_dir,
             logs_dir=self.app.paths.logs_dir,
@@ -1522,8 +1522,8 @@ class TargetEditScreen(Screen):
 
     def do_add(self) -> None:
         """F10 on Upload tab → add new upload entry."""
-        if self._active_tab == "upload":
-            self._add_upload_entry()
+        if self._active_tab == "deploy":
+            self._add_deployment_entry()
 
     def do_remove(self) -> None:
         """F11 → context-dependent: Reset or Delete upload."""
@@ -1531,8 +1531,8 @@ class TargetEditScreen(Screen):
             self._do_reset_options()
         elif self._active_tab == "source":
             self._do_reset_general_flags()
-        elif self._active_tab == "upload":
-            self._delete_last_upload_entry()
+        elif self._active_tab == "deploy":
+            self._delete_last_deployment_entry()
 
     def _collect(self) -> Target:
         """Collect all values from widgets into a Target."""
@@ -1636,55 +1636,55 @@ class TargetEditScreen(Screen):
             confdir=self.query_one("#t-confdir", Input).value.strip(),
         )
 
-        # Upload — collect all upload entries by index
-        upload = []
+        # Deployment — collect all deployment entries by index
+        deployment = []
         for idx in range(100):  # safe upper bound
             try:
-                host = self.query_one(f"#t-up-host-{idx}", Input).value.strip()
+                host = self.query_one(f"#t-dep-host-{idx}", Input).value.strip()
             except Exception:
                 break  # no more entries
             # Keep entries even without host (for UI state);
             # target.save() filters out empty hosts.
             try:
-                port = int(self.query_one(f"#t-up-port-{idx}", Input).value)
+                port = int(self.query_one(f"#t-dep-port-{idx}", Input).value)
             except (ValueError, Exception):
                 port = 22
             try:
-                src_sel = self.query_one(f"#t-up-src-{idx}", Select)
+                src_sel = self.query_one(f"#t-dep-src-{idx}", Select)
                 src = str(src_sel.value) if src_sel.value and src_sel.value is not Select.BLANK else ""
             except Exception:
                 src = ""
             try:
-                tc_sel = self.query_one(f"#t-up-tc-{idx}", Select)
+                tc_sel = self.query_one(f"#t-dep-tc-{idx}", Select)
                 tc = str(tc_sel.value) if tc_sel.value and tc_sel.value is not Select.BLANK else ""
             except Exception:
                 tc = ""
             try:
-                password = self.query_one(f"#t-up-pass-{idx}", Input).value
+                password = self.query_one(f"#t-dep-pass-{idx}", Input).value
             except Exception:
                 password = ""
             try:
-                up_name = self.query_one(f"#t-up-name-{idx}", Input).value.strip()
+                up_name = self.query_one(f"#t-dep-name-{idx}", Input).value.strip()
             except Exception:
                 up_name = ""
             try:
                 from textual.widgets import Checkbox
-                enabled = self.query_one(f"#t-up-enabled-{idx}", Checkbox).value
+                enabled = self.query_one(f"#t-dep-enabled-{idx}", Checkbox).value
             except Exception:
                 enabled = True
-            upload.append(UploadConfig(
+            deployment.append(DeploymentConfig(
                 name=up_name,
                 enabled=enabled,
                 source=src,
                 toolchain=tc,
                 host=host,
-                user=self.query_one(f"#t-up-user-{idx}", Input).value.strip() or "root",
+                user=self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or "root",
                 password=password,
                 port=port,
-                key=self.query_one(f"#t-up-key-{idx}", Input).value.strip(),
-                target_path=self.query_one(f"#t-up-path-{idx}", Input).value.strip(),
-                pre_cmd=self.query_one(f"#t-up-pre-{idx}", Input).value.strip(),
-                post_cmd=self.query_one(f"#t-up-post-{idx}", Input).value.strip(),
+                key=self.query_one(f"#t-dep-key-{idx}", Input).value.strip(),
+                target_path=self.query_one(f"#t-dep-path-{idx}", Input).value.strip(),
+                pre_cmd=self.query_one(f"#t-dep-pre-{idx}", Input).value.strip(),
+                post_cmd=self.query_one(f"#t-dep-post-{idx}", Input).value.strip(),
             ))
 
         return Target(
@@ -1693,7 +1693,7 @@ class TargetEditScreen(Screen):
             sources=sources,
             toolchains=toolchains,
             build=build,
-            upload=upload,
+            deployment=deployment,
         )
 
     def _input_val(self, widget_id: str) -> str:

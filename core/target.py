@@ -2,7 +2,7 @@
 
 A Target bundles everything needed to build oscam for a specific device:
 toolchain selection, build settings (modules/protocols/readers), and
-optional upload destinations.
+optional deployment destinations.
 """
 
 from __future__ import annotations
@@ -17,11 +17,11 @@ from core.credentials import encrypt as _encrypt, decrypt as _decrypt
 
 
 @dataclass
-class UploadConfig:
-    """SSH upload destination for a specific source × toolchain build."""
+class DeploymentConfig:
+    """SSH/local deployment destination for a specific source × toolchain build."""
 
-    name: str = ""                  # display name for the upload entry
-    enabled: bool = True            # False = skip during build upload
+    name: str = ""                  # display name for the deployment entry
+    enabled: bool = True            # False = skip during build deployment
     source: str = ""                # repo name
     toolchain: str = ""             # toolchain name
     host: str = ""
@@ -32,6 +32,10 @@ class UploadConfig:
     target_path: str = "/usr/bin/oscam"
     pre_cmd: str = ""
     post_cmd: str = ""
+
+
+# Backward compat alias
+UploadConfig = DeploymentConfig
 
 
 @dataclass
@@ -122,7 +126,7 @@ class Target:
     sources: list[SourceConfig] = field(default_factory=lambda: [SourceConfig(name="default")])
     toolchains: list[ToolchainConfig] = field(default_factory=list)
     build: BuildSettings = field(default_factory=BuildSettings)
-    upload: list[UploadConfig] = field(default_factory=list)
+    deployment: list[DeploymentConfig] = field(default_factory=list)
 
     def save(self, path: Path) -> None:
         """Save target to YAML file."""
@@ -165,7 +169,7 @@ class Target:
                 "confdir": self.build.confdir,
                 "make_vars": self.build.make_vars,
             },
-            "upload": [
+            "deployment": [
                 {k: v for k, v in {
                     "name": u.name,
                     "enabled": u.enabled,
@@ -180,7 +184,7 @@ class Target:
                     "pre_cmd": u.pre_cmd,
                     "post_cmd": u.post_cmd,
                 }.items() if not (v == "" or v is None or (v == 0 and v is not False))}
-                for u in self.upload
+                for u in self.deployment
                 if u.host  # only save entries with a host
             ],
         }
@@ -262,9 +266,11 @@ class Target:
             make_vars=build_data.get("make_vars", ""),
         )
 
-        uploads = []
-        for u in data.get("upload", []):
-            uploads.append(UploadConfig(
+        # Backward compat: read "deployment" first, fall back to "upload" for old files
+        deploy_data = data.get("deployment") or data.get("upload") or []
+        deployments = []
+        for u in deploy_data:
+            deployments.append(DeploymentConfig(
                 name=u.get("name", ""),
                 enabled=u.get("enabled", True),
                 source=u.get("source", ""),
@@ -285,7 +291,7 @@ class Target:
             sources=_load_sources(data.get("sources", [{"name": "default"}])),
             toolchains=_load_toolchains(data.get("toolchains", [])),
             build=build,
-            upload=uploads,
+            deployment=deployments,
         )
 
     @classmethod

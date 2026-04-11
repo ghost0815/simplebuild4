@@ -302,9 +302,9 @@ class BuildEngine:
                     continue
                 bin_path = self._phase4_build(src, repo_dirs[src.name], tcc, tc)
                 if bin_path:
-                    # PHASE 5: Upload matching destinations
-                    upload_ok = self._phase5_upload(src, tcc, bin_path)
-                    if upload_ok:
+                    # PHASE 5: Deploy matching destinations
+                    deploy_ok = self._phase5_deploy(src, tcc, bin_path)
+                    if deploy_ok:
                         success_count += 1
                     else:
                         fail_count += 1
@@ -533,38 +533,38 @@ class BuildEngine:
 
 
     # -------------------------------------------------------------------------
-    # PHASE 5: Upload (delegated to core.uploader.Uploader)
+    # PHASE 5: Deploy (delegated to core.deployer.Deployer)
     # -------------------------------------------------------------------------
 
-    def _phase5_upload(self, src, tcc, bin_path: Path) -> bool:
-        """Upload the built binary to all matching enabled upload destinations.
-        Returns True if all uploads succeeded, False if any failed."""
-        from core.uploader import Uploader
+    def _phase5_deploy(self, src, tcc, bin_path: Path) -> bool:
+        """Deploy the built binary to all matching enabled deployment destinations.
+        Returns True if all deployments succeeded, False if any failed."""
+        from core.deployer import Deployer
 
-        uploads = [
-            u for u in self.target.upload
-            if u.enabled and u.host
-            and (not u.source or u.source == src.name)
-            and u.toolchain == tcc.name
+        deployments = [
+            d for d in self.target.deployment
+            if d.enabled and d.host
+            and (not d.source or d.source == src.name)
+            and d.toolchain == tcc.name
         ]
-        if not uploads:
+        if not deployments:
             return True
 
-        self._log(f"\n[bold]PHASE 5: Upload ({len(uploads)} destination{'s' if len(uploads) > 1 else ''})[/bold]")
+        self._log(f"\n[bold]PHASE 5: Deploy ({len(deployments)} destination{'s' if len(deployments) > 1 else ''})[/bold]")
 
         all_ok = True
-        for u in uploads:
+        for d in deployments:
             if self._cancel():
-                self._log("[yellow]Upload cancelled[/yellow]")
+                self._log("[yellow]Deployment cancelled[/yellow]")
                 return False
-            name = u.name or u.host
-            if u.host in ("localhost", "127.0.0.1", "::1"):
-                self._log(f"\n  [bold]━━━ {name}: local → {u.target_path} ━━━[/bold]")
+            name = d.name or d.host
+            if d.host in ("localhost", "127.0.0.1", "::1"):
+                self._log(f"\n  [bold]━━━ {name}: local → {d.target_path} ━━━[/bold]")
             else:
-                self._log(f"\n  [bold]━━━ {name}: {u.user}@{u.host}:{u.target_path} ━━━[/bold]")
+                self._log(f"\n  [bold]━━━ {name}: {d.user}@{d.host}:{d.target_path} ━━━[/bold]")
 
-            uploader = Uploader(config=u, log=self._log, binary_path=bin_path)
-            if not uploader.run(verbose=False):
+            deployer = Deployer(config=d, log=self._log, binary_path=bin_path)
+            if not deployer.run(verbose=False):
                 all_ok = False
         return all_ok
 

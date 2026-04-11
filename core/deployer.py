@@ -1,9 +1,9 @@
-"""Shared upload logic for PHASE 5 (builder) and F9 Upload Check.
+"""Shared deployment logic for PHASE 5 (builder) and F9 Deployment Check.
 
-Provides a single ``Uploader`` class that handles both remote (SSH/SCP)
-and local (file copy) uploads with pre/post install commands. Used by
-``core.builder.BuildEngine._phase5_upload`` and
-``ui.screens.upload_check.UploadCheckModal``.
+Provides a single ``Deployer`` class that handles both remote (SSH/SCP)
+and local (file copy) deployments with pre/post install commands. Used by
+``core.builder.BuildEngine._phase5_deploy`` and
+``ui.screens.deployment_check.DeploymentCheckModal``.
 """
 
 from __future__ import annotations
@@ -13,17 +13,17 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.target import UploadConfig
+from core.target import DeploymentConfig
 
 SSH_OPTS = ["-o", "StrictHostKeyChecking=no",
             "-o", "HostKeyAlgorithms=+ssh-rsa",
             "-o", "ConnectTimeout=10"]
 
 
-class Uploader:
-    """Execute upload steps for a single UploadConfig destination."""
+class Deployer:
+    """Execute deployment steps for a single DeploymentConfig destination."""
 
-    def __init__(self, config: UploadConfig,
+    def __init__(self, config: DeploymentConfig,
                  log: Callable[[str], None],
                  binary_path: Optional[Path] = None,
                  dry_run: bool = False):
@@ -44,7 +44,14 @@ class Uploader:
             self._ssh_target = f"{config.user}@{config.host}"
 
             self._sshpass = []
-            if config.password:
+            if config.key and config.password:
+                # SSH key with passphrase: use sshpass -P "Enter passphrase" to feed it
+                if shutil.which("sshpass"):
+                    self._sshpass = ["sshpass", "-P", "Enter passphrase", "-p", config.password]
+                else:
+                    self._log("  [yellow]sshpass not installed — key passphrase must be entered manually or use ssh-agent[/yellow]")
+            elif not config.key and config.password:
+                # No key, password auth: use sshpass for login password
                 if shutil.which("sshpass"):
                     self._sshpass = ["sshpass", "-p", config.password]
                 else:
@@ -217,12 +224,12 @@ class Uploader:
         except Exception as e:
             self._log(f"  [red]Error: {e}[/red]")
 
-    def step_upload(self) -> bool:
+    def step_deploy(self) -> bool:
         """Step 5: Upload/copy the binary. Returns True on success."""
         path = self.config.target_path
 
         if self.dry_run or self.binary_path is None:
-            self._log("[bold]5. Upload (dry-run)... [dim](timeout: 60s)[/dim][/bold]")
+            self._log("[bold]5. Deploy (dry-run)... [dim](timeout: 60s)[/dim][/bold]")
             if self.is_local:
                 self._log(f"  [dim]$ cp <binary> {path}[/dim]")
             else:
@@ -232,7 +239,7 @@ class Uploader:
             return True
 
         binary_name = self.binary_path.name
-        self._log(f"[bold]5. Upload: {binary_name}... [dim](timeout: 60s)[/dim][/bold]")
+        self._log(f"[bold]5. Deploy: {binary_name}... [dim](timeout: 60s)[/dim][/bold]")
 
         if self.is_local:
             try:
@@ -250,7 +257,7 @@ class Uploader:
         try:
             result = self._scp(str(self.binary_path), path)
             if result.returncode == 0:
-                self._log("  [green]Upload OK[/green]")
+                self._log("  [green]Deploy OK[/green]")
                 # chmod +x
                 try:
                     self._ssh(f"chmod +x '{path}'", timeout=10)
@@ -259,13 +266,13 @@ class Uploader:
                 return True
             else:
                 err = result.stderr.strip() or "unknown error"
-                self._log(f"  [red]Upload failed: {err}[/red]")
+                self._log(f"  [red]Deploy failed: {err}[/red]")
                 return False
         except subprocess.TimeoutExpired:
-            self._log("  [red]Upload timeout (120s)[/red]")
+            self._log("  [red]Deploy timeout (120s)[/red]")
             return False
         except Exception as e:
-            self._log(f"  [red]Upload error: {e}[/red]")
+            self._log(f"  [red]Deploy error: {e}[/red]")
             return False
 
     def step_post_install(self) -> None:
@@ -308,7 +315,11 @@ class Uploader:
             self.step_system_info()
             self.step_check_binary()
         self.step_pre_install()
-        ok = self.step_upload()
+        ok = self.step_deploy()
         self.step_post_install()
         self._log(f"  [green]Done: {self.name}[/green]")
         return ok
+
+
+# Backward compat alias
+Uploader = Deployer
