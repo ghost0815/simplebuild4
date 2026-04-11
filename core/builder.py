@@ -356,11 +356,11 @@ class BuildEngine:
         timeout = self.qemu_timeout
         expect = self.qemu_expect
 
-        self._log(f"[cyan]TEST -------> [/cyan]testing {bin_path.name} ([dark_orange]{timeout}s timeout[/dark_orange])")
+        self._log(f"[cyan]TEST -------> [/cyan]testing {bin_path} ([dark_orange]{timeout}s timeout[/dark_orange])")
 
         try:
             proc = subprocess.Popen(
-                [str(bin_path)],
+                [str(bin_path), "-c", "/tmp/"],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                 preexec_fn=os.setsid,
             )
