@@ -1,25 +1,26 @@
-"""Upload check modal — test SSH connectivity and dry-run upload."""
+"""Upload check modal — test SSH connectivity and optionally upload a binary."""
 
 from __future__ import annotations
 
-import subprocess
+import socket
 import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from textual.app import ComposeResult
-from textual.containers import Vertical
+from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Static, RichLog, Button
-from textual.containers import Horizontal
+from textual.widgets import Static, RichLog, Button, Select
 
 from core.target import UploadConfig
+from core.uploader import Uploader
 from translation import t
+from ui.icons import is_ascii
 
 
 class UploadCheckModal(ModalScreen[None]):
-    """Modal that tests SSH connectivity and performs a dry-run upload check."""
+    """Modal that tests SSH connectivity and performs upload check or real upload."""
 
     BINDINGS = [("escape", "close", "Close")]
 
@@ -29,8 +30,8 @@ class UploadCheckModal(ModalScreen[None]):
     }
     #check-box {
         width: 120;
-        height: 30;
-        border: solid $accent;
+        height: 34;
+        border: solid $primary;
         background: $surface;
         padding: 1;
     }
@@ -38,52 +39,135 @@ class UploadCheckModal(ModalScreen[None]):
         text-style: bold;
         padding: 0 0 1 0;
     }
+    #check-select-row {
+        height: 3;
+        margin: 0 0 1 0;
+    }
+    #check-select-row Select {
+        width: 1fr;
+    }
     #check-log {
         height: 1fr;
+        background: $boost;
+        border: solid $accent;
+        border-title-color: $text;
+        border-title-style: bold;
+        overflow-y: auto;
+    }
+    #check-log:focus {
+        border: heavy $accent;
     }
     #check-buttons {
         height: 3;
         align: right middle;
         margin-top: 1;
     }
+    #check-buttons Button {
+        margin: 0 0 0 1;
+    }
     """
 
-    SSH_OPTS = ["-o", "StrictHostKeyChecking=no", "-o", "HostKeyAlgorithms=+ssh-rsa"]
-
     def __init__(self, uploads: list[UploadConfig], target_name: str,
-                 logs_dir: Optional[Path] = None) -> None:
+                 binaries_dir: Optional[Path] = None,
+                 logs_dir: Optional[Path] = None,
+                 toolchain_filter: str = "") -> None:
         super().__init__()
         self._uploads = [u for u in uploads if u.host]
         self._target_name = target_name
+        self._binaries_dir = binaries_dir
         self._logs_dir = logs_dir
+        self._toolchain_filter = toolchain_filter or (self._uploads[0].toolchain if self._uploads else "")
+        self._check_running = False
+        self._binary_path: Optional[Path] = None
 
     def compose(self) -> ComposeResult:
+        bin_options = [(t("uc_dry_run"), "dry-run")]
+        if self._binaries_dir and self._binaries_dir.is_dir():
+            tc = self._toolchain_filter
+            _hostname = socket.gethostname()
+            for f in sorted(self._binaries_dir.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+                if not f.is_file():
+                    continue
+                if f.name.endswith((".debug", ".zip", ".log")):
+                    continue
+                if tc and tc != "native" and tc not in f.name:
+                    continue
+                if tc == "native" and _hostname not in f.name and "native" not in f.name:
+                    continue
+                size_kb = f.stat().st_size // 1024
+                mtime = datetime.fromtimestamp(f.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+                label = f"{f.name} ({size_kb} KB, {mtime})"
+                bin_options.append((label, str(f)))
+
         with Vertical(id="check-box"):
-            yield Static(f"[bold]Upload Check — {self._target_name}[/bold]", id="check-title")
-            yield RichLog(id="check-log", highlight=False, markup=True, wrap=True)
+            yield Static(f"[bold]Upload — {self._target_name}[/bold]", id="check-title")
+            with Horizontal(id="check-select-row"):
+                yield Static(f" {t('uc_binary')}", classes="s-label-tall")
+                yield Select(options=bin_options, value="dry-run", id="check-binary", allow_blank=False)
+            log = RichLog(id="check-log", highlight=False, markup=True, wrap=True)
+            log.border_title = t("output_title")
+            yield log
             with Horizontal(id="check-buttons"):
+                yield Button(t("uc_start"), id="check-start", variant="primary")
                 yield Button(t("cancel"), id="check-close")
 
     def on_mount(self) -> None:
-        if not self._uploads:
-            log = self.query_one("#check-log", RichLog)
-            log.write("[yellow]No upload destinations configured.[/yellow]")
+        self._log_widget = self.query_one("#check-log", RichLog)
+        self._log_widget.write(f"[dim]{t('uc_press_start')}[/dim]")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "check-close":
+            self.dismiss(None)
+        elif event.button.id == "check-start":
+            self._start_check()
+
+    def _start_check(self) -> None:
+        if self._check_running:
             return
-        threading.Thread(target=self._run_checks, daemon=True).start()
+        self._check_running = True
+        self._log_widget.write(f"[bold]{t('uc_starting')}[/bold]")
+        try:
+            binary_val = self.query_one("#check-binary", Select).value
+            self._binary_path = None if binary_val == "dry-run" else Path(str(binary_val))
+        except Exception:
+            self._binary_path = None
+        threading.Thread(target=self._run_thread, daemon=True).start()
+
+    def _run_thread(self) -> None:
+        try:
+            self._run_checks(self._binary_path)
+        except Exception:
+            import traceback
+            msg = traceback.format_exc()
+            try:
+                self.app.call_from_thread(self._log_widget.write, f"[red]{msg}[/red]")
+            except Exception:
+                pass
+        finally:
+            self._check_running = False
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
     def _log(self, msg: str) -> None:
-        self.app.call_from_thread(self.query_one("#check-log", RichLog).write, msg)
+        self.app.call_from_thread(self._log_widget.write, msg)
 
-    def _run_checks(self) -> None:
+    def _run_checks(self, binary_path: Optional[Path] = None) -> None:
         log_lines: list[str] = []
+        is_dry_run = binary_path is None
+        _arrow = "->" if is_ascii() else "→"
+        _sep = "---" if is_ascii() else "━━━"
 
         def log(msg: str) -> None:
             log_lines.append(msg)
             self._log(msg)
 
-        log(f"[bold]Upload Check started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/bold]")
-        log(f"Target: {self._target_name}")
-        log(f"Destinations: {len(self._uploads)}")
+        mode = t("uc_mode_dry") if is_dry_run else t("uc_mode_upload").format(name=binary_path.name)
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log(f"[bold]{t('uc_upload_started').format(time=now)}[/bold]")
+        log(t("uc_target").format(name=self._target_name))
+        log(t("uc_mode").format(mode=mode))
+        log(t("uc_destinations").format(count=len(self._uploads)))
         log("")
 
         for idx, u in enumerate(self._uploads):
@@ -91,249 +175,29 @@ class UploadCheckModal(ModalScreen[None]):
             is_local = u.host in ("localhost", "127.0.0.1", "::1")
 
             if is_local:
-                log(f"[bold]━━━ {name}: local → {u.target_path} ━━━[/bold]")
+                header = t("uc_separator_local").format(name=name, path=u.target_path).replace("→", _arrow)
             else:
-                log(f"[bold]━━━ {name}: {u.user}@{u.host}:{u.target_path} ━━━[/bold]")
+                header = t("uc_separator_remote").format(
+                    name=name, user=u.user, host=u.host, path=u.target_path)
+            log(f"[bold]{_sep} {header} {_sep}[/bold]")
             log("")
 
-            if is_local:
-                self._check_local(u, log)
-                continue
-
-            # Build SSH base command
-            ssh_base = ["ssh", "-p", str(u.port)] + self.SSH_OPTS
-            if u.key:
-                ssh_base += ["-i", u.key]
-            ssh_target = f"{u.user}@{u.host}"
-
-            # Use sshpass if password set
-            sshpass_prefix = []
-            if u.password:
-                sshpass_prefix = ["sshpass", "-p", u.password]
-
-            def ssh_cmd(remote_cmd: str) -> list[str]:
-                return sshpass_prefix + ssh_base + [ssh_target, remote_cmd]
-
-            # Step 1: SSH connection test
-            log("[bold]1. SSH connection...[/bold]")
-            try:
-                result = subprocess.run(
-                    ssh_cmd("echo connected"),
-                    capture_output=True, text=True, timeout=15,
-                )
-                if result.returncode == 0:
-                    log("  [green]Connected successfully[/green]")
-                else:
-                    err = result.stderr.strip().split("\n")[-1] if result.stderr else "unknown error"
-                    log(f"  [red]Connection failed: {err}[/red]")
-                    log("")
-                    continue
-            except subprocess.TimeoutExpired:
-                log("  [red]Connection timeout (15s)[/red]")
-                log("")
-                continue
-            except FileNotFoundError:
-                if sshpass_prefix:
-                    log("  [red]sshpass not installed — required for password auth[/red]")
-                else:
-                    log("  [red]ssh not found[/red]")
-                log("")
-                continue
-            except Exception as e:
-                log(f"  [red]Error: {e}[/red]")
-                log("")
-                continue
-
-            # Step 2: System information
-            log("[bold]2. Remote system info...[/bold]")
-            try:
-                info_cmd = "uname -snrm 2>/dev/null; cat /etc/os-release 2>/dev/null | head -2; df -h $(dirname '{path}') 2>/dev/null | tail -1".format(path=u.target_path)
-                result = subprocess.run(
-                    ssh_cmd(info_cmd),
-                    capture_output=True, text=True, timeout=10,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    for line in result.stdout.strip().splitlines():
-                        log(f"  [dim]{line}[/dim]")
-                else:
-                    log("  [dim](could not retrieve)[/dim]")
-            except Exception:
-                log("  [dim](could not retrieve)[/dim]")
-
-            # Step 3: Check if target binary exists and is running
-            log(f"[bold]3. Target binary: {u.target_path}[/bold]")
-            try:
-                check_cmd = (
-                    f"if [ -f '{u.target_path}' ]; then "
-                    f"  echo 'EXISTS'; ls -la '{u.target_path}'; "
-                    f"  pid=$(pidof $(basename '{u.target_path}') 2>/dev/null); "
-                    f"  if [ -n \"$pid\" ]; then echo \"RUNNING pid=$pid\"; else echo 'NOT RUNNING'; fi; "
-                    f"else echo 'NOT FOUND'; fi"
-                )
-                result = subprocess.run(
-                    ssh_cmd(check_cmd),
-                    capture_output=True, text=True, timeout=10,
-                )
-                output = result.stdout.strip()
-                if "EXISTS" in output:
-                    log(f"  [green]File exists[/green]")
-                    for line in output.splitlines():
-                        if line.startswith("-") or line.startswith("l"):
-                            log(f"  [dim]{line}[/dim]")
-                        elif "RUNNING" in line:
-                            log(f"  [green]{line}[/green]")
-                        elif "NOT RUNNING" in line:
-                            log(f"  [yellow]{line}[/yellow]")
-                else:
-                    log(f"  [yellow]File not found (first deploy)[/yellow]")
-            except Exception as e:
-                log(f"  [red]Error: {e}[/red]")
-
-            # Step 4: Pre install commands
-            if u.pre_cmd:
-                log(f"[bold]4. Pre install commands...[/bold]")
-                log(f"  [dim]$ {u.pre_cmd}[/dim]")
-                try:
-                    result = subprocess.run(
-                        ssh_cmd(u.pre_cmd),
-                        capture_output=True, text=True, timeout=30,
-                    )
-                    if result.returncode == 0:
-                        if result.stdout.strip():
-                            for line in result.stdout.strip().splitlines():
-                                log(f"  {line}")
-                        log(f"  [green]OK (exit 0)[/green]")
-                    else:
-                        err = result.stderr.strip() or result.stdout.strip()
-                        log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
-                except Exception as e:
-                    log(f"  [red]Error: {e}[/red]")
-            else:
-                log(f"[bold]4. Pre install commands: [dim](none)[/dim][/bold]")
-
-            # Step 5: Dry-run copy
-            log(f"[bold]5. Upload (dry-run)...[/bold]")
-            scp_base = ["scp", "-P", str(u.port)] + self.SSH_OPTS
-            if u.key:
-                scp_base += ["-i", u.key]
-            scp_cmd_str = " ".join(sshpass_prefix + scp_base + ["<binary>", f"{ssh_target}:{u.target_path}"])
-            log(f"  [dim]$ {scp_cmd_str}[/dim]")
-            log(f"  [yellow]Skipped (dry-run — no binary to upload)[/yellow]")
-
-            # Step 6: Post install commands
-            if u.post_cmd:
-                log(f"[bold]6. Post install commands...[/bold]")
-                log(f"  [dim]$ {u.post_cmd}[/dim]")
-                try:
-                    result = subprocess.run(
-                        ssh_cmd(u.post_cmd),
-                        capture_output=True, text=True, timeout=30,
-                    )
-                    if result.returncode == 0:
-                        if result.stdout.strip():
-                            for line in result.stdout.strip().splitlines():
-                                log(f"  {line}")
-                        log(f"  [green]OK (exit 0)[/green]")
-                    else:
-                        err = result.stderr.strip() or result.stdout.strip()
-                        log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
-                except Exception as e:
-                    log(f"  [red]Error: {e}[/red]")
-            else:
-                log(f"[bold]6. Post install commands: [dim](none)[/dim][/bold]")
-
+            uploader = Uploader(
+                config=u, log=log,
+                binary_path=binary_path,
+                dry_run=is_dry_run,
+            )
+            uploader.run()
             log("")
 
-        log(f"[bold]Check complete: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}[/bold]")
-
-    def _check_local(self, u, log) -> None:
-        """Check a local upload destination (no SSH)."""
-        import platform, shutil, os
-
-        # Step 1: Local connection (always OK)
-        log("[bold]1. Local mode (no SSH)[/bold]")
-        log("  [green]Host is localhost — using file copy[/green]")
-
-        # Step 2: System info
-        log("[bold]2. Local system info...[/bold]")
-        log(f"  [dim]{platform.node()} {platform.system()} {platform.release()} {platform.machine()}[/dim]")
-        total, used, free = shutil.disk_usage(Path(u.target_path).parent if Path(u.target_path).parent.exists() else "/")
-        log(f"  [dim]Disk: {total // (1024**3)}G total, {used // (1024**3)}G used, {free // (1024**3)}G free[/dim]")
-
-        # Step 3: Target binary
-        log(f"[bold]3. Target binary: {u.target_path}[/bold]")
-        target = Path(u.target_path)
-        if target.exists():
-            stat = target.stat()
-            log(f"  [green]File exists ({stat.st_size} bytes)[/green]")
-            # Check if running
-            try:
-                result = subprocess.run(
-                    ["pidof", target.name], capture_output=True, text=True, timeout=5,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    log(f"  [green]RUNNING pid={result.stdout.strip()}[/green]")
-                else:
-                    log(f"  [yellow]NOT RUNNING[/yellow]")
-            except Exception:
-                log(f"  [dim](could not check running state)[/dim]")
-        else:
-            log(f"  [yellow]File not found (first deploy)[/yellow]")
-
-        # Step 4: Pre install commands
-        if u.pre_cmd:
-            log(f"[bold]4. Pre install commands...[/bold]")
-            log(f"  [dim]$ {u.pre_cmd}[/dim]")
-            try:
-                result = subprocess.run(
-                    u.pre_cmd, shell=True, capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode == 0:
-                    if result.stdout.strip():
-                        for line in result.stdout.strip().splitlines():
-                            log(f"  {line}")
-                    log(f"  [green]OK (exit 0)[/green]")
-                else:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
-            except Exception as e:
-                log(f"  [red]Error: {e}[/red]")
-        else:
-            log(f"[bold]4. Pre install commands: [dim](none)[/dim][/bold]")
-
-        # Step 5: Dry-run copy
-        log(f"[bold]5. Copy (dry-run)...[/bold]")
-        log(f"  [dim]$ cp <binary> {u.target_path}[/dim]")
-        log(f"  [yellow]Skipped (dry-run — no binary to copy)[/yellow]")
-
-        # Step 6: Post install commands
-        if u.post_cmd:
-            log(f"[bold]6. Post install commands...[/bold]")
-            log(f"  [dim]$ {u.post_cmd}[/dim]")
-            try:
-                result = subprocess.run(
-                    u.post_cmd, shell=True, capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode == 0:
-                    if result.stdout.strip():
-                        for line in result.stdout.strip().splitlines():
-                            log(f"  {line}")
-                    log(f"  [green]OK (exit 0)[/green]")
-                else:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    log(f"  [red]Failed (exit {result.returncode}): {err}[/red]")
-            except Exception as e:
-                log(f"  [red]Error: {e}[/red]")
-        else:
-            log(f"[bold]6. Post install commands: [dim](none)[/dim][/bold]")
-
-        log("")
+        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        log(f"[bold]{t('uc_complete').format(time=now)}[/bold]")
 
         # Write log file
         if self._logs_dir:
             try:
-                self._logs_dir.mkdir(parents=True, exist_ok=True)
                 import re
+                self._logs_dir.mkdir(parents=True, exist_ok=True)
                 timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
                 upload_names = "-".join(
                     (u.name or u.host).replace(" ", "_").replace("/", "_")
@@ -346,16 +210,8 @@ class UploadCheckModal(ModalScreen[None]):
             except Exception:
                 pass
 
-        # Apply log retention
         try:
             from core.log_cleanup import run_retention
             run_retention(self._logs_dir, self.app.settings)
         except Exception:
             pass
-
-    def on_button_pressed(self, event) -> None:
-        if event.button.id == "check-close":
-            self.dismiss(None)
-
-    def action_close(self) -> None:
-        self.dismiss(None)

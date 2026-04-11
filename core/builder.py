@@ -302,9 +302,12 @@ class BuildEngine:
                     continue
                 bin_path = self._phase4_build(src, repo_dirs[src.name], tcc, tc)
                 if bin_path:
-                    success_count += 1
                     # PHASE 5: Upload matching destinations
-                    self._phase5_upload(src, tcc, bin_path)
+                    upload_ok = self._phase5_upload(src, tcc, bin_path)
+                    if upload_ok:
+                        success_count += 1
+                    else:
+                        fail_count += 1
                 else:
                     fail_count += 1
 
@@ -530,13 +533,14 @@ class BuildEngine:
 
 
     # -------------------------------------------------------------------------
-    # PHASE 5: Upload
+    # PHASE 5: Upload (delegated to core.uploader.Uploader)
     # -------------------------------------------------------------------------
 
-    SSH_OPTS = ["-o", "StrictHostKeyChecking=no", "-o", "HostKeyAlgorithms=+ssh-rsa"]
+    def _phase5_upload(self, src, tcc, bin_path: Path) -> bool:
+        """Upload the built binary to all matching enabled upload destinations.
+        Returns True if all uploads succeeded, False if any failed."""
+        from core.uploader import Uploader
 
-    def _phase5_upload(self, src, tcc, bin_path: Path) -> None:
-        """Upload the built binary to all matching enabled upload destinations."""
         uploads = [
             u for u in self.target.upload
             if u.enabled and u.host
@@ -544,165 +548,25 @@ class BuildEngine:
             and u.toolchain == tcc.name
         ]
         if not uploads:
-            return
+            return True
 
         self._log(f"\n[bold]PHASE 5: Upload ({len(uploads)} destination{'s' if len(uploads) > 1 else ''})[/bold]")
 
+        all_ok = True
         for u in uploads:
+            if self._cancel():
+                self._log("[yellow]Upload cancelled[/yellow]")
+                return False
             name = u.name or u.host
-            is_local = u.host in ("localhost", "127.0.0.1", "::1")
-
-            if is_local:
+            if u.host in ("localhost", "127.0.0.1", "::1"):
                 self._log(f"\n  [bold]━━━ {name}: local → {u.target_path} ━━━[/bold]")
-                self._upload_local(u, bin_path, name)
             else:
                 self._log(f"\n  [bold]━━━ {name}: {u.user}@{u.host}:{u.target_path} ━━━[/bold]")
-                self._upload_remote(u, bin_path, name)
 
-    def _upload_local(self, u, bin_path: Path, name: str) -> None:
-        """Local file copy — no SSH needed."""
-        import shutil
-
-        # Pre install commands (run locally)
-        if u.pre_cmd:
-            self._log(f"  Pre install: {u.pre_cmd}")
-            try:
-                result = subprocess.run(
-                    u.pre_cmd, shell=True,
-                    capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode != 0:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    self._log(f"  [yellow]Pre-cmd warning (exit {result.returncode}): {err}[/yellow]")
-                elif result.stdout.strip():
-                    for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
-            except Exception as e:
-                self._log(f"  [yellow]Pre-cmd error: {e}[/yellow]")
-
-        # Copy binary
-        self._log(f"  Copying {bin_path.name} → {u.target_path}")
-        try:
-            target = Path(u.target_path)
-            target.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(str(bin_path), str(target))
-            target.chmod(target.stat().st_mode | 0o111)  # +x
-            self._log(f"  [green]Copy OK[/green]")
-        except Exception as e:
-            self._log(f"  [red]Copy failed: {e}[/red]")
-            return
-
-        # Post install commands (run locally)
-        if u.post_cmd:
-            self._log(f"  Post install: {u.post_cmd}")
-            try:
-                result = subprocess.run(
-                    u.post_cmd, shell=True,
-                    capture_output=True, text=True, timeout=30,
-                )
-                if result.returncode != 0:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    self._log(f"  [yellow]Post-cmd warning (exit {result.returncode}): {err}[/yellow]")
-                elif result.stdout.strip():
-                    for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
-            except Exception as e:
-                self._log(f"  [yellow]Post-cmd error: {e}[/yellow]")
-
-        self._log(f"  [green]Done: {name}[/green]")
-
-    def _upload_remote(self, u, bin_path: Path, name: str) -> None:
-        """Remote upload via SSH/SCP."""
-        # Build SSH/SCP base commands
-        ssh_base = ["ssh", "-p", str(u.port)] + self.SSH_OPTS
-        scp_base = ["scp", "-P", str(u.port)] + self.SSH_OPTS
-        if u.key:
-            ssh_base += ["-i", u.key]
-            scp_base += ["-i", u.key]
-        ssh_target = f"{u.user}@{u.host}"
-
-        # sshpass prefix if password set
-        sshpass_prefix = []
-        if u.password:
-            import shutil as _sh
-            if _sh.which("sshpass"):
-                sshpass_prefix = ["sshpass", "-p", u.password]
-            else:
-                self._log(f"  [red]sshpass not installed — cannot use password auth[/red]")
-                return
-
-        def _ssh(remote_cmd: str) -> subprocess.CompletedProcess:
-            return subprocess.run(
-                sshpass_prefix + ssh_base + [ssh_target, remote_cmd],
-                capture_output=True, text=True, timeout=30,
-            )
-
-        def _scp(local: str, remote: str) -> subprocess.CompletedProcess:
-            cmd = sshpass_prefix + scp_base + [local, f"{ssh_target}:{remote}"]
-            # Try default, fallback to SFTP (-s), then SCP protocol (-O)
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-            if result.returncode != 0:
-                self._log(f"  [yellow]SCP failed, trying SFTP mode (-s)...[/yellow]")
-                cmd_s = sshpass_prefix + scp_base + ["-s", local, f"{ssh_target}:{remote}"]
-                result = subprocess.run(cmd_s, capture_output=True, text=True, timeout=120)
-            if result.returncode != 0:
-                self._log(f"  [yellow]SFTP failed, trying SCP protocol (-O)...[/yellow]")
-                cmd_o = sshpass_prefix + scp_base + ["-O", local, f"{ssh_target}:{remote}"]
-                result = subprocess.run(cmd_o, capture_output=True, text=True, timeout=120)
-            return result
-
-        # Pre install commands
-        if u.pre_cmd:
-            self._log(f"  Pre install: {u.pre_cmd}")
-            try:
-                result = _ssh(u.pre_cmd)
-                if result.returncode != 0:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    self._log(f"  [yellow]Pre-cmd warning (exit {result.returncode}): {err}[/yellow]")
-                elif result.stdout.strip():
-                    for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
-            except Exception as e:
-                self._log(f"  [yellow]Pre-cmd error: {e}[/yellow]")
-
-        # Upload binary
-        self._log(f"  Uploading {bin_path.name} → {u.target_path}")
-        try:
-            result = _scp(str(bin_path), u.target_path)
-            if result.returncode == 0:
-                self._log(f"  [green]Upload OK[/green]")
-            else:
-                err = result.stderr.strip() or "unknown error"
-                self._log(f"  [red]Upload failed: {err}[/red]")
-                return  # skip post-cmd on failed upload
-        except subprocess.TimeoutExpired:
-            self._log(f"  [red]Upload timeout (120s)[/red]")
-            return
-        except Exception as e:
-            self._log(f"  [red]Upload error: {e}[/red]")
-            return
-
-        # chmod +x on remote
-        try:
-            _ssh(f"chmod +x '{u.target_path}'")
-        except Exception:
-            pass
-
-        # Post install commands
-        if u.post_cmd:
-            self._log(f"  Post install: {u.post_cmd}")
-            try:
-                result = _ssh(u.post_cmd)
-                if result.returncode != 0:
-                    err = result.stderr.strip() or result.stdout.strip()
-                    self._log(f"  [yellow]Post-cmd warning (exit {result.returncode}): {err}[/yellow]")
-                elif result.stdout.strip():
-                    for line in result.stdout.strip().splitlines():
-                        self._log(f"  {line}")
-            except Exception as e:
-                self._log(f"  [yellow]Post-cmd error: {e}[/yellow]")
-
-        self._log(f"  [green]Done: {name}[/green]")
+            uploader = Uploader(config=u, log=self._log, binary_path=bin_path)
+            if not uploader.run(verbose=False):
+                all_ok = False
+        return all_ok
 
     def _auto_clone_repo(self, source_name: str) -> Optional[Path]:
         """Auto-clone a repository if it doesn't exist yet."""

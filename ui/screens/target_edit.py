@@ -673,9 +673,9 @@ class TargetEditScreen(Screen):
                     _tc_sel = Select(options=tc_options, value=_tc_val, id=f"t-up-tc-{idx}", allow_blank=False)
                     _tc_sel.styles.width = "1fr"
                     _port_inp = Input(value=str(up.port), id=f"t-up-port-{idx}", type="integer")
-                    _port_inp.styles.width = 8
-                    _port_inp.styles.min_width = 8
-                    _port_inp.styles.max_width = 8
+                    _port_inp.styles.width = 9
+                    _port_inp.styles.min_width = 9
+                    _port_inp.styles.max_width = 9
                     _pass_inp = Input(value=up.password, placeholder=t("ph_password"), id=f"t-up-pass-{idx}", password=True)
                     _key_browse = Button(icon("browse"), id=f"btn-up-key-{idx}", classes="tc-reset-btn")
                     _key_browse.tooltip = t("ph_browse_file")
@@ -1452,6 +1452,7 @@ class TargetEditScreen(Screen):
         self.app.push_screen(UploadCheckModal(
             uploads=[target.upload[focused_idx]],
             target_name=target.name,
+            binaries_dir=self.app.paths.binaries_dir,
             logs_dir=self.app.paths.logs_dir,
         ))
 

@@ -179,7 +179,7 @@ class Target:
                     "target_path": u.target_path,
                     "pre_cmd": u.pre_cmd,
                     "post_cmd": u.post_cmd,
-                }.items() if v not in ("", 0, None)}
+                }.items() if not (v == "" or v is None or (v == 0 and v is not False))}
                 for u in self.upload
                 if u.host  # only save entries with a host
             ],

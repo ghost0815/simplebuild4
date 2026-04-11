@@ -23,7 +23,12 @@ from urllib.parse import urlparse, urlunparse
 
 def _derive_key() -> bytes:
     """Derive a 32-byte key from the current hostname and login name."""
-    material = f"{socket.gethostname()}:{os.getlogin()}".encode()
+    try:
+        user = os.getlogin()
+    except OSError:
+        import getpass
+        user = getpass.getuser()
+    material = f"{socket.gethostname()}:{user}".encode()
     return hashlib.sha256(material).digest()
 
 
