@@ -753,7 +753,7 @@ class TargetEditScreen(Screen):
             # The reset action lives on F11 in the footer (only when
             # the Options tab is active) — see do_remove.
 
-        # === Tab 3: Upload ===
+        # === Tab 3: Deployment ===
         # Build source/toolchain options for dropdowns
         _has_sources = bool(tgt.sources)
         _has_toolchains = bool(tgt.toolchains)
@@ -761,7 +761,7 @@ class TargetEditScreen(Screen):
         tc_options = [(tc.name, tc.name) for tc in tgt.toolchains] or [("(none)", "(none)")]
 
         with VerticalScroll(id="te-panel-deploy"):
-            # Ensure at least one upload entry, pre-filled with first source/toolchain
+            # Ensure at least one deployment entry, pre-filled with first source/toolchain
             if not tgt.deployment:
                 default_src = tgt.sources[0].name if tgt.sources else ""
                 default_tc = tgt.toolchains[0].name if tgt.toolchains else ""
@@ -960,7 +960,7 @@ class TargetEditScreen(Screen):
     _suppress_section_sync: bool = False
 
     def on_checkbox_changed(self, event) -> None:
-        """Upload enabled checkbox → update Collapsible title + tooltip."""
+        """Deployment enabled checkbox → update Collapsible title + tooltip."""
         cid = event.checkbox.id or ""
         if cid.startswith("t-dep-enabled-"):
             try:
@@ -1090,7 +1090,7 @@ class TargetEditScreen(Screen):
             self._do_reset_field(event.button.id)
 
     def _open_deploy_key_picker(self, idx: str) -> None:
-        """Open file picker for upload SSH key."""
+        """Open file picker for deployment SSH key."""
         from ui.screens.toolchains import FilePickerScreen
         from pathlib import Path as _P
         ssh_dir = _P.home() / ".ssh"
@@ -1113,7 +1113,7 @@ class TargetEditScreen(Screen):
                 pass
 
     def _open_remote_path_picker(self, idx: str) -> None:
-        """Open remote file picker for upload target path."""
+        """Open remote file picker for deployment target path."""
         try:
             host = self.query_one(f"#t-dep-host-{idx}", Input).value.strip()
         except Exception:
@@ -1168,7 +1168,7 @@ class TargetEditScreen(Screen):
                 pass
 
     def _add_deployment_entry(self) -> None:
-        """Add a new upload entry, copying the last one as template."""
+        """Add a new deployment entry, copying the last one as template."""
         target = self._collect()
         default_src = target.sources[0].name if target.sources else ""
         default_tc = target.toolchains[0].name if target.toolchains else ""
@@ -1189,14 +1189,14 @@ class TargetEditScreen(Screen):
         self._refresh_screen(target, "deploy")
 
     def _delete_deployment_entry(self, idx: int) -> None:
-        """Delete upload entry at index (keep at least one)."""
+        """Delete deployment entry at index (keep at least one)."""
         target = self._collect()
         if len(target.deployment) > 1 and 0 <= idx < len(target.deployment):
             target.deployment.pop(idx)
             self._refresh_screen(target, "deploy")
 
     def _delete_last_deployment_entry(self) -> None:
-        """Delete the last upload entry (F11). Keep at least one."""
+        """Delete the last deployment entry (F11). Keep at least one."""
         target = self._collect()
         if len(target.deployment) > 1:
             target.deployment.pop()
@@ -1403,7 +1403,7 @@ class TargetEditScreen(Screen):
     def on_input_changed(self, event: Input.Changed) -> None:
         """Track input changes for dynamic UI updates."""
         iid = event.input.id or ""
-        # Update upload collapsible title when name changes
+        # Update deployment collapsible title when name changes
         if iid.startswith("t-dep-name-"):
             try:
                 idx = iid.split("-")[-1]
@@ -1693,14 +1693,14 @@ class TargetEditScreen(Screen):
             pass
 
     def do_tc_update(self) -> None:
-        """F9 on Upload tab → check upload connectivity."""
+        """F9 on Deployment tab → check deployment connectivity."""
         if self._active_tab == "deploy":
             self._check_deployment()
 
     def _check_deployment(self) -> None:
-        """Open the upload check modal for the focused upload entry."""
+        """Open the deployment check modal for the focused deployment entry."""
         target = self._collect()
-        # Find which upload collapsible is expanded/focused
+        # Find which deployment collapsible is expanded/focused
         focused_idx = 0
         for idx in range(len(target.deployment)):
             try:
@@ -1711,7 +1711,7 @@ class TargetEditScreen(Screen):
             except Exception:
                 pass
         if focused_idx >= len(target.deployment) or not target.deployment[focused_idx].host:
-            self.notify("No host configured for this upload entry", severity="warning")
+            self.notify("No host configured for this deployment entry", severity="warning")
             return
         from ui.screens.deployment_check import DeploymentCheckModal
         self.app.push_screen(DeploymentCheckModal(
@@ -1722,12 +1722,12 @@ class TargetEditScreen(Screen):
         ))
 
     def do_add(self) -> None:
-        """F10 on Upload tab → add new upload entry."""
+        """F10 on Deployment tab → add new deployment entry."""
         if self._active_tab == "deploy":
             self._add_deployment_entry()
 
     def do_remove(self) -> None:
-        """F11 → context-dependent: Reset or Delete upload."""
+        """F11 → context-dependent: Reset or Delete deployment."""
         if self._active_tab == "oscam":
             self._do_reset_options()
         elif self._active_tab == "source":

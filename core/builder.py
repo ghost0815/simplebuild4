@@ -20,7 +20,7 @@ class BuildEngine:
     - PHASE 2: Apply Patches
     - PHASE 3: Configure (config.sh modules)
     - PHASE 4: Build + Post-Build (make distclean, make, save artifacts)
-    - PHASE 5: Upload (SSH) — TODO
+    - PHASE 5: Deploy (SSH/local)
     """
 
     def __init__(

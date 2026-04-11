@@ -67,7 +67,7 @@ class Deployer:
         )
 
     def _scp(self, local: str, remote: str) -> subprocess.CompletedProcess:
-        """SCP upload with 3-tier fallback (default → SFTP → SCP protocol)."""
+        """SCP deploy with 3-tier fallback (default → SFTP → SCP protocol)."""
         cmd = self._sshpass + self._scp_base + [local, f"{self._ssh_target}:{remote}"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
         if result.returncode != 0:
@@ -230,7 +230,7 @@ class Deployer:
             self._log(f"  [red]Error: {e}[/red]")
 
     def step_deploy(self) -> bool:
-        """Step 5: Upload/copy the binary. Returns True on success."""
+        """Step 5: Deploy/copy the binary. Returns True on success."""
         path = self.config.target_path
 
         if self.dry_run or self.binary_path is None:
@@ -308,9 +308,9 @@ class Deployer:
     # -- Full run -------------------------------------------------------------
 
     def run(self, verbose: bool = True) -> bool:
-        """Execute upload steps. Returns True if upload succeeded.
+        """Execute deployment steps. Returns True if deployment succeeded.
 
-        When *verbose* is True (default, used by F9 Upload modal),
+        When *verbose* is True (default, used by F9 Deployment modal),
         system info and binary check steps are included. When False
         (used by Phase 5 during build), they are skipped for speed.
         """
