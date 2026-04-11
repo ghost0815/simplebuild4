@@ -185,6 +185,7 @@ def _do_build(
     configure = variant.get("configure", lib_defaults.get("configure", ""))
     make_cmd = variant.get("make", lib_defaults.get("make", ""))
     install_cmd = variant.get("install", lib_defaults.get("install", ""))
+    post_install = variant.get("post_install", lib_defaults.get("post_install", ""))
     # Merge extra commands: library-level defaults + variant overrides.
     # Variant extras override same-key library extras, but library-level
     # extras for other keys are preserved (e.g. csky patch + auto_bitslice).
@@ -234,6 +235,7 @@ def _do_build(
     configure = _replace(configure, replacements)
     make_cmd = _replace(make_cmd, replacements)
     install_cmd = _replace(install_cmd, replacements)
+    post_install = _replace(post_install, replacements)
 
     # Native builds: replace hardcoded cross-compile targets with auto-detection
     # e.g. OpenSSL's "./Configure linux-generic32" → "./Configure" (auto-detect host)
@@ -248,6 +250,8 @@ def _do_build(
     log(f"Configure:     {configure}")
     log(f"Make:          {make_cmd}")
     log(f"Install:       {install_cmd}")
+    if post_install:
+        log(f"Post-install:  {post_install[:80]}{'...' if len(post_install) > 80 else ''}")
     log(f"Prefix:        {prefix}")
     log(f"Target:        {target}")
     log(f"CC:            {cc}")
@@ -421,6 +425,10 @@ def _do_build(
     if install_cmd:
         script_parts.append(f"# install")
         script_parts.append(install_cmd)
+
+    if post_install:
+        script_parts.append(f"# post_install")
+        script_parts.append(post_install)
 
     full_script = "\n".join(script_parts)
 

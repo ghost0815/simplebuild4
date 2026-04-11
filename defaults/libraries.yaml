@@ -131,6 +131,8 @@ libraries:
 
   - name: pcsclite
     pc_file: libpcsclite.pc
+    export:
+      extra_files: ["libpcscspy.so*", "pcsc_scan"]
     version_check: url:https://pcsclite.apdu.fr/files/
     pre_configure: "./bootstrap"
     extra:
@@ -141,6 +143,14 @@ libraries:
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=@PREFIX@/lib/systemd/system --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install"
+    post_install: |
+      echo "Building pcsc-tools (pcsc_scan)..."
+      git clone --depth 1 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src
+      cd pcsc-tools-src
+      ./bootstrap
+      PKG_CONFIG_LIBDIR="@PREFIX@/lib/pkgconfig" ./configure --host=@TARGET@ --prefix=@PREFIX@ PCSC_LIBS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --libs libpcsclite)" PCSC_CFLAGS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --cflags libpcsclite)"
+      make -j@CPUS@
+      make install
     depends: [libusb, zlib]
     variants:
       - version: "2.4.1"
@@ -153,6 +163,8 @@ libraries:
 
   - name: ccid
     pc_file: libccid.pc
+    export:
+      extra_files: ["libccid.so", "libccidtwin.so", "Info.plist"]
     removal:
       extra_dirs: [lib/pcsc, etc/reader.conf.d]
     version_check: url:https://ccid.apdu.fr/files/

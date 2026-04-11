@@ -30,6 +30,7 @@ class Settings:
     patch_webif: bool = True
     delete_debug: bool = True
     save_smargo: bool = False
+    export_libs_zip: bool = False      # export shared libs to <toolchain>-libs.zip after lib build
 
     # Signing
     sign_cert: str = ""
@@ -65,6 +66,7 @@ class Settings:
             "patch_webif": self.patch_webif,
             "delete_debug": self.delete_debug,
             "save_smargo": self.save_smargo,
+            "export_libs_zip": self.export_libs_zip,
             "sign_cert": self.sign_cert,
             "sign_key": self.sign_key,
             "qemu_test": self.qemu_test,
@@ -105,6 +107,7 @@ class Settings:
             patch_webif=data.get("patch_webif", True),
             delete_debug=data.get("delete_debug", True),
             save_smargo=data.get("save_smargo", True),
+            export_libs_zip=data.get("export_libs_zip", False),
             sign_cert=data.get("sign_cert", ""),
             sign_key=data.get("sign_key", ""),
             qemu_test=data.get("qemu_test", False),

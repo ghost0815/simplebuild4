@@ -21,6 +21,7 @@ SWITCH_MAP = {
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
+    "set-export-libs-zip": "export_libs_zip",
     "set-qemu-test": "qemu_test",
 }
 
@@ -119,9 +120,11 @@ class SettingsScreen(Screen):
                     Input(value=str(s.max_cpus), id="set-max-cpus", type="integer"),
                     classes="s-row",
                 )
-                yield _switch_row(t("patch_webif_info"), s.patch_webif, "set-patch-webif")
-                yield _switch_row(t("delete_debug_binary"), s.delete_debug, "set-delete-debug")
-                yield _switch_row(t("save_list_smargo"), s.save_smargo, "set-save-smargo")
+                with Grid(classes="s-toggle-grid"):
+                    yield _switch_cell(t("patch_webif_info"), s.patch_webif, "set-patch-webif")
+                    yield _switch_cell(t("delete_debug_binary"), s.delete_debug, "set-delete-debug")
+                    yield _switch_cell(t("save_list_smargo"), s.save_smargo, "set-save-smargo")
+                    yield _switch_cell(t("export_libs_zip"), s.export_libs_zip, "set-export-libs-zip")
 
             # Signing
             with Collapsible(title=t('section_signing'), collapsed=True, id="col-signing"):

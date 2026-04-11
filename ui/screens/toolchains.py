@@ -1675,6 +1675,22 @@ class ToolchainsScreen(Screen):
                     if success:
                         built_libs.add(lib_name)
                         _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]done[/green]")
+                        # Export shared libs to zip if enabled
+                        if self.app.settings.export_libs_zip:
+                            try:
+                                from core.lib_export import export_lib_to_zip
+                                export_lib_to_zip(
+                                    lib_name=lib_name,
+                                    toolchain_dir=self.app.paths.toolchains_dir / tc.name,
+                                    toolchain_sysroot=tc.sysroot,
+                                    binaries_dir=self.app.paths.binaries_dir,
+                                    tc_name=tc.name,
+                                    libraries_yaml=self.app.paths.defaults_dir / "libraries.yaml",
+                                    libraries_local=self.app.paths.libraries_local,
+                                    log=self._log,
+                                )
+                            except Exception:
+                                pass
                     else:
                         if self._cancel_requested:
                             _set_lib_status(lib_name, f"[bold yellow]{lib_name:<15s}[/bold yellow] [yellow]cancelled[/yellow]")
