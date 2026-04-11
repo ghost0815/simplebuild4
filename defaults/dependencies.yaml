@@ -1,0 +1,111 @@
+# SimpleBuild4 (s4) System Dependencies
+#
+# Defines required system packages for building oscam.
+# Package names are mapped per package manager (apt/dnf/pacman/zypper).
+# If no 'package' mapping is given, the binary name is used as package name.
+#
+# check: optional custom check (default: which <name>)
+#   "file <path>" — check if file exists
+#   "which <name>" — check if binary is in PATH (default)
+
+# Meta packages — install first (covers gcc, g++, make, libc-dev etc.)
+meta:
+  apt: build-essential
+  dnf: "@development-tools"
+  yum: "@development-tools"
+  pacman: base-devel
+  zypper: -t pattern devel_basis
+
+# Required binaries
+binaries:
+  - name: cmake
+  - name: git
+  - name: svn
+    package:
+      apt: subversion
+      dnf: subversion
+      pacman: subversion
+      zypper: subversion
+  - name: wget
+  - name: curl
+  - name: sshpass
+  - name: upx
+  - name: autoreconf
+    package:
+      apt: autoconf
+      dnf: autoconf
+      pacman: autoconf
+      zypper: autoconf
+  - name: automake
+  - name: autoconf-archive
+    check: "file /usr/share/aclocal/ax_absolute_header.m4"
+    package:
+      apt: autoconf-archive
+      dnf: autoconf-archive
+      pacman: autoconf-archive
+      zypper: autoconf-archive
+  - name: libtoolize
+    package:
+      apt: libtool
+      dnf: libtool
+      pacman: libtool
+      zypper: libtool
+  - name: pkg-config
+    package:
+      apt: pkg-config
+      dnf: pkgconf-pkg-config
+      pacman: pkgconf
+      zypper: pkg-config
+  - name: makeinfo
+    package:
+      apt: texinfo
+      dnf: texinfo
+      pacman: texinfo
+      zypper: texinfo
+  - name: zip
+  - name: unzip
+  - name: xz
+    package:
+      apt: xz-utils
+      dnf: xz
+      pacman: xz
+      zypper: xz
+  # QEMU for cross-compilation smoke tests
+  - name: qemu-arm
+    package:
+      apt: qemu-user-binfmt
+      dnf: qemu-user-static
+      pacman: qemu-user-static
+      zypper: qemu-linux-user
+  - name: qemu-aarch64
+    package:
+      apt: qemu-user-binfmt
+      dnf: qemu-user-static
+      pacman: qemu-user-static
+      zypper: qemu-linux-user
+  - name: qemu-mipsel
+    package:
+      apt: qemu-user-binfmt
+      dnf: qemu-user-static
+      pacman: qemu-user-static
+      zypper: qemu-linux-user
+# Headers for native library builds (optional — only needed when building libs into native toolchain)
+headers:
+  - name: openssl/ssl.h
+    package:
+      apt: libssl-dev
+      dnf: openssl-devel
+      pacman: openssl
+      zypper: libopenssl-devel
+  - name: libusb-1.0/libusb.h
+    package:
+      apt: libusb-1.0-0-dev
+      dnf: libusbx-devel
+      pacman: libusb
+      zypper: libusb-1_0-devel
+  - name: PCSC/winscard.h
+    package:
+      apt: libpcsclite-dev
+      dnf: pcsc-lite-devel
+      pacman: pcsclite
+      zypper: pcsc-lite-devel

@@ -58,7 +58,10 @@ class S4Commands(Provider):
         # 1. Update (s4)
         commands.append((t("cmd_update"), t("cmd_update_help"),
                          self._make_app_callback("action_s4_update")))
-        # 2. Settings (s4)
+        # 2. Check Dependencies (s4)
+        commands.append((t("cmd_check_deps"), t("cmd_check_deps_help"),
+                         self._make_app_callback("action_check_deps")))
+        # 3. Settings (s4)
         commands.append((t("cmd_settings"), t("cmd_settings_help"),
                          self._make_app_callback("action_s4_settings")))
         # 3. Shortcuts (system "Keys")

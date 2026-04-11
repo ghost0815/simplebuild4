@@ -176,6 +176,19 @@ class SettingsScreen(Screen):
     def on_mount(self) -> None:
         self.query_one("#set-language", Select).focus()
 
+    def on_switch_changed(self, event) -> None:
+        sid = event.switch.id or ""
+        if sid == "set-qemu-test" and event.value:
+            # Check if any qemu binary is installed
+            import shutil
+            qemu_bins = ["qemu-arm", "qemu-aarch64", "qemu-mipsel"]
+            found = any(shutil.which(q) for q in qemu_bins)
+            if not found:
+                self.notify(
+                    t("dep_qemu_missing"),
+                    severity="warning", timeout=8,
+                )
+
     def _save(self) -> None:
         s = self.app.settings
         for wid, attr in SWITCH_MAP.items():

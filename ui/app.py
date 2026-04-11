@@ -480,6 +480,12 @@ class S4App(App):
         if not isinstance(self.screen, SettingsScreen):
             self.push_screen(SettingsScreen())
 
+    def action_check_deps(self) -> None:
+        from ui.screens.dep_check import DependencyCheckModal
+        self.push_screen(DependencyCheckModal(
+            deps_yaml=self.paths.defaults_dir / "dependencies.yaml",
+        ))
+
     def _footer_disabled(self, key: str) -> bool:
         """Return True if the footer item for the given F-key is currently disabled.
 
