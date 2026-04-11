@@ -923,6 +923,15 @@ class ToolchainRegistry:
             if name in defaults_by_name:
                 # Known toolchain from defaults — copy all fields
                 tc = defaults_by_name[name]
+                # Verify prefix/sysroot against actual installation
+                # (defaults may be outdated or toolchain may have been rebuilt)
+                actual_prefix, actual_sysroot = detect_toolchain_props(d)
+                if actual_prefix and actual_prefix != tc.prefix:
+                    log(f"  [yellow]  prefix: {tc.prefix} → {actual_prefix}[/yellow]")
+                    tc.prefix = actual_prefix
+                if actual_sysroot and actual_sysroot != tc.sysroot:
+                    log(f"  [yellow]  sysroot: {tc.sysroot} → {actual_sysroot}[/yellow]")
+                    tc.sysroot = actual_sysroot
                 tc.installed = True
                 recovered.append(tc)
                 log(f"  [green]Restored from defaults:[/green] {name} ({tc.category})")
