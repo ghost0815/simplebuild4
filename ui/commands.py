@@ -61,7 +61,10 @@ class S4Commands(Provider):
         # 2. Check Dependencies (s4)
         commands.append((t("cmd_check_deps"), t("cmd_check_deps_help"),
                          self._make_app_callback("action_check_deps")))
-        # 3. Settings (s4)
+        # 3. Rescan Toolchains (s4)
+        commands.append((t("cmd_rescan_tc"), t("cmd_rescan_tc_help"),
+                         self._make_app_callback("action_rescan_toolchains")))
+        # 4. Settings (s4)
         commands.append((t("cmd_settings"), t("cmd_settings_help"),
                          self._make_app_callback("action_s4_settings")))
         # 3. Shortcuts (system "Keys")

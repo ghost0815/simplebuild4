@@ -486,6 +486,29 @@ class S4App(App):
             deps_yaml=self.paths.defaults_dir / "dependencies.yaml",
         ))
 
+    def action_rescan_toolchains(self) -> None:
+        from core.toolchain import ToolchainRegistry
+        registry = ToolchainRegistry(
+            self.paths.toolchains_defaults,
+            self.paths.toolchains_local,
+            self.paths.toolchains_dir,
+        )
+        registry.load()
+        messages = []
+        count = registry.rescan_installed(log=lambda msg: messages.append(msg))
+        if count:
+            self.notify(t("tc_rescan_done").format(count=count), timeout=5)
+        else:
+            self.notify(t("tc_rescan_none"), timeout=3)
+        # Log details to main screen output if available
+        try:
+            from textual.widgets import RichLog
+            output = self.screen.query_one("#output", RichLog)
+            for msg in messages:
+                output.write(msg)
+        except Exception:
+            pass
+
     def _footer_disabled(self, key: str) -> bool:
         """Return True if the footer item for the given F-key is currently disabled.
 

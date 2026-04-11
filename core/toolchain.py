@@ -888,6 +888,76 @@ class ToolchainRegistry:
         default_names = {tc.name for tc in self._default_tcs}
         return [tc for tc in self._local_tcs if tc.name not in default_names]
 
+    def rescan_installed(self, log=None) -> int:
+        """Rebuild toolchains.local.yaml from installed directories.
+
+        For each directory in install_dir:
+        - If defined in defaults: copy all fields from defaults
+        - If not in defaults: auto-detect prefix/sysroot, set category=custom
+        - Native toolchain is handled separately by _ensure_native()
+
+        Returns number of recovered toolchains.
+        """
+        if log is None:
+            log = lambda msg: None
+
+        defaults_by_name = {tc.name: tc for tc in self._load_file(self.defaults_path)}
+        existing_local = {tc.name: tc for tc in self._load_file(self.local_path)}
+        recovered = []
+
+        if not self.install_dir.is_dir():
+            return 0
+
+        for d in sorted(self.install_dir.iterdir()):
+            if not d.is_dir() or d.name == "native":
+                continue
+            name = d.name
+            # Already in local yaml
+            if name in existing_local:
+                continue
+
+            if name in defaults_by_name:
+                # Known toolchain from defaults — copy all fields
+                tc = defaults_by_name[name]
+                tc.installed = True
+                recovered.append(tc)
+                log(f"  [green]Restored from defaults:[/green] {name} ({tc.category})")
+            else:
+                # Unknown toolchain — auto-detect prefix/sysroot
+                prefix, sysroot = detect_toolchain_props(d)
+                if not prefix:
+                    log(f"  [yellow]Skipped (no gcc found):[/yellow] {name}")
+                    continue
+                # Derive arch from prefix
+                arch = ""
+                _prefix_lower = prefix.lower()
+                for _arch_key in ("aarch64", "armv7", "arm", "mipsel", "mips", "sh4", "csky", "x86_64", "i686"):
+                    if _arch_key in _prefix_lower:
+                        arch = _arch_key
+                        break
+                tc = Toolchain(
+                    name=name,
+                    description=f"Recovered: {name}",
+                    category="local",
+                    arch=arch,
+                    prefix=prefix,
+                    sysroot=sysroot,
+                )
+                tc.installed = True
+                recovered.append(tc)
+                log(f"  [cyan]Auto-detected:[/cyan] {name} (prefix={prefix}, arch={arch})")
+
+        if not recovered:
+            log("  No toolchains to recover")
+            return 0
+
+        # Merge with existing local entries and save
+        local_tcs = self._load_file(self.local_path)
+        local_tcs.extend(recovered)
+        self.save_local(local_tcs)
+        log(f"  [bold green]Recovered {len(recovered)} toolchain(s)[/bold green]")
+        return len(recovered)
+
     def available_toolchains(self) -> list[Toolchain]:
         """Return toolchains that are not yet installed but have a download URL."""
         return [tc for tc in self._default_tcs if not tc.installed and tc.url]
