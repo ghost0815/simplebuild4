@@ -392,10 +392,16 @@ def remove_library(install_dir: Path, sysroot: str, lib_name: str,
             _delete(f, f.name)
 
     # Delete include directory (from Cflags -I)
+    # Safety: never delete a top-level include/ dir (e.g. sysroot/usr/include)
+    # — only delete subdirectories like include/openssl/, include/curl/ etc.
     if include_dir:
         inc_path = Path(include_dir)
         if inc_path.is_dir() and str(inc_path).startswith(str(install_dir)):
-            _delete(inc_path, f"include/{inc_path.name}/")
+            # Check if this is a top-level include dir (parent is 'usr' or sysroot root)
+            if inc_path.name == "include":
+                log(f"  [yellow]Skipped: {inc_path} (top-level include dir)[/yellow]")
+            else:
+                _delete(inc_path, f"include/{inc_path.name}/")
 
     # Delete individual include files from removal config
     for inc_file in removal_config.get("include_files", []):
