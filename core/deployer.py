@@ -200,13 +200,18 @@ class Deployer:
             self._log(f"  [red]Error: {e}[/red]")
 
     def step_pre_install(self) -> None:
-        """Step 4: Execute pre install commands."""
+        """Step 4: Execute pre deploy commands."""
         cmd = self.config.pre_cmd
         if not cmd:
-            self._log("[bold]4. Pre install commands: [dim](none)[/dim][/bold]")
+            self._log("[bold]4. Pre deploy commands: [dim](none)[/dim][/bold]")
             return
 
-        self._log("[bold]4. Pre install commands... [dim](timeout: 10s)[/dim][/bold]")
+        self._log("[bold]4. Pre deploy commands... [dim](timeout: 10s)[/dim][/bold]")
+
+        # Warn about background commands in pre-deploy — they may race with the deploy
+        stripped = cmd.strip()
+        if stripped.endswith("&") or stripped.startswith("nohup "):
+            self._log("  [yellow]Warning: background command in pre-deploy may race with deploy[/yellow]")
         self._log(f"  [dim]$ {cmd}[/dim]")
         try:
             if self.is_local:
@@ -276,13 +281,13 @@ class Deployer:
             return False
 
     def step_post_install(self) -> None:
-        """Step 6: Execute post install commands."""
+        """Step 6: Execute post deploy commands."""
         cmd = self.config.post_cmd
         if not cmd:
-            self._log("[bold]6. Post install commands: [dim](none)[/dim][/bold]")
+            self._log("[bold]6. Post deploy commands: [dim](none)[/dim][/bold]")
             return
 
-        self._log("[bold]6. Post install commands... [dim](timeout: 10s)[/dim][/bold]")
+        self._log("[bold]6. Post deploy commands... [dim](timeout: 10s)[/dim][/bold]")
         self._log(f"  [dim]$ {cmd}[/dim]")
         try:
             if self.is_local:

@@ -749,18 +749,22 @@ class TargetEditScreen(Screen):
                             classes="s-row",
                         )
                         # Row 4 left: Pre command
+                        _pre_inp = Input(value=up.pre_cmd, placeholder=t("ph_pre_cmd"), id=f"t-dep-pre-{idx}")
+                        _pre_inp.tooltip = t("tt_pre_cmd")
                         yield Horizontal(
                             Static(f" {t('te_pre_command')}", classes="s-label-tall"),
-                            Input(value=up.pre_cmd, placeholder=t("ph_pre_cmd"), id=f"t-dep-pre-{idx}"),
+                            _pre_inp,
                             classes="s-row",
                         )
                         # Row 4 right: Post command + spacer (align with eye btn)
+                        _post_inp = Input(value=up.post_cmd, placeholder=t("ph_post_cmd"), id=f"t-dep-post-{idx}")
+                        _post_inp.tooltip = t("tt_post_cmd")
                         _post_sp = Static("")
                         _post_sp.styles.width = 5
                         _post_sp.styles.min_width = 5
                         yield Horizontal(
                             Static(f" {t('te_post_command')}", classes="s-label-tall"),
-                            Input(value=up.post_cmd, placeholder=t("ph_post_cmd"), id=f"t-dep-post-{idx}"),
+                            _post_inp,
                             _post_sp,
                             classes="s-row",
                         )
