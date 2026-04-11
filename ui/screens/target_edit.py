@@ -650,8 +650,10 @@ class TargetEditScreen(Screen):
 
         # === Tab 3: Upload ===
         # Build source/toolchain options for dropdowns
-        src_options = [(s.name, s.name) for s in tgt.sources]
-        tc_options = [(tc.name, tc.name) for tc in tgt.toolchains]
+        _has_sources = bool(tgt.sources)
+        _has_toolchains = bool(tgt.toolchains)
+        src_options = [(s.name, s.name) for s in tgt.sources] or [("(none)", "(none)")]
+        tc_options = [(tc.name, tc.name) for tc in tgt.toolchains] or [("(none)", "(none)")]
 
         with VerticalScroll(id="te-panel-upload"):
             # Ensure at least one upload entry, pre-filled with first source/toolchain
