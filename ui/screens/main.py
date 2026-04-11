@@ -133,7 +133,6 @@ class MainScreen(Screen):
     def _update_info(self, target: Target) -> None:
         """Update the info panel with target details."""
         b = target.build
-        deploy_str = ", ".join(f"{d.user}@{d.host}" for d in target.deployment) or "none"
 
         # Options: modules + protocols + readers + card_readers
         all_opts = b.modules + b.protocols + b.readers + b.card_readers
@@ -156,15 +155,21 @@ class MainScreen(Screen):
                 source_parts.append(name)
             else:
                 source_parts.append(f"[red]{name} (not found!)[/red]")
+        n_repos = len(source_parts)
         repo_str = ", ".join(source_parts) or "none"
-        tc_str = ", ".join(tc.name if hasattr(tc, 'name') else tc for tc in target.toolchains) or "none"
+        # Toolchains: mark custom-configured ones with *
+        tc_parts = []
+        for tc in target.toolchains:
+            name = tc.name if hasattr(tc, 'name') else tc
+            has_custom = hasattr(tc, 'cc_opts') and any([tc.cc_opts, tc.cflags, tc.ldflags, tc.make_vars, tc.stapi_lib])
+            tc_parts.append(f"[bold]{name}[/bold]" if has_custom else name)
+        n_tcs = len(tc_parts)
+        tc_str = ", ".join(tc_parts) or "none"
 
         # Build info text
-        pad = 16  # label width for alignment
+        pad = 22  # label width for alignment
         # Build count: sources × toolchains
-        n_sources = len(target.sources)
-        n_toolchains = len(target.toolchains)
-        build_count = n_sources * n_toolchains
+        build_count = n_repos * n_tcs
 
         # First line: name — description (builds)
         header = f"  [bold]{target.name}[/bold]"
@@ -173,28 +178,29 @@ class MainScreen(Screen):
         if build_count:
             header += f" ({build_count} build{'s' if build_count != 1 else ''})"
 
+        def _lbl(key, count):
+            return f"{t(key)} ({count}):"
+
         lines = [
             header,
-            f"  {t('repositories') + ':':<{pad}} {repo_str}",
-            f"  {t('toolchains') + ':':<{pad}} {tc_str}",
+            f"  {_lbl('repositories', n_repos):<{pad}} {repo_str}",
+            f"  {_lbl('toolchains', n_tcs):<{pad}} {tc_str}",
         ]
         # Options per category
         if b.modules:
-            lines.append(self._wrap_values(f"  {t('addons') + ':':<{pad}} ", b.modules))
+            lines.append(self._wrap_values(f"  {_lbl('addons', len(b.modules)):<{pad}} ", b.modules))
         if b.protocols:
-            lines.append(self._wrap_values(f"  {t('protocols') + ':':<{pad}} ", b.protocols))
+            lines.append(self._wrap_values(f"  {_lbl('protocols', len(b.protocols)):<{pad}} ", b.protocols))
         if b.readers:
-            lines.append(self._wrap_values(f"  {t('readers') + ':':<{pad}} ", b.readers))
+            lines.append(self._wrap_values(f"  {_lbl('readers', len(b.readers)):<{pad}} ", b.readers))
         if b.card_readers:
-            lines.append(self._wrap_values(f"  {t('card_readers') + ':':<{pad}} ", b.card_readers))
+            lines.append(self._wrap_values(f"  {_lbl('card_readers', len(b.card_readers)):<{pad}} ", b.card_readers))
         lines.append(
-            self._wrap_values(f"  {t('libraries') + ':':<{pad}} ", lib_flags)
+            self._wrap_values(f"  {_lbl('libraries', len(lib_flags)):<{pad}} ", lib_flags)
             + (f"  [dim]Static: {static_str}[/dim]" if static_str else "")
         )
         if hw_flags:
-            lines.append(self._wrap_values(f"  {t('hardware') + ':':<{pad}} ", hw_flags))
-        else:
-            lines.append(f"  {t('hardware') + ':':<{pad}} -")
+            lines.append(self._wrap_values(f"  {_lbl('hardware', len(hw_flags)):<{pad}} ", hw_flags))
         if b.use_compress:
             import shutil as _shutil
             import subprocess as _sp
@@ -213,6 +219,11 @@ class MainScreen(Screen):
         lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}")
         oscamname_str = b.use_oscamname.strip() if b.use_oscamname else ""
         lines.append(f"  {t('oscam_binary_path') + ':':<{pad}} {oscamname_str or 'data/binaries/'}")
+        # Deployment destinations
+        active_deps = [d for d in target.deployment if d.enabled and d.host]
+        if active_deps:
+            names = ", ".join(d.name or d.host for d in active_deps)
+            lines.append(f"  {_lbl('upload', len(active_deps)):<{pad}} {names}")
 
         info = self.query_one("#info", Static)
         info.update("\n".join(lines))
