@@ -208,7 +208,34 @@ Switch.section-switch.all-on.-on > .switch--slider {
 .tc-fields-row {
     height: 3;
     padding: 0 2 0 4;
+    margin: 0;
+}
+.tc-fields-row-first {
+    height: 3;
+    padding: 0 0 0 2;
+    margin: 1 0 0 0;
+}
+.tc-fields-row-last {
+    height: 3;
+    padding: 0 2 0 4;
     margin: 0 0 1 0;
+}
+.tc-fields-grid {
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    height: 3;
+    padding: 0;
+    margin: 0;
+}
+.tc-fields-grid-last {
+    grid-size: 2;
+    grid-columns: 1fr 1fr;
+    height: 3;
+    padding: 0;
+    margin: 0 0 1 0;
+}
+.tc-fields-grid Input, .tc-fields-grid-last Input {
+    width: 1fr;
 }
 
 .tc-field-label {
@@ -217,7 +244,7 @@ Switch.section-switch.all-on.-on > .switch--slider {
     text-align: right;
 }
 
-.tc-fields-row Input {
+.tc-fields-row Input, .tc-fields-row-first Input, .tc-fields-row-last Input {
     width: 1fr;
 }
 

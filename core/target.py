@@ -56,6 +56,11 @@ class ToolchainConfig:
     ldflags: str = ""              # Override EXTRA_LDFLAGS
     make_vars: str = ""            # Override make variables
     stapi_lib: str = ""            # Override STAPI library
+    use_compress: str = ""         # ""=use global, "0"=off, "1"=on
+    compress_level: str = ""       # ""=use global, e.g. "--lzma"
+    upx_binary: str = ""           # ""=use global, path to upx
+    oscam_path: str = ""           # ""=use global, e.g. "/opt/oscam/bin/oscam"
+    confdir: str = ""              # ""=use global, e.g. "/usr/local/etc"
 
 
 @dataclass
@@ -113,6 +118,11 @@ def _load_toolchains(raw: list) -> list[ToolchainConfig]:
                 ldflags=item.get("ldflags", ""),
                 make_vars=item.get("make_vars", ""),
                 stapi_lib=item.get("stapi_lib", ""),
+                use_compress=item.get("use_compress", ""),
+                compress_level=item.get("compress_level", ""),
+                upx_binary=item.get("upx_binary", ""),
+                oscam_path=item.get("oscam_path", ""),
+                confdir=item.get("confdir", ""),
             ))
     return result
 
@@ -150,6 +160,11 @@ class Target:
                     "ldflags": tc.ldflags,
                     "make_vars": tc.make_vars,
                     "stapi_lib": tc.stapi_lib,
+                    "use_compress": tc.use_compress,
+                    "compress_level": tc.compress_level,
+                    "upx_binary": tc.upx_binary,
+                    "oscam_path": tc.oscam_path,
+                    "confdir": tc.confdir,
                 }.items() if v}  # omit empty
                 for tc in self.toolchains
             ],

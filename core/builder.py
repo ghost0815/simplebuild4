@@ -955,10 +955,18 @@ class BuildEngine:
         for flag, enabled in b.use_flags.items():
             if enabled:
                 use_flags.append(f"USE_{flag}=1")
-        if b.use_compress:
+        # UPX: per-toolchain override
+        if tcc.use_compress == "1":
+            _tc_compress = True
+        elif tcc.use_compress == "0":
+            _tc_compress = False
+        else:
+            _tc_compress = b.use_compress
+        _tc_compress_level = tcc.compress_level if tcc.compress_level else b.compress_level
+        if _tc_compress:
             use_flags.append("USE_COMPRESS=1")
-            if b.compress_level and b.compress_level != "--best":
-                use_flags.append(f"COMP_LEVEL={b.compress_level}")
+            if _tc_compress_level and _tc_compress_level != "--best":
+                use_flags.append(f"COMP_LEVEL={_tc_compress_level}")
 
         # --- Apply build overrides to USE_FLAGS ---
         if self.build_overrides:
@@ -1026,10 +1034,11 @@ class BuildEngine:
                 self._log(f"  [yellow]Warning: STAPI enabled but no library found[/yellow]")
 
         # --- CONF_DIR ---
-        confdir = b.confdir or "/usr/local/etc"
+        # CONF_DIR: per-toolchain override
+        confdir = tcc.confdir if tcc.confdir else (b.confdir or "/usr/local/etc")
 
-        # --- Output path (handles use_oscamname variants) ---
-        bin_path = self._resolve_binary_path(repo_dir, src.name, tcc.name, is_native, b)
+        # --- Output path (handles use_oscamname variants, per-TC override) ---
+        bin_path = self._resolve_binary_path(repo_dir, src.name, tcc.name, is_native, b, tcc)
         bin_path.parent.mkdir(parents=True, exist_ok=True)
         # Remove existing binary so make/copy doesn't fail on busy/locked files
         if bin_path.exists():
@@ -1052,6 +1061,19 @@ class BuildEngine:
         self._log(f"  CONF_DIR: {confdir}")
         self._log(f"  CPUs: {self.max_cpus}")
         self._log("")
+
+        # --- Per-TC UPX symlink ---
+        if _tc_compress:
+            _tc_upx = tcc.upx_binary if tcc.upx_binary else (b.upx_binary or "")
+            if _tc_upx:
+                import shutil as _shutil2
+                upx_link = self.bin_dir / "upx"
+                try:
+                    if upx_link.is_symlink() or upx_link.exists():
+                        upx_link.unlink()
+                    upx_link.symlink_to(_tc_upx)
+                except Exception:
+                    pass
 
         # --- Dispatch to make or cmake ---
         started = datetime.now()
@@ -1274,7 +1296,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         shutil.copy2(str(cmake_bin), str(bin_path))
         return True, bin_path
 
-    def _resolve_binary_path(self, repo_dir: Path, repo_name: str, tc_name: str, is_native: bool, b) -> Path:
+    def _resolve_binary_path(self, repo_dir: Path, repo_name: str, tc_name: str, is_native: bool, b, tcc=None) -> Path:
         """Resolve the final output binary Path from b.use_oscamname.
 
         Variants:
@@ -1287,7 +1309,9 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         project root (binaries_dir.parent.parent).
         """
         import os
-        raw = (b.use_oscamname or "").strip()
+        # Per-TC override of oscam path
+        tc_path = tcc.oscam_path if tcc and tcc.oscam_path else ""
+        raw = (tc_path or b.use_oscamname or "").strip()
         # Variant 1 — empty: default location, auto name
         if not raw:
             name = self._generate_binary_name(repo_dir, repo_name, tc_name, is_native, b)

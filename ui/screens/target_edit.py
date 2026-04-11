@@ -101,6 +101,7 @@ class TargetEditScreen(Screen):
         self._active_tab = active_tab
         self._focus_id = focus_id
         self._tc_defaults: dict[str, dict] = {}  # sid → {cc, cf, ld, mv}
+        self._tc_info_cache: dict[str, tuple[str, str]] = {}  # sid → (name, arch)
         # Options have been "seeded" once an existing yaml was loaded
         # OR the user has touched the screen (refreshes from _collect
         # always set this). A truly new untouched target stays unseeded
@@ -312,12 +313,17 @@ class TargetEditScreen(Screen):
                     sid = _safe_id(tc.name)
                     enabled = tc.name in tc_names
                     is_editing = (sid == editing_sid)
-                    if tc.native:
-                        label = f" [bold]{tc.name}[/bold] [dim]({tc.arch})[/dim]"
-                    elif tc.arch:
-                        label = f" {tc.name} [dim]({tc.arch})[/dim]"
+                    # Cache tc info for live bold updates
+                    self._tc_info_cache[sid] = (tc.name, tc.arch or "")
+                    # Bold if has custom settings
+                    tcc = tc_map.get(tc.name)
+                    has_custom = tcc and any([tcc.cc_opts, tcc.cflags, tcc.ldflags, tcc.make_vars, tcc.use_compress, tcc.oscam_path, tcc.confdir])
+                    bold = has_custom
+                    name_str = f"[bold]{tc.name}[/bold]" if bold else tc.name
+                    if tc.arch:
+                        label = f" {name_str} [dim]({tc.arch})[/dim]"
                     else:
-                        label = f" {tc.name}"
+                        label = f" {name_str}"
                     widgets = [
                         Switch(value=enabled, id=f"tc-{sid}"),
                         Static(label, classes="tc-toggle-label"),
@@ -328,6 +334,10 @@ class TargetEditScreen(Screen):
                                         classes="tc-reset-btn tc-editing" if is_editing else "tc-reset-btn")
                         flags_btn.tooltip = t("te_edit_tc_flags")
                         widgets.append(flags_btn)
+                    _tcsp = Static("")
+                    _tcsp.styles.width = 1
+                    _tcsp.styles.min_width = 1
+                    widgets.append(_tcsp)
                     return Horizontal(*widgets, classes="tc-toggle-cell")
 
                 # Two-column toggle rows with inline flag editor
@@ -375,25 +385,118 @@ class TargetEditScreen(Screen):
                             b.tooltip = t("te_load_default")
                             return b
 
-                        yield Horizontal(
-                            lbl_cf,
-                            _tc_input(tcc.cflags, def_cf, f"tc-cf-{sid}"),
-                            _rst_btn(f"rst-cf-{sid}"),
-                            lbl_cc,
-                            _tc_input(tcc.cc_opts, def_cc, f"tc-cc-{sid}"),
-                            _rst_btn(f"rst-cc-{sid}"),
-                            classes="tc-fields-row",
-                        )
-                        yield Horizontal(
-                            lbl_ld,
-                            _tc_input(tcc.ldflags, def_ld, f"tc-ld-{sid}"),
-                            _rst_btn(f"rst-ld-{sid}"),
-                            lbl_mv,
-                            _tc_input(tcc.make_vars, def_mv, f"tc-mv-{sid}"),
-                            _rst_btn(f"rst-mv-{sid}"),
-                            classes="tc-fields-row",
-                        )
-                        self._tc_defaults[sid] = {"cc": def_cc, "cf": def_cf, "ld": def_ld, "mv": def_mv}
+                        # Row 1: UPX (same layout as General)
+                        def_compress = b.use_compress
+                        def_upx = b.upx_binary or self._upx_path or ""
+                        def_complevel = b.compress_level or "--lzma"
+                        tc_compress_on = tcc.use_compress == "1" if tcc.use_compress else def_compress
+                        tc_upx = tcc.upx_binary if tcc.upx_binary else def_upx
+                        tc_complevel = tcc.compress_level if tcc.compress_level else def_complevel
+
+                        def _sp1():
+                            s = Static("")
+                            s.styles.width = 1
+                            s.styles.min_width = 1
+                            return s
+
+                        _tc_compress_sw = Switch(value=tc_compress_on, id=f"tc-compress-{sid}")
+                        if tc_compress_on:
+                            _tc_upx_inp = Input(value=tc_upx, placeholder=t("ph_system_default"), id=f"tc-upx-{sid}")
+                            _tc_upx_inp.styles.width = "1fr"
+                            _tc_lvl_inp = Input(value=tc_complevel, placeholder="--lzma", id=f"tc-complevel-{sid}")
+                            _tc_lvl_inp.styles.max_width = 25
+                            _tc_upx_browse = Btn(icon("browse"), id=f"btn-tc-upx-{sid}", classes="tc-reset-btn")
+                            _tc_upx_browse.tooltip = t("ph_browse_upx")
+                            if not tcc.use_compress:
+                                _tc_upx_inp.add_class("tc-default")
+                                _tc_lvl_inp.add_class("tc-default")
+                            yield Horizontal(
+                                Static("  [dim]USE_COMPRESS[/dim]", classes="tc-field-label"),
+                                _tc_compress_sw,
+                                Static(f"  [dim]{t('te_binary')}[/dim]", classes="src-opt-label"),
+                                _tc_upx_inp,
+                                _tc_upx_browse,
+                                Static(f"  [dim]{t('te_compression_level')}[/dim]", classes="src-opt-label"),
+                                _tc_lvl_inp,
+                                _rst_btn(f"rst-compress-{sid}"),
+                                _sp1(),
+                                classes="tc-fields-row-first",
+                            )
+                        else:
+                            yield Horizontal(
+                                Static("  [dim]USE_COMPRESS[/dim]", classes="tc-field-label"),
+                                _tc_compress_sw,
+                                _rst_btn(f"rst-compress-{sid}"),
+                                _sp1(),
+                                classes="tc-fields-row-first",
+                            )
+
+                        # Row 2: OScam path + CONF_DIR (same layout as CFLAGS/CC_OPTS)
+                        def_oscampath = b.use_oscamname or ""
+                        def_confdir = b.confdir or "/etc/tuxbox/config"
+                        _tc_oscampath_inp = _tc_input(tcc.oscam_path, def_oscampath, f"tc-oscampath-{sid}")
+                        if not _tc_oscampath_inp.value:
+                            _tc_oscampath_inp.placeholder = t("ph_oscam_binary_path")
+                        _tc_oscam_browse = Btn(icon("browse"), id=f"btn-tc-oscam-{sid}", classes="tc-reset-btn")
+                        _tc_oscam_browse.tooltip = t("ph_browse_file")
+                        _tc_confdir_inp = _tc_input(tcc.confdir, def_confdir, f"tc-confdir-{sid}")
+                        lbl_oscam = Static(f"  [dim]{t('te_oscam_binary_path')}[/dim]", classes="tc-field-label")
+                        lbl_confdir = Static(f"  [dim]{t('te_config_directory')}[/dim]", classes="tc-field-label")
+                        with Grid(classes="tc-fields-grid"):
+                            yield Horizontal(
+                                lbl_oscam,
+                                _tc_oscampath_inp,
+                                _tc_oscam_browse,
+                                _rst_btn(f"rst-oscampath-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+                            yield Horizontal(
+                                lbl_confdir,
+                                _tc_confdir_inp,
+                                _rst_btn(f"rst-confdir-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+
+                        with Grid(classes="tc-fields-grid"):
+                            yield Horizontal(
+                                lbl_cf,
+                                _tc_input(tcc.cflags, def_cf, f"tc-cf-{sid}"),
+                                _rst_btn(f"rst-cf-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+                            yield Horizontal(
+                                lbl_cc,
+                                _tc_input(tcc.cc_opts, def_cc, f"tc-cc-{sid}"),
+                                _rst_btn(f"rst-cc-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+
+                        with Grid(classes="tc-fields-grid-last"):
+                            yield Horizontal(
+                                lbl_ld,
+                                _tc_input(tcc.ldflags, def_ld, f"tc-ld-{sid}"),
+                                _rst_btn(f"rst-ld-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+                            yield Horizontal(
+                                lbl_mv,
+                                _tc_input(tcc.make_vars, def_mv, f"tc-mv-{sid}"),
+                                _rst_btn(f"rst-mv-{sid}"),
+                                _sp1(),
+                                classes="s-row",
+                            )
+
+                        self._tc_defaults[sid] = {
+                            "cc": def_cc, "cf": def_cf, "ld": def_ld, "mv": def_mv,
+                            "compress": "1" if def_compress else "0",
+                            "upx": def_upx, "complevel": def_complevel,
+                            "oscampath": def_oscampath, "confdir": def_confdir,
+                        }
                     i += 2
 
                 if not installed:
@@ -888,7 +991,8 @@ class TargetEditScreen(Screen):
 
         is_source = sid.startswith("src-") and not sid.startswith("src-upd-") and not sid.startswith("src-patch-")
         is_patch_toggle = sid.startswith("src-patch-")
-        is_toolchain = sid.startswith("tc-") and not sid.startswith("tc-cc-") and not sid.startswith("tc-cf-") and not sid.startswith("tc-ld-") and not sid.startswith("tc-mv-")
+        _tc_field_prefixes = ("tc-cc-", "tc-cf-", "tc-ld-", "tc-mv-", "tc-compress-", "tc-upx-", "tc-complevel-", "tc-oscampath-", "tc-confdir-")
+        is_toolchain = sid.startswith("tc-") and not any(sid.startswith(p) for p in _tc_field_prefixes)
         if is_source or is_patch_toggle:
             self._refresh_screen(self._collect(), "general", sid)
             return
@@ -935,10 +1039,20 @@ class TargetEditScreen(Screen):
         if sid == "f-use-compress":
             self._refresh_screen(self._collect(), "general", sid)
             return
+        # Per-TC UPX toggle — refresh to show/hide per-TC compress fields
+        if sid.startswith("tc-compress-"):
+            self._refresh_screen(self._collect(), "source", sid)
+            return
 
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-upx-browse":
             self._open_upx_picker()
+        elif event.button.id and event.button.id.startswith("btn-tc-upx-"):
+            _tc_sid = event.button.id.split("btn-tc-upx-", 1)[1]
+            self._open_upx_picker(target_input_id=f"tc-upx-{_tc_sid}")
+        elif event.button.id and event.button.id.startswith("btn-tc-oscam-"):
+            _tc_sid = event.button.id.split("btn-tc-oscam-", 1)[1]
+            self._open_binary_dir_picker(target_input_id=f"tc-oscampath-{_tc_sid}")
         elif event.button.id == "btn-binary-browse":
             self._open_binary_dir_picker()
         elif event.button.id == "rst-stapi-lib":
@@ -1129,12 +1243,13 @@ class TargetEditScreen(Screen):
             pass
         return v, None
 
-    def _open_binary_dir_picker(self) -> None:
+    def _open_binary_dir_picker(self, target_input_id: str = "t-oscamname") -> None:
         """Open directory picker for the oscam binary output dir."""
         from ui.screens.toolchains import FilePickerScreen
+        self._binary_dir_target_input = target_input_id
         # Start path: current value (its directory part) or data/binaries
         try:
-            current = self.query_one("#t-oscamname", Input).value.strip()
+            current = self.query_one(f"#{target_input_id}", Input).value.strip()
         except Exception:
             current = ""
         import os
@@ -1171,8 +1286,9 @@ class TargetEditScreen(Screen):
         # Always trailing slash for directory variant
         if not path.endswith("/"):
             path = path + "/"
+        target_id = getattr(self, '_binary_dir_target_input', 't-oscamname')
         try:
-            self.query_one("#t-oscamname", Input).value = path
+            self.query_one(f"#{target_id}", Input).value = path
         except Exception:
             pass
 
@@ -1189,11 +1305,12 @@ class TargetEditScreen(Screen):
         except Exception:
             pass
 
-    def _open_upx_picker(self) -> None:
+    def _open_upx_picker(self, target_input_id: str = "t-upx-binary") -> None:
         """Open file picker dialog to select UPX binary."""
         from ui.screens.toolchains import FilePickerScreen
         # Default start: data/bin (where s4 keeps the upx symlink)
         start = str(self.app.paths.bin_dir) if self.app.paths.bin_dir.is_dir() else "/"
+        self._upx_target_input = target_input_id
         self.app.push_screen(
             FilePickerScreen(
                 start_path=start,
@@ -1220,8 +1337,9 @@ class TargetEditScreen(Screen):
                 return
         except Exception:
             pass
+        target_id = getattr(self, '_upx_target_input', 't-upx-binary')
         try:
-            self.query_one("#t-upx-binary", Input).value = path
+            self.query_one(f"#{target_id}", Input).value = path
         except Exception:
             pass
 
@@ -1234,15 +1352,51 @@ class TargetEditScreen(Screen):
         field = parts[1]  # cc, cf, ld, mv
         sid = parts[2]
         defaults = self._tc_defaults.get(sid, {})
-        if field not in ("cc", "cf", "ld", "mv"):
+        if field == "compress":
+            # Reset UPX: restore global defaults and refresh
+            try:
+                sw = self.query_one(f"#tc-compress-{sid}", Switch)
+                sw.value = defaults.get("compress", "0") == "1"
+            except Exception:
+                pass
+            try:
+                self.query_one(f"#tc-upx-{sid}", Input).value = defaults.get("upx", "")
+                self.query_one(f"#tc-upx-{sid}", Input).add_class("tc-default")
+            except Exception:
+                pass
+            try:
+                self.query_one(f"#tc-complevel-{sid}", Input).value = defaults.get("complevel", "--lzma")
+                self.query_one(f"#tc-complevel-{sid}", Input).add_class("tc-default")
+            except Exception:
+                pass
+            self._update_tc_bold(sid)
             return
-        default_val = defaults.get(field, "")
-        try:
-            inp = self.query_one(f"#tc-{field}-{sid}", Input)
-            inp.value = default_val
-            inp.add_class("tc-default")
-        except Exception:
-            pass
+        if field == "oscampath":
+            try:
+                inp = self.query_one(f"#tc-oscampath-{sid}", Input)
+                inp.value = defaults.get("oscampath", "")
+                inp.add_class("tc-default")
+            except Exception:
+                pass
+        elif field == "confdir":
+            try:
+                inp = self.query_one(f"#tc-confdir-{sid}", Input)
+                inp.value = defaults.get("confdir", "/etc/tuxbox/config")
+                inp.add_class("tc-default")
+            except Exception:
+                pass
+        elif field in ("cc", "cf", "ld", "mv"):
+            default_val = defaults.get(field, "")
+            try:
+                inp = self.query_one(f"#tc-{field}-{sid}", Input)
+                inp.value = default_val
+                inp.add_class("tc-default")
+            except Exception:
+                pass
+        else:
+            return
+        # Refresh to rebuild UI with correct bold state, re-focus the reset button
+        self._refresh_screen(self._collect(), "source", btn_id)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         """Track input changes for dynamic UI updates."""
@@ -1259,10 +1413,11 @@ class TargetEditScreen(Screen):
             except Exception:
                 pass
             return
-        if iid.startswith("tc-cc-") or iid.startswith("tc-cf-") or iid.startswith("tc-ld-") or iid.startswith("tc-mv-"):
+        _tc_input_prefixes = ("tc-cc-", "tc-cf-", "tc-ld-", "tc-mv-", "tc-upx-", "tc-complevel-", "tc-oscampath-", "tc-confdir-")
+        if any(iid.startswith(p) for p in _tc_input_prefixes):
             # Determine if value differs from default
             parts = iid.split("-", 2)
-            field = parts[1]  # cc, cf, ld, mv
+            field = parts[1]  # cc, cf, ld, mv, upx, complevel, confdir
             sid = parts[2]
             defaults = self._tc_defaults.get(sid, {})
             default_val = defaults.get(field, "")
@@ -1299,6 +1454,46 @@ class TargetEditScreen(Screen):
                 event.input.remove_class("tc-default")
             else:
                 event.input.add_class("tc-default")
+
+    def on_input_blurred(self, event) -> None:
+        """Update toolchain label bold state when leaving a tc flag field."""
+        try:
+            iid = event.input.id or ""
+        except Exception:
+            return
+        _tc_input_prefixes = ("tc-cc-", "tc-cf-", "tc-ld-", "tc-mv-", "tc-upx-", "tc-complevel-", "tc-oscampath-", "tc-confdir-")
+        if any(iid.startswith(p) for p in _tc_input_prefixes):
+            sid = iid.split("-", 2)[2]
+            self._update_tc_bold(sid)
+
+    def _update_tc_bold(self, sid: str) -> None:
+        """Update toolchain label bold/normal based on whether any field has custom value."""
+        try:
+            defaults = self._tc_defaults.get(sid, {})
+            has_custom = any(
+                self._input_val(f"tc-{f}-{sid}") != defaults.get(f, "")
+                for f in ("cc", "cf", "ld", "mv", "upx", "complevel", "oscampath", "confdir")
+            )
+            # Also check compress switch
+            if not has_custom:
+                try:
+                    sw_val = "1" if self.query_one(f"#tc-compress-{sid}", Switch).value else "0"
+                    if sw_val != defaults.get("compress", "0"):
+                        has_custom = True
+                except Exception:
+                    pass
+            tc_info = self._tc_info_cache.get(sid)
+            if tc_info:
+                name, arch = tc_info
+                name_str = f"[bold]{name}[/bold]" if has_custom else name
+                arch_str = f" [dim]({arch})[/dim]" if arch else ""
+                sw = self.query_one(f"#tc-{sid}", Switch)
+                for child in sw.parent.children:
+                    if hasattr(child, 'classes') and "tc-toggle-label" in child.classes:
+                        child.update(f" {name_str}{arch_str}")
+                        break
+        except Exception:
+            pass
 
     def _sync_section_for_option(self, opt_name: str) -> None:
         """Recompute the section toggle state after a user toggle on
@@ -1576,24 +1771,54 @@ class TargetEditScreen(Screen):
             self.app.paths.toolchains_dir,
         )
         registry.load()
+        # Build map of existing toolchain overrides so we can preserve them
+        # when the flag-editor fields are not visible in the DOM
+        _existing_tc = {tc.name: tc for tc in self.target.toolchains}
         toolchains = []
         for tc in registry.installed_toolchains():
             try:
                 sid = _safe_id(tc.name)
                 if self.query_one(f"#tc-{sid}", Switch).value:
-                    # Read override fields — if value == toolchain default, store empty (no override)
-                    defaults = self._tc_defaults.get(sid, {})
-                    cc = self._input_val(f"tc-cc-{sid}")
-                    cf = self._input_val(f"tc-cf-{sid}")
-                    ld = self._input_val(f"tc-ld-{sid}")
-                    mv = self._input_val(f"tc-mv-{sid}")
-                    toolchains.append(ToolchainConfig(
-                        name=tc.name,
-                        cc_opts="" if cc == defaults.get("cc", "") else cc,
-                        cflags="" if cf == defaults.get("cf", "") else cf,
-                        ldflags="" if ld == defaults.get("ld", "") else ld,
-                        make_vars="" if mv == defaults.get("mv", "") else mv,
-                    ))
+                    # Check if flag-editor fields are visible (only when editing this TC)
+                    try:
+                        self.query_one(f"#tc-cc-{sid}", Input)
+                        fields_visible = True
+                    except Exception:
+                        fields_visible = False
+
+                    if fields_visible:
+                        # Read override fields — if value == toolchain default, store empty
+                        defaults = self._tc_defaults.get(sid, {})
+                        cc = self._input_val(f"tc-cc-{sid}")
+                        cf = self._input_val(f"tc-cf-{sid}")
+                        ld = self._input_val(f"tc-ld-{sid}")
+                        mv = self._input_val(f"tc-mv-{sid}")
+                        # UPX + confdir per-TC
+                        try:
+                            tc_compress_on = self.query_one(f"#tc-compress-{sid}", Switch).value
+                            tc_compress = "1" if tc_compress_on else "0"
+                        except Exception:
+                            tc_compress = ""
+                        tc_upx = self._input_val(f"tc-upx-{sid}")
+                        tc_complevel = self._input_val(f"tc-complevel-{sid}")
+                        tc_oscampath = self._input_val(f"tc-oscampath-{sid}")
+                        tc_confdir = self._input_val(f"tc-confdir-{sid}")
+                        toolchains.append(ToolchainConfig(
+                            name=tc.name,
+                            cc_opts="" if cc == defaults.get("cc", "") else cc,
+                            cflags="" if cf == defaults.get("cf", "") else cf,
+                            ldflags="" if ld == defaults.get("ld", "") else ld,
+                            make_vars="" if mv == defaults.get("mv", "") else mv,
+                            use_compress="" if tc_compress == defaults.get("compress", "") else tc_compress,
+                            compress_level="" if tc_complevel == defaults.get("complevel", "") else tc_complevel,
+                            upx_binary="" if tc_upx == defaults.get("upx", "") else tc_upx,
+                            oscam_path="" if tc_oscampath == defaults.get("oscampath", "") else tc_oscampath,
+                            confdir="" if tc_confdir == defaults.get("confdir", "") else tc_confdir,
+                        ))
+                    else:
+                        # Fields not visible — preserve existing overrides
+                        existing = _existing_tc.get(tc.name, ToolchainConfig(name=tc.name))
+                        toolchains.append(existing)
             except Exception:
                 pass
 
@@ -1756,11 +1981,14 @@ class TargetEditScreen(Screen):
         if not target.name:
             self.notify(t("target_name_required"), severity="error")
             return ""
-        path = self.save_path or (self.app.paths.targets_dir / f"{target.name}.yaml")
-        target.save(path)
-        self.save_path = path
+        new_path = self.app.paths.targets_dir / f"{target.name}.yaml"
+        # If renamed, delete old file
+        if self.save_path and self.save_path != new_path and self.save_path.exists():
+            self.save_path.unlink()
+        target.save(new_path)
+        self.save_path = new_path
         # Remember for main screen to select after returning
-        self.app._last_saved_target = str(path)
+        self.app._last_saved_target = str(new_path)
         return t("target_saved", name=target.name)
 
     def action_go_back(self) -> None:

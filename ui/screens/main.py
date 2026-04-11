@@ -151,8 +151,18 @@ class MainScreen(Screen):
         source_parts = []
         for s in target.sources:
             name = s.name if hasattr(s, 'name') else s
+            update = getattr(s, 'update_before_build', False)
+            patch = getattr(s, 'patch_before_build', False)
+            if update and patch:
+                suffix = "(UP)"
+            elif update:
+                suffix = "(U)"
+            elif patch:
+                suffix = "(P)"
+            else:
+                suffix = ""
             if name in repo_names:
-                source_parts.append(name)
+                source_parts.append(f"{name}{suffix}")
             else:
                 source_parts.append(f"[red]{name} (not found!)[/red]")
         n_repos = len(source_parts)
@@ -161,7 +171,7 @@ class MainScreen(Screen):
         tc_parts = []
         for tc in target.toolchains:
             name = tc.name if hasattr(tc, 'name') else tc
-            has_custom = hasattr(tc, 'cc_opts') and any([tc.cc_opts, tc.cflags, tc.ldflags, tc.make_vars, tc.stapi_lib])
+            has_custom = hasattr(tc, 'cc_opts') and any([tc.cc_opts, tc.cflags, tc.ldflags, tc.make_vars, tc.stapi_lib, tc.use_compress, tc.oscam_path, tc.confdir])
             tc_parts.append(f"[bold]{name}[/bold]" if has_custom else name)
         n_tcs = len(tc_parts)
         tc_str = ", ".join(tc_parts) or "none"
@@ -195,10 +205,13 @@ class MainScreen(Screen):
             lines.append(self._wrap_values(f"  {_lbl('readers', len(b.readers)):<{pad}} ", b.readers))
         if b.card_readers:
             lines.append(self._wrap_values(f"  {_lbl('card_readers', len(b.card_readers)):<{pad}} ", b.card_readers))
-        lines.append(
-            self._wrap_values(f"  {_lbl('libraries', len(lib_flags)):<{pad}} ", lib_flags)
-            + (f"  [dim]Static: {static_str}[/dim]" if static_str else "")
-        )
+        if lib_flags:
+            lines.append(
+                self._wrap_values(f"  {_lbl('libraries', len(lib_flags)):<{pad}} ", lib_flags)
+                + (f"  [dim]Static: {static_str}[/dim]" if static_str else "")
+            )
+        else:
+            lines.append(f"  {_lbl('libraries', 0):<{pad}} no libraries integrated")
         if hw_flags:
             lines.append(self._wrap_values(f"  {_lbl('hardware', len(hw_flags)):<{pad}} ", hw_flags))
         if b.use_compress:
@@ -299,7 +312,7 @@ class MainScreen(Screen):
                 target, path = result
                 target.name = f"{target.name}_copy"
                 target.description = f"Copy of {target.description}"
-                self.app.push_screen(TargetEditScreen(target=target))
+                self.app.push_screen(TargetEditScreen(target=target, options_seeded=True))
             else:
                 self.notify(t("no_target_selected"), severity="warning")
 
