@@ -703,6 +703,8 @@ class ToolchainRegistry:
         """Auto-detect and register the native (host) toolchain in local yaml."""
         # Check if native already exists in local file AND directory exists
         local_tcs = self._load_file(self.local_path)
+        if self.yaml_error:
+            return  # parse error — never overwrite a broken file
         native_dir = self.install_dir / "native" / "bin"
         has_entry = any(tc.native for tc in local_tcs)
         has_dir = native_dir.is_dir() and any(native_dir.iterdir())
@@ -803,7 +805,9 @@ class ToolchainRegistry:
         return result
 
     def save_local(self, toolchains: list[Toolchain] | None = None) -> None:
-        """Save to the local (user) registry file."""
+        """Save to the local (user) registry file. Refuses to save if parse error detected."""
+        if self.yaml_error:
+            return  # never overwrite a file we couldn't parse
         tcs = toolchains if toolchains is not None else self._get_local_only()
         self._save_file(self.local_path, tcs)
 

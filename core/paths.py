@@ -29,6 +29,7 @@ class Paths:
     templates_defaults: Path   # defaults/templates/ shipped toolchain templates
     templates_local: Path      # data/templates/ user-added templates
     translation_dir: Path
+    yaml_backup_dir: Path          # data/backup/yaml/ for startup backups
 
     @classmethod
     def detect(cls) -> "Paths":
@@ -55,6 +56,7 @@ class Paths:
             templates_defaults=root / "defaults" / "templates",
             templates_local=data / "templates",
             translation_dir=root / "translation",
+            yaml_backup_dir=data / "backups" / "yaml",
         )
 
     def ensure_dirs(self) -> None:
@@ -64,6 +66,7 @@ class Paths:
             self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
             self.bin_dir, self.builders_dir, self.templates_local,
+            self.yaml_backup_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 
@@ -92,3 +95,36 @@ class Paths:
         patches_dest = self.repos_config.parent / "patches.yaml"
         if patches_default.exists() and not patches_dest.exists():
             shutil.copy2(patches_default, patches_dest)
+
+    def backup_yaml(self) -> None:
+        """Backup all user YAML config files to data/backup/yaml/.
+
+        Overwrites previous backups. Only copies files that exist and
+        can be parsed as valid YAML.
+        """
+        import yaml
+
+        # Single files
+        for src in (
+            self.toolchains_local,
+            self.libraries_local,
+            self.repos_config,
+            self.root / "data" / "settings.yaml",
+        ):
+            if src.exists():
+                try:
+                    yaml.safe_load(src.read_text(encoding="utf-8"))
+                    shutil.copy2(src, self.yaml_backup_dir / src.name)
+                except Exception:
+                    pass  # skip broken files
+
+        # Target files
+        if self.targets_dir.is_dir():
+            targets_backup = self.yaml_backup_dir / "targets"
+            targets_backup.mkdir(parents=True, exist_ok=True)
+            for f in self.targets_dir.glob("*.yaml"):
+                try:
+                    yaml.safe_load(f.read_text(encoding="utf-8"))
+                    shutil.copy2(f, targets_backup / f.name)
+                except Exception:
+                    pass

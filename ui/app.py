@@ -121,6 +121,11 @@ class S4App(App):
 
     def on_mount(self) -> None:
         self.paths.ensure_dirs()
+        # Backup user YAML configs before anything else touches them
+        try:
+            self.paths.backup_yaml()
+        except Exception:
+            pass
         # Load translations
         from translation import load as load_translations
         load_translations(self.settings.language)
