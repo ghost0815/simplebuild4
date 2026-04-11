@@ -400,6 +400,8 @@ class TargetEditScreen(Screen):
                             return s
 
                         _tc_compress_sw = Switch(value=tc_compress_on, id=f"tc-compress-{sid}")
+                        import re as _re
+                        _tc_compress_sw.tooltip = _re.sub(r'\[/?[a-z_ ]+\]', '', self._upx_info).strip() if self._upx_path else "upx not found"
                         if tc_compress_on:
                             _tc_upx_inp = Input(value=tc_upx, placeholder=t("ph_system_default"), id=f"tc-upx-{sid}")
                             _tc_upx_inp.styles.width = "1fr"
