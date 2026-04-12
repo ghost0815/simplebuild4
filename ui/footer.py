@@ -114,12 +114,15 @@ class BuildTimerWidget(Static):
 
     def on_mount(self) -> None:
         app = self.app
-        # If the timer was started on a different screen, clear it
+        # If the timer was started on a different screen and is still running, clear it.
+        # A stopped timer (build finished) is kept so the elapsed time stays visible
+        # even after a screen refresh (e.g. toolchains _refresh pop/push cycle).
         if getattr(app, "_timer_screen", None) and app._timer_screen != self._screen_name:
-            try:
-                app.build_timer_reset()
-            except Exception:
-                pass
+            if getattr(app, "_timer_stopped_at", None) is None:
+                try:
+                    app.build_timer_reset()
+                except Exception:
+                    pass
         self.refresh_display()
         # Tick every second so a running timer counts up live
         self._interval = self.set_interval(1.0, self.refresh_display)
