@@ -1429,14 +1429,23 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
 
         # Static libraries — cmake variable names differ from make
         b = self.target.build
-        # OpenSSL static: set OPENSSL_*_LIBRARY (singular = cache hint for find_package)
-        if b.static_flags.get("SSL") and "SSL_LIB" in static_libs:
-            cmake_cmd.append(f"-DOPENSSL_SSL_LIBRARY={static_libs['SSL_LIB']}")
-        if b.static_flags.get("LIBCRYPTO") and "LIBCRYPTO_LIB" in static_libs:
-            cmake_cmd.append(f"-DOPENSSL_CRYPTO_LIBRARY={static_libs['LIBCRYPTO_LIB']}")
+        # Static library flags — cmake finds the .a files via sysroot
+        if b.static_flags.get("SSL"): cmake_cmd.append("-DSTATIC_SSL=1")
+        if b.static_flags.get("LIBCRYPTO"): cmake_cmd.append("-DSTATIC_LIBCRYPTO=1")
         if b.static_flags.get("LIBUSB"): cmake_cmd.append("-DSTATIC_LIBUSB=1")
         if b.static_flags.get("LIBDVBCSA"): cmake_cmd.append("-DSTATIC_LIBDVBCSA=1")
         if b.static_flags.get("PCSC"): cmake_cmd.append("-DSTATIC_PCSC=1")
+        # Absolute-path overrides for Makefile parity — oscam cmake ≥
+        # fix-cmake-unconditially-linking honours ``LIBCRYPTO_LIB`` and
+        # ``SSL_LIB`` and uses them verbatim, bypassing its own
+        # ``find_library`` auto-discovery. Passing them alongside the
+        # ``STATIC_*`` flags guarantees cmake links the exact same .a
+        # that ``make`` would — avoids drift when a sysroot contains
+        # more than one OpenSSL install.
+        if "LIBCRYPTO_LIB" in static_libs:
+            cmake_cmd.append(f"-DLIBCRYPTO_LIB={static_libs['LIBCRYPTO_LIB']}")
+        if "SSL_LIB" in static_libs:
+            cmake_cmd.append(f"-DSSL_LIB={static_libs['SSL_LIB']}")
 
         # STAPI
         if stapi_lib and "=" in stapi_lib:
