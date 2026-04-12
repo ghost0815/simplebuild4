@@ -276,23 +276,32 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         ]
         self._rebuild_table(filtered)
 
+    def _confirm_selection(self) -> None:
+        """Confirm the selected SHA — downgrades require double confirmation."""
+        if not self._selected_sha:
+            return
+        if self._is_downgrade:
+            now = time.time()
+            if now - self._downgrade_confirm_time < 3:
+                self._downgrade_confirm_time = 0
+                self.dismiss(self._selected_sha)
+            else:
+                self._downgrade_confirm_time = now
+                self.notify(t("s4u_downgrade_warn"), severity="warning", timeout=3)
+        else:
+            self.dismiss(self._selected_sha)
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if event.row_key and event.row_key.value:
+            self._selected_sha = event.row_key.value
+            self._update_button_label(event.cursor_row)
+            self._confirm_selection()
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "s4u-cancel":
             self.dismiss(None)
         elif event.button.id == "s4u-action":
-            if not self._selected_sha:
-                return
-            if self._is_downgrade:
-                now = time.time()
-                if now - self._downgrade_confirm_time < 3:
-                    self._downgrade_confirm_time = 0
-                    self.dismiss(self._selected_sha)
-                else:
-                    self._downgrade_confirm_time = now
-                    self.notify(t("s4u_downgrade_warn"), severity="warning", timeout=3)
-                    return
-            else:
-                self.dismiss(self._selected_sha)
+            self._confirm_selection()
 
     def action_cancel(self) -> None:
         self.dismiss(None)

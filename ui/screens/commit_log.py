@@ -77,6 +77,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             yield Input(placeholder=t("log_filter_ph"), id="log-filter")
             yield DataTable(id="log-table", cursor_type="row", zebra_stripes=True)
             with Horizontal(id="log-buttons"):
+                yield Button(t("re_switch_to"), id="log-switch", variant="primary")
                 yield Button(t("cancel"), id="log-cancel")
 
     # Max width per column — long values are ellipsised and the full
@@ -268,7 +269,15 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             pass
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "log-cancel":
+        if event.button.id == "log-switch":
+            try:
+                tbl = self.query_one("#log-table", DataTable)
+                rev = tbl.ordered_rows[tbl.cursor_row].key.value
+                if rev:
+                    self.dismiss(str(rev))
+            except Exception:
+                pass
+        elif event.button.id == "log-cancel":
             self.dismiss(None)
 
     def action_cancel(self) -> None:

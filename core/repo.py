@@ -69,6 +69,17 @@ class RepoState:
             state.vcs = "git"
             try:
                 state.branch = _git(repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+                if state.branch == "HEAD":
+                    # Detached HEAD — find the branch whose tip contains HEAD
+                    try:
+                        refs = _git(repo_path, "branch", "--contains", "HEAD", "--format=%(refname:short)")
+                        for line in refs.splitlines():
+                            name = line.strip()
+                            if name and name != "(HEAD" and not name.startswith("("):
+                                state.branch = name
+                                break
+                    except subprocess.CalledProcessError:
+                        pass
                 state.commit = _git(repo_path, "rev-parse", "--short", "HEAD")
                 rev = _git(repo_path, "rev-list", "--count", "HEAD")
                 state.revision = int(rev)
