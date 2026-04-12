@@ -482,6 +482,9 @@ class S4App(App):
 
     def action_s4_settings(self) -> None:
         from ui.screens.settings import SettingsScreen
+        if self._is_building():
+            self.notify(t("build_in_progress"), severity="warning")
+            return
         if not isinstance(self.screen, SettingsScreen):
             self.push_screen(SettingsScreen())
 
@@ -613,6 +616,9 @@ class S4App(App):
         from ui.screens.main import MainScreen
         if isinstance(self.screen, MainScreen):
             return
+        if self._is_building():
+            self.notify(t("build_in_progress"), severity="warning")
+            return
         # Going back to main pops every screen above it — if any of
         # those have unsaved changes, warn once and require a second
         # press to actually discard them. Same grace window as Esc.
@@ -646,11 +652,17 @@ class S4App(App):
 
     def action_open_repository(self) -> None:
         from ui.screens.repository import RepositoryScreen
+        if self._is_building():
+            self.notify(t("build_in_progress"), severity="warning")
+            return
         if not isinstance(self.screen, RepositoryScreen):
             self.push_screen(RepositoryScreen())
 
     def action_open_toolchains(self) -> None:
         from ui.screens.toolchains import ToolchainsScreen
+        if self._is_building():
+            self.notify(t("build_in_progress"), severity="warning")
+            return
         if not isinstance(self.screen, ToolchainsScreen):
             self.push_screen(ToolchainsScreen())
 
@@ -677,6 +689,16 @@ class S4App(App):
         screen = self.screen
         if hasattr(screen, 'do_remove'):
             screen.do_remove()
+
+    def _is_building(self) -> bool:
+        """Return True if any screen on the stack has a running build."""
+        try:
+            for screen in self.screen_stack:
+                if getattr(screen, "_building", False):
+                    return True
+        except Exception:
+            pass
+        return False
 
     def _check_busy_or_dirty(self) -> tuple:
         """Check if any screen has a running operation or actual unsaved changes.
