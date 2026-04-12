@@ -64,8 +64,8 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         self._branch = ""
         self._current_sha = ""
         self._current_index = -1
-        self._rows: list[tuple[str, str, str, str, str]] = []  # (sha, date, author, subject, refs)
-        self._current_rows: list[tuple[str, str, str, str, str]] = []
+        self._rows: list[tuple[str, str, str, str, str, str]] = []  # (sha, date_short, author, subject, refs, date_full)
+        self._current_rows: list[tuple[str, str, str, str, str, str]] = []
         self._selected_sha = ""
         self._is_downgrade = False
         self._downgrade_confirm_time = 0.0
@@ -118,8 +118,9 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
                     continue
                 sha, date, author, refs, subject = parts
                 date_short = date.split(" ", 1)[0] if date else ""
+                date_full = date.strip()  # "2026-04-12 14:51:48 +0200" for sorting
                 refs_clean = refs.strip().lstrip("(").rstrip(")").strip()
-                rows.append((sha, date_short, author, subject, refs_clean))
+                rows.append((sha, date_short, author, subject, refs_clean, date_full))
             self._rows = rows
         except Exception as e:
             self._rows = []
@@ -151,7 +152,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         self._current_rows = list(rows)
         self._current_index = -1
 
-        for i, (sha, date, author, subject, refs) in enumerate(self._current_rows):
+        for i, (sha, date, author, subject, refs, _date_full) in enumerate(self._current_rows):
             refs_c = self._ellipsise(refs, self._MAX_REFS)
             subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
             auth_c = self._ellipsise(author, self._MAX_AUTHOR)
@@ -182,7 +183,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         if not (0 <= row_index < len(self._current_rows)):
             tbl.tooltip = None
             return
-        sha, date, author, subject, refs = self._current_rows[row_index]
+        sha, date, author, subject, refs, _date_full = self._current_rows[row_index]
         lines = [f"{sha}  {date}  {author}"]
         if refs:
             lines.append(f"refs: {refs}")
@@ -191,20 +192,34 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
             lines.append("← current")
         tbl.tooltip = "\n".join(lines)
 
-    # Column index → row tuple index mapping
-    # Columns: SHA(0), Refs(4), Subject(3), Date(1), Author(2)
+    # Column index → row tuple index mapping for sorting
+    # Columns: SHA(0), Refs(4), Subject(3), Date→date_full(5), Author(2)
     def _col_key_index(self, col_index: int) -> int:
-        return (0, 4, 3, 1, 2)[col_index]
+        return (0, 4, 3, 5, 2)[col_index]
 
     def _update_button_label(self, row_index: int) -> None:
         try:
             btn = self.query_one("#s4u-action", Button)
-            if self._current_index < 0:
+            # Use original row order (chronological) to determine up/downgrade
+            if not (0 <= row_index < len(self._current_rows)):
+                return
+            selected_sha = self._current_rows[row_index][0]
+            # Find positions in original (chronological) order
+            orig_shas = [r[0] for r in self._rows]
+            try:
+                orig_current = orig_shas.index(self._current_sha)
+            except ValueError:
+                orig_current = -1
+            try:
+                orig_selected = orig_shas.index(selected_sha)
+            except ValueError:
+                orig_selected = -1
+            if orig_current < 0:
                 self._is_downgrade = False
                 btn.label = t("s4u_update")
                 btn.variant = "primary"
-                return
-            if row_index > self._current_index:
+            elif orig_selected > orig_current:
+                # Selected is older (further down in chronological list)
                 self._is_downgrade = True
                 btn.label = t("s4u_downgrade")
                 btn.variant = "warning"
