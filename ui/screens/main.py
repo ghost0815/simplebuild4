@@ -218,7 +218,7 @@ class MainScreen(Screen):
         if hw_flags:
             lines.append(self._wrap_values(f"  {_lbl('hardware', len(hw_flags)):<{pad}} ", hw_flags))
         # Collect per-TC overrides for compress/confdir/oscam_path
-        _tc_compress_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'use_compress') and tc.use_compress]
+        _tc_compress_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'use_compress') and any([tc.use_compress, tc.upx_binary, tc.compress_level])]
         _tc_confdir_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'confdir') and tc.confdir]
         _tc_oscam_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'oscam_path') and tc.oscam_path]
 
