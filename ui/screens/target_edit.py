@@ -1899,31 +1899,41 @@ class TargetEditScreen(Screen):
                 pass
 
         # Collect enabled modules (dynamically from oscam options)
-        # Removed options are shown as switches too — collect them the same way
-        oscam = self._load_oscam_options()
-        all_addons = oscam.addons + self._removed_opts.get("addons", [])
-        all_protos = oscam.protocols + self._removed_opts.get("protocols", [])
-        all_readers = oscam.readers + self._removed_opts.get("readers", [])
-        all_crs = oscam.card_readers + self._removed_opts.get("card_readers", [])
-        modules = sorted(m for m in all_addons if self._switch_on(f"m-{m}"))
-        protocols = sorted(m for m in all_protos if self._switch_on(f"m-{m}"))
-        readers = sorted(m for m in all_readers if self._switch_on(f"m-{m}"))
-        card_readers = sorted(m for m in all_crs if self._switch_on(f"m-{m}"))
+        # Removed options are shown as switches too — collect them the same way.
+        # When no sources are selected the options/flags panels show
+        # placeholders instead of switches — reading the DOM would yield
+        # all-off.  Preserve the previous target values so a temporary
+        # "no source" state during a repo switch does not wipe the config.
+        if self.target.sources:
+            oscam = self._load_oscam_options()
+            all_addons = oscam.addons + self._removed_opts.get("addons", [])
+            all_protos = oscam.protocols + self._removed_opts.get("protocols", [])
+            all_readers = oscam.readers + self._removed_opts.get("readers", [])
+            all_crs = oscam.card_readers + self._removed_opts.get("card_readers", [])
+            modules = sorted(m for m in all_addons if self._switch_on(f"m-{m}"))
+            protocols = sorted(m for m in all_protos if self._switch_on(f"m-{m}"))
+            readers = sorted(m for m in all_readers if self._switch_on(f"m-{m}"))
+            card_readers = sorted(m for m in all_crs if self._switch_on(f"m-{m}"))
 
-        # Collect USE_* and STATIC_* flags dynamically from switches
-        mk_flags = self._load_makefile_flags()
-        all_use = mk_flags.get("use", [])
-
-        use_flags = {}
-        for flag in all_use:
-            if self._switch_on(f"f-use-{flag}"):
-                use_flags[flag] = True
-        # STATIC flags: rendered for _STATIC_CAPABLE libs, not from Makefile
-        _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
-        static_flags = {}
-        for flag in _STATIC_CAPABLE:
-            if self._switch_on(f"f-static-{flag}"):
-                static_flags[flag] = True
+            mk_flags = self._load_makefile_flags()
+            all_use = mk_flags.get("use", [])
+            use_flags = {}
+            for flag in all_use:
+                if self._switch_on(f"f-use-{flag}"):
+                    use_flags[flag] = True
+            _STATIC_CAPABLE = {"LIBCRYPTO", "SSL", "LIBUSB", "PCSC", "LIBDVBCSA"}
+            static_flags = {}
+            for flag in _STATIC_CAPABLE:
+                if self._switch_on(f"f-static-{flag}"):
+                    static_flags[flag] = True
+        else:
+            prev = self.target.build
+            modules = list(prev.modules)
+            protocols = list(prev.protocols)
+            readers = list(prev.readers)
+            card_readers = list(prev.card_readers)
+            use_flags = dict(prev.use_flags)
+            static_flags = dict(prev.static_flags)
 
         build = BuildSettings(
             modules=modules,
