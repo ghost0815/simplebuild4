@@ -20,6 +20,8 @@ class Settings:
     confirm_dangerous: bool = True     # require double-press for destructive actions
     ascii_mode: bool = False           # replace emoji/unicode with ASCII-safe alternatives
     last_target: str = ""          # Last loaded target path (auto-saved)
+    last_repo: str = ""            # Last selected repository (auto-saved)
+    last_toolchain: str = ""       # Last selected toolchain (auto-saved)
 
     # Repository
     s4_url: str = "https://git.streamboard.tv/common/simplebuild4.git"
@@ -55,6 +57,8 @@ class Settings:
         """Save settings to YAML."""
         data = {
             "last_target": self.last_target,
+            "last_repo": self.last_repo,
+            "last_toolchain": self.last_toolchain,
             "language": self.language,
             "theme": self.theme,
             "update_check": self.update_check,
@@ -97,6 +101,8 @@ class Settings:
             return cls()
         return cls(
             last_target=data.get("last_target", ""),
+            last_repo=data.get("last_repo", ""),
+            last_toolchain=data.get("last_toolchain", ""),
             language=data.get("language", "en"),
             theme=data.get("theme", "textual-dark"),
             update_check=data.get("update_check", True),

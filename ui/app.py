@@ -480,13 +480,20 @@ class S4App(App):
         if widget and hasattr(widget, 'text_select_all'):
             widget.text_select_all()
 
+    def _switch_to(self, screen) -> None:
+        """Replace the current non-main screen instead of stacking."""
+        from ui.screens.main import MainScreen
+        if not isinstance(self.screen, MainScreen):
+            self.pop_screen()
+        self.push_screen(screen)
+
     def action_s4_settings(self) -> None:
         from ui.screens.settings import SettingsScreen
         if self._is_building():
             self.notify(t("build_in_progress"), severity="warning")
             return
         if not isinstance(self.screen, SettingsScreen):
-            self.push_screen(SettingsScreen())
+            self._switch_to(SettingsScreen())
 
     def action_check_deps(self) -> None:
         from ui.screens.dep_check import DependencyCheckModal
@@ -656,7 +663,7 @@ class S4App(App):
             self.notify(t("build_in_progress"), severity="warning")
             return
         if not isinstance(self.screen, RepositoryScreen):
-            self.push_screen(RepositoryScreen())
+            self._switch_to(RepositoryScreen())
 
     def action_open_toolchains(self) -> None:
         from ui.screens.toolchains import ToolchainsScreen
@@ -664,7 +671,7 @@ class S4App(App):
             self.notify(t("build_in_progress"), severity="warning")
             return
         if not isinstance(self.screen, ToolchainsScreen):
-            self.push_screen(ToolchainsScreen())
+            self._switch_to(ToolchainsScreen())
 
     def action_tc_update(self) -> None:
         """Dispatch F9 Update to toolchains screen."""

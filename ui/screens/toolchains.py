@@ -694,11 +694,13 @@ class ToolchainsScreen(Screen):
                         break
             except Exception:
                 pass
-        elif ToolchainsScreen._selected_tc:
+        elif ToolchainsScreen._selected_tc or self.app.settings.last_toolchain:
             # Installed toolchain — restore cursor in installed table
+            restore_tc = ToolchainsScreen._selected_tc or self.app.settings.last_toolchain
             try:
                 for i, key in enumerate(tbl.rows):
-                    if key.value == ToolchainsScreen._selected_tc:
+                    if key.value == restore_tc:
+                        ToolchainsScreen._selected_tc = restore_tc
                         tbl.move_cursor(row=i)
                         tbl.mark_row(i)
                         break
@@ -1004,6 +1006,10 @@ class ToolchainsScreen(Screen):
             self._mark_selected_row(event)
             self._update_active_tab()
             self._update_f9_state()
+            # Persist installed toolchain selection across restarts
+            if event.data_table.id == "tbl-installed":
+                self.app.settings.last_toolchain = event.row_key.value
+                self.app.settings.save(self.app.settings_path)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         if self._building:

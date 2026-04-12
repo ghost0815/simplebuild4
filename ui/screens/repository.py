@@ -191,7 +191,7 @@ class RepositoryScreen(Screen):
     def on_mount(self) -> None:
         """Fill edit fields and restore log on mount."""
         if self._repos:
-            target = RepositoryScreen._last_selected
+            target = RepositoryScreen._last_selected or self.app.settings.last_repo
             repo = next((r for r in self._repos if r.name == target), None) or self._repos[0]
             try:
                 self.query_one("#repo-select", Select).value = repo.name
@@ -659,6 +659,8 @@ class RepositoryScreen(Screen):
             repo = self._get_selected_repo()
             if repo:
                 self._fill_edit_fields(repo)
+                self.app.settings.last_repo = repo.name
+                self.app.settings.save(self.app.settings_path)
         elif event.select.id == "edit-repo-auth":
             self._update_auth_visibility(str(event.value) if event.value else "")
 
