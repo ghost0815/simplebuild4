@@ -4,7 +4,7 @@ import subprocess
 from textual.widgets import Static
 from textual.containers import Horizontal
 
-VERSION = "2026.04 alpha"
+VERSION = "2026.04 beta"
 
 
 def _get_version() -> str:
