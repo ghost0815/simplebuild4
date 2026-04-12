@@ -325,7 +325,8 @@ class BuildEngine:
     # -------------------------------------------------------------------------
 
     def _postbuild_single(self, bin_path: Path, repo_dir: Path,
-                          cross: str = "", sysroot: str = "", is_native: bool = True) -> None:
+                          cross: str = "", sysroot: str = "", is_native: bool = True,
+                          tc_dir: Path | None = None) -> None:
         """Post-build tasks for a single build — runs immediately after each make.
 
         Must happen before distclean of the next build, otherwise Distribution/
@@ -350,11 +351,11 @@ class BuildEngine:
         # Smoke test: QEMU for cross, direct for native
         if self.qemu_test:
             if is_native:
-                self._native_smoke_test(bin_path)
+                self._native_smoke_test(bin_path, tc_dir)
             elif cross:
                 self._qemu_smoke_test(bin_path, cross, sysroot)
 
-    def _native_smoke_test(self, bin_path: Path) -> None:
+    def _native_smoke_test(self, bin_path: Path, tc_dir: Path | None = None) -> None:
         """Run a smoke test on a native binary (direct execution)."""
         import time
         import threading
@@ -364,11 +365,25 @@ class BuildEngine:
 
         self._log(f"[cyan]TEST -------> [/cyan]testing {bin_path} ([dark_orange]{timeout}s timeout[/dark_orange])")
 
+        # Add local native libs to LD_LIBRARY_PATH so dynamically linked
+        # libraries from data/toolchains/native/lib are found at runtime
+        env = os.environ.copy()
+        if tc_dir:
+            local_lib = tc_dir / "lib"
+            if local_lib.is_dir():
+                old = env.get("LD_LIBRARY_PATH", "")
+                env["LD_LIBRARY_PATH"] = f"{local_lib}:{old}" if old else str(local_lib)
+
+        native_cmd = [str(bin_path), "-c", "/tmp/"]
+        ld_info = f"LD_LIBRARY_PATH={env.get('LD_LIBRARY_PATH', '')} " if env.get("LD_LIBRARY_PATH") else ""
+        self._log(f"[dim]          $ {ld_info}{' '.join(native_cmd)}[/dim]")
+
         try:
             proc = subprocess.Popen(
-                [str(bin_path), "-c", "/tmp/"],
+                native_cmd,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                 preexec_fn=os.setsid,
+                env=env,
             )
 
             found = False
@@ -441,24 +456,59 @@ class BuildEngine:
             self._log("[yellow]QEMU -------> SKIP (cannot determine arch)[/yellow]")
             return
 
-        qemu_bin = f"qemu-{qemu_arch}"
-        if not _shutil.which(qemu_bin):
-            self._log(f"[yellow]QEMU -------> SKIP ({qemu_bin} not found)[/yellow]")
-            return
-
-        # Prepare sysroot for qemu -L (strip trailing /usr)
+        # Prepare sysroot (strip trailing /usr)
         qemu_sysroot = sysroot.rstrip("/")
         if qemu_sysroot.endswith("/usr"):
             qemu_sysroot = qemu_sysroot[:-4]
 
+        # Same-arch: qemu-user can't properly isolate the sysroot on the
+        # same architecture — the host kernel uses the ELF interpreter path
+        # directly, bypassing -L.  Run the binary via the toolchain's own
+        # ld-linux with --library-path instead.
+        import platform as _platform
+        host_arch = _platform.machine()  # e.g. "x86_64", "aarch64"
+        host_qemu = _QEMU_ARCH_MAP.get(host_arch, host_arch)
+        same_arch = (qemu_arch == host_qemu)
+
+        if same_arch:
+            # Find the toolchain's dynamic linker in the sysroot
+            sysroot_lib = Path(qemu_sysroot) / "lib"
+            ld_candidates = list(sysroot_lib.glob("ld-linux*")) + list(sysroot_lib.glob("ld-*.so*"))
+            ld_bin = None
+            for candidate in ld_candidates:
+                if candidate.is_file() or candidate.is_symlink():
+                    resolved = candidate.resolve()
+                    if resolved.exists() and os.access(str(resolved), os.X_OK):
+                        ld_bin = resolved
+                        break
+            if not ld_bin:
+                self._log(f"[yellow]QEMU -------> SKIP (no ld-linux found in {sysroot_lib})[/yellow]")
+                return
+            # Build library path from all lib dirs in sysroot (lib + usr/lib)
+            lib_paths = []
+            for subdir in ["lib", "usr/lib"]:
+                p = Path(qemu_sysroot) / subdir
+                if p.is_dir():
+                    lib_paths.append(str(p))
+            lib_path_str = ":".join(lib_paths) if lib_paths else str(sysroot_lib)
+            cmd = [str(ld_bin), "--library-path", lib_path_str, str(bin_path), "-c", "/tmp/"]
+        else:
+            qemu_bin = f"qemu-{qemu_arch}"
+            if not _shutil.which(qemu_bin):
+                self._log(f"[yellow]QEMU -------> SKIP ({qemu_bin} not found)[/yellow]")
+                return
+            cmd = [qemu_bin, "-L", qemu_sysroot, str(bin_path), "-c", "/tmp/"]
+
         timeout = self.qemu_timeout
         expect = self.qemu_expect
 
-        self._log(f"[cyan]QEMU -------> [/cyan]testing {bin_path.name} ([dark_orange]{timeout}s timeout[/dark_orange])")
+        label = "TEST" if same_arch else "QEMU"
+        self._log(f"[cyan]{label} -------> [/cyan]testing {bin_path.name} ([dark_orange]{timeout}s timeout[/dark_orange])")
+        self._log(f"[dim]          $ {' '.join(cmd)}[/dim]")
 
         try:
             proc = subprocess.Popen(
-                [qemu_bin, "-L", qemu_sysroot, str(bin_path)],
+                cmd,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                 preexec_fn=os.setsid,
             )
@@ -494,14 +544,14 @@ class BuildEngine:
                 pass
 
             if self._cancel():
-                self._log("[yellow]QEMU -------> CANCELLED[/yellow]")
+                self._log(f"[yellow]{label} -------> CANCELLED[/yellow]")
             elif found:
-                self._log(f"[green]QEMU -------> PASS ({expect} found)[/green]")
+                self._log(f"[green]{label} -------> PASS ({expect} found)[/green]")
             else:
-                self._log(f"[red]QEMU -------> FAIL ({expect} not found within {timeout}s)[/red]")
+                self._log(f"[red]{label} -------> FAIL ({expect} not found within {timeout}s)[/red]")
 
         except Exception as e:
-            self._log(f"[red]QEMU -------> ERROR: {e}[/red]")
+            self._log(f"[red]{label} -------> ERROR: {e}[/red]")
 
     def _close_log(self, log_path: Path) -> None:
         """Show the log path, apply retention, then close the log file.
@@ -1107,7 +1157,7 @@ class BuildEngine:
             self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s{warn_str}[/green]")
 
             # Post-build: immediately after each build (before distclean of next build)
-            self._postbuild_single(bin_path, repo_dir, cross, sysroot, is_native)
+            self._postbuild_single(bin_path, repo_dir, cross, sysroot, is_native, tc_dir)
 
             return bin_path
         else:
