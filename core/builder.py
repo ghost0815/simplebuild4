@@ -627,17 +627,11 @@ class BuildEngine:
                 self._log("  No backup found — using git reset")
                 self._git_reset(repo_dir)
 
-            # Pull latest
+            # Pull latest (using RepoManager which has auth credentials)
             self._log("  Pulling latest changes...")
-            is_git = (repo_dir / ".git").exists()
-            if is_git:
-                if not self._run(["git", "pull", "--ff-only"], cwd=repo_dir):
-                    self._log("[red]  Failed to pull latest changes[/red]")
-                    return False
-            else:
-                if not self._run(["svn", "update"], cwd=repo_dir):
-                    self._log("[red]  Failed to update repository[/red]")
-                    return False
+            if not repo_mgr.update(log=self._log):
+                self._log("[red]  Failed to update repository[/red]")
+                return False
 
             # Show current state
             self._log_repo_state(repo_dir)
