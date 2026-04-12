@@ -1277,7 +1277,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         # USE_FLAGS as cmake -D variables (translated to cmake names)
         _CMAKE_FLAG_MAP = {
             "USE_SSL": "WITH_SSL",
-            "USE_LIBCRYPTO": "WITH_LIBCRYPTO",
+            "USE_LIBCRYPTO": "HAVE_LIBCRYPTO",
             "USE_LIBUSB": "HAVE_LIBUSB",
             "USE_PCSC": "HAVE_PCSC",
             "USE_LIBDVBCSA": "HAVE_LIBDVBCSA",
@@ -1309,7 +1309,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
             cmake_cmd.append(f"-DOPENSSL_CRYPTO_LIBRARY={static_libs['LIBCRYPTO_LIB']}")
         if b.static_flags.get("LIBUSB"): cmake_cmd.append("-DSTATIC_LIBUSB=1")
         if b.static_flags.get("LIBDVBCSA"): cmake_cmd.append("-DSTATIC_LIBDVBCSA=1")
-        # Note: STATIC_PCSC not supported by oscam's CMakeLists.txt
+        if b.static_flags.get("PCSC"): cmake_cmd.append("-DSTATIC_PCSC=1")
 
         # STAPI
         if stapi_lib and "=" in stapi_lib:
