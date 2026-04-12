@@ -182,11 +182,14 @@ class MainScreen(Screen):
         build_count = n_repos * n_tcs
 
         # First line: name — description (builds)
-        header = f"  [bold]{target.name}[/bold]"
+        active_deps = [d for d in target.deployment if d.enabled and d.host]
+        dep_count = len(active_deps)
+        header = f"  [bold]{target.name}"
         if target.description:
             header += f" — {target.description}"
         if build_count:
-            header += f" ({build_count} build{'s' if build_count != 1 else ''})"
+            header += f" ({build_count} {t('n_builds') if build_count != 1 else t('n_build')}, {dep_count} {t('n_deployments') if dep_count != 1 else t('n_deployment')})"
+        header += "[/bold]"
 
         def _lbl(key, count):
             return f"{t(key)} ({count}):"
@@ -242,10 +245,9 @@ class MainScreen(Screen):
         lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}{_override_hint(_tc_confdir_overrides)}")
         oscamname_str = b.use_oscamname.strip() if b.use_oscamname else ""
         lines.append(f"  {t('oscam_binary_path') + ':':<{pad}} {oscamname_str or 'data/binaries/'}{_override_hint(_tc_oscam_overrides)}")
-        # Deployment destinations
-        active_deps = [d for d in target.deployment if d.enabled and d.host]
+        # Deployment destinations (sorted by name)
         if active_deps:
-            names = ", ".join(d.name or d.host for d in active_deps)
+            names = ", ".join(sorted(d.name or d.host for d in active_deps))
             lines.append(f"  {_lbl('upload', len(active_deps)):<{pad}} {names}")
 
         info = self.query_one("#info", Static)
