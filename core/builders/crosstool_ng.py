@@ -21,6 +21,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional
 
+from rich.markup import escape as rich_escape
+
 from core.template import Template
 from core.builders import BuilderRecipe, expand_tokens
 
@@ -297,7 +299,7 @@ class CrosstoolNG:
                     continue
                 if spinner_re.match(line):
                     continue
-                self.log(line)
+                self.log(rich_escape(line))
             proc.wait()
             if proc.returncode != 0 and not ignore_failure:
                 return False

@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import AsyncIterator, Callable, Optional
 
+from rich.markup import escape as rich_escape
+
 
 # ---------------------------------------------------------------------------
 # Data models
@@ -227,7 +229,7 @@ class RepoManager:
             )
             for line in proc.stdout:
                 if log:
-                    log(line.rstrip())
+                    log(rich_escape(line.rstrip()))
             proc.wait()
             if proc.returncode == 0:
                 self._backup(log)
@@ -235,7 +237,7 @@ class RepoManager:
             return False
         except Exception as e:
             if log:
-                log(f"Clone failed: {e}")
+                log(f"Clone failed: {rich_escape(str(e))}")
             return False
 
     def _svn_effective_url(self) -> str:
@@ -302,7 +304,7 @@ class RepoManager:
             )
             for line in proc.stdout:
                 if log:
-                    log(line.rstrip())
+                    log(rich_escape(line.rstrip()))
             proc.wait()
             if proc.returncode == 0:
                 self._backup(log)
@@ -310,7 +312,7 @@ class RepoManager:
             return False
         except Exception as e:
             if log:
-                log(f"Checkout failed: {e}")
+                log(f"Checkout failed: {rich_escape(str(e))}")
             return False
 
     # -- Update -------------------------------------------------------------
@@ -707,7 +709,7 @@ class RepoManager:
 
                 if log and output:
                     for line in output.splitlines():
-                        log(f"  {line}")
+                        log(f"  {rich_escape(line)}")
 
                 # Check for hunks/failures
                 if "FAILED" in (output or ""):
@@ -730,7 +732,7 @@ class RepoManager:
                     log(f"PATCH: [red]FAILED[/red] {patch_file.name}")
                     if e.output:
                         for line in e.output.splitlines():
-                            log(f"  {line}")
+                            log(f"  {rich_escape(line)}")
 
                 # On failure, restore from backup
                 if log:

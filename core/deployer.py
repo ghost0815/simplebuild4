@@ -13,6 +13,8 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional
 
+from rich.markup import escape as rich_escape
+
 from core.target import DeploymentConfig
 
 SSH_OPTS = ["-o", "StrictHostKeyChecking=no",
@@ -108,7 +110,7 @@ class Deployer:
                 return True
             else:
                 err = result.stderr.strip().split("\n")[-1] if result.stderr else "unknown error"
-                self._log(f"  [red]Connection failed: {err}[/red]")
+                self._log(f"  [red]Connection failed: {rich_escape(err)}[/red]")
                 return False
         except subprocess.TimeoutExpired:
             self._log("  [red]Connection timeout[/red]")
@@ -146,7 +148,7 @@ class Deployer:
             result = self._ssh(info_cmd, timeout=5)
             if result.returncode == 0 and result.stdout.strip():
                 for line in result.stdout.strip().splitlines():
-                    self._log(f"  [dim]{line}[/dim]")
+                    self._log(f"  [dim]{rich_escape(line)}[/dim]")
             else:
                 self._log("  [dim](could not retrieve)[/dim]")
         except Exception:
@@ -189,11 +191,11 @@ class Deployer:
                 self._log("  [green]File exists[/green]")
                 for line in output.splitlines():
                     if line.startswith("-") or line.startswith("l"):
-                        self._log(f"  [dim]{line}[/dim]")
+                        self._log(f"  [dim]{rich_escape(line)}[/dim]")
                     elif "RUNNING" in line:
-                        self._log(f"  [green]{line}[/green]")
+                        self._log(f"  [green]{rich_escape(line)}[/green]")
                     elif "NOT RUNNING" in line:
-                        self._log(f"  [yellow]{line}[/yellow]")
+                        self._log(f"  [yellow]{rich_escape(line)}[/yellow]")
             else:
                 self._log("  [yellow]File not found (first deploy)[/yellow]")
         except Exception as e:
@@ -245,13 +247,13 @@ class Deployer:
             if result.returncode == 0:
                 if result.stdout.strip():
                     for line in result.stdout.strip().splitlines():
-                        self._log(f"  {self._mask_password(line)}")
+                        self._log(f"  {rich_escape(self._mask_password(line))}")
                 self._log("  [green]OK (exit 0)[/green]")
             else:
                 err = result.stderr.strip() or result.stdout.strip()
-                self._log(f"  [red]Failed (exit {result.returncode}): {self._mask_password(err)}[/red]")
+                self._log(f"  [red]Failed (exit {result.returncode}): {rich_escape(self._mask_password(err))}[/red]")
         except Exception as e:
-            self._log(f"  [red]Error: {self._mask_password(str(e))}[/red]")
+            self._log(f"  [red]Error: {rich_escape(self._mask_password(str(e)))}[/red]")
 
     def step_deploy(self) -> bool:
         """Step 5: Deploy/copy the binary. Returns True on success."""
@@ -295,7 +297,7 @@ class Deployer:
                 return True
             else:
                 err = result.stderr.strip() or "unknown error"
-                self._log(f"  [red]Deploy failed: {err}[/red]")
+                self._log(f"  [red]Deploy failed: {rich_escape(err)}[/red]")
                 return False
         except subprocess.TimeoutExpired:
             self._log("  [red]Deploy timeout (120s)[/red]")
@@ -322,13 +324,13 @@ class Deployer:
             if result.returncode == 0:
                 if result.stdout.strip():
                     for line in result.stdout.strip().splitlines():
-                        self._log(f"  {self._mask_password(line)}")
+                        self._log(f"  {rich_escape(self._mask_password(line))}")
                 self._log("  [green]OK (exit 0)[/green]")
             else:
                 err = result.stderr.strip() or result.stdout.strip()
-                self._log(f"  [red]Failed (exit {result.returncode}): {self._mask_password(err)}[/red]")
+                self._log(f"  [red]Failed (exit {result.returncode}): {rich_escape(self._mask_password(err))}[/red]")
         except Exception as e:
-            self._log(f"  [red]Error: {self._mask_password(str(e))}[/red]")
+            self._log(f"  [red]Error: {rich_escape(self._mask_password(str(e)))}[/red]")
 
     # -- Full run -------------------------------------------------------------
 
