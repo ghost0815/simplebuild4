@@ -8,15 +8,23 @@ VERSION = "2026.04 alpha"
 
 
 def _get_version() -> str:
-    """Build version string: 2026.04.42 alpha or 2026.04.14_non-git alpha."""
+    """Build version string: sha@branch 2026.04.337 alpha."""
     base, _, suffix = VERSION.partition(" ")
     try:
         count = subprocess.run(
             ["git", "rev-list", "--count", "HEAD"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
-        if count:
-            return f"{base}.{count} {suffix}".strip()
+        sha = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        branch = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        if count and sha:
+            return f"{sha}@{branch} {base}.{count} {suffix}".strip()
     except Exception:
         pass
     # Fallback like s3: sum of ASCII digits from version string
@@ -51,7 +59,7 @@ class S4HeaderIcon(Static):
 
 
 class S4HeaderBar(Static):
-    """Center title and right-aligned version."""
+    """Center title."""
 
     DEFAULT_CSS = """
     S4HeaderBar {
@@ -60,20 +68,36 @@ class S4HeaderBar(Static):
         background: $primary;
         color: $text;
         text-style: bold;
+        content-align: center middle;
     }
     """
 
     def render(self) -> str:
-        width = self.size.width
-        center = f"SimpleBuild4 by {DEVELOPER} - {DEDICATION} -"
-        version = f"{_get_version()} "
-        total = len(center) + len(version)
-        if width <= total + 2:
-            return f" {center} {version}"
-        padding = width - total
-        left_pad = padding // 2
-        right_pad = padding - left_pad
-        return f"{' ' * left_pad}{center}{' ' * right_pad}{version}"
+        return f"SimpleBuild4 by {DEVELOPER} \u2014 {DEDICATION} \u2014"
+
+
+class S4HeaderVersion(Static):
+    """Right-aligned clickable version — opens update modal."""
+
+    DEFAULT_CSS = """
+    S4HeaderVersion {
+        width: auto;
+        height: 1;
+        background: $primary-darken-2;
+        color: $text;
+        text-style: bold;
+        padding: 0 1;
+    }
+    S4HeaderVersion:hover {
+        background: $primary-lighten-1;
+    }
+    """
+
+    def render(self) -> str:
+        return _get_version()
+
+    def on_click(self) -> None:
+        self.app.action_s4_update_modal()
 
 
 class S4Header(Horizontal):
@@ -91,3 +115,4 @@ class S4Header(Horizontal):
     def compose(self):
         yield S4HeaderIcon()
         yield S4HeaderBar()
+        yield S4HeaderVersion()

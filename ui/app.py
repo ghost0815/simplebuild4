@@ -722,8 +722,7 @@ class S4App(App):
         self.action_s4_update()
 
     def action_s4_update(self) -> None:
-        """Self-update s4 via git pull (handles force pushes). Output to main screen RichLog."""
-        import subprocess
+        """Self-update s4 — direct update to latest (called by 'u' shortcut and startup check)."""
         from pathlib import Path
         root = Path(__file__).resolve().parent.parent
 
@@ -734,6 +733,39 @@ class S4App(App):
             return
         if dirty:
             self.notify(t("update_dirty_warning"), severity="warning", timeout=15)
+
+        # Direct update to latest
+        self._do_s4_update(root, target_sha="")
+
+    def action_s4_update_modal(self) -> None:
+        """Show commit selection modal for s4 update (called from Ctrl+P menu)."""
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+
+        busy, dirty = self._check_busy_or_dirty()
+        if busy:
+            self.notify(t("update_busy"), severity="warning", timeout=10)
+            return
+        if dirty:
+            self.notify(t("update_dirty_warning"), severity="warning", timeout=15)
+
+        if (root / ".git").exists():
+            from ui.screens.s4_update_modal import S4UpdateModal
+            self.push_screen(S4UpdateModal(root), callback=self._on_s4_update_selected)
+        else:
+            self._do_s4_update(root, target_sha="")
+
+    def _on_s4_update_selected(self, sha: str | None) -> None:
+        """Callback from S4UpdateModal — perform the actual update."""
+        if not sha:
+            return
+        from pathlib import Path
+        root = Path(__file__).resolve().parent.parent
+        self._do_s4_update(root, target_sha=sha)
+
+    def _do_s4_update(self, root, target_sha: str = "") -> None:
+        """Perform the actual s4 update. If target_sha is set, reset to that commit."""
+        import subprocess
 
         # Track success for auto-restart at the end
         updated_ok = False
@@ -768,78 +800,33 @@ class S4App(App):
             _log("")
 
             if has_git:
-                # --- Git repo: fetch + pull ---
-                _log("Fetching remote...")
-                subprocess.run(
-                    ["git", "fetch", "--prune"], cwd=str(root),
-                    capture_output=True, text=True, timeout=15,
-                )
-                branch = subprocess.run(
-                    ["git", "branch", "--show-current"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip()
-
-                ahead = int(subprocess.run(
-                    ["git", "rev-list", f"origin/{branch}..HEAD", "--count"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip() or "0")
-
-                behind = int(subprocess.run(
-                    ["git", "rev-list", f"HEAD..origin/{branch}", "--count"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip() or "0")
-
-                local_rev = subprocess.run(
-                    ["git", "rev-list", "HEAD", "--count"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip()
+                # --- Git repo: fetch + reset to target ---
                 local_commit = subprocess.run(
                     ["git", "log", "HEAD", "-n1", "--oneline"], cwd=str(root),
                     capture_output=True, text=True, timeout=5,
                 ).stdout.strip()
-
+                local_rev = subprocess.run(
+                    ["git", "rev-list", "HEAD", "--count"], cwd=str(root),
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
                 _log(f"Local:  r{local_rev} {local_commit}")
 
-                if behind == 0 and ahead == 0:
-                    _log("[green]s4 is up to date[/green]")
-                    self.notify(t("s4_up_to_date"))
-                    return
-
-                online_rev = subprocess.run(
-                    ["git", "rev-list", f"origin/{branch}", "--count"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip()
-                online_commit = subprocess.run(
-                    ["git", "log", f"origin/{branch}", "-n1", "--oneline"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip()
-                _log(f"Online: r{online_rev} {online_commit}")
+                if target_sha:
+                    target_commit = subprocess.run(
+                        ["git", "log", target_sha, "-n1", "--oneline"], cwd=str(root),
+                        capture_output=True, text=True, timeout=5,
+                    ).stdout.strip()
+                    _log(f"Target: {target_commit}")
                 _log("")
-
-                changelog = subprocess.run(
-                    ["git", "log", f"HEAD..origin/{branch}", "--oneline"], cwd=str(root),
-                    capture_output=True, text=True, timeout=5,
-                ).stdout.strip()
-                if changelog:
-                    for line in changelog.splitlines():
-                        _log(f"  [cyan]{line}[/cyan]")
-                    _log("")
 
                 subprocess.run(["git", "checkout", "."], cwd=str(root), capture_output=True, timeout=10)
                 subprocess.run(["git", "clean", "-fd"], cwd=str(root), capture_output=True, timeout=10)
 
-                if ahead > 0:
-                    _log("Resetting to remote (forced push detected)...")
-                    result = subprocess.run(
-                        ["git", "reset", f"origin/{branch}", "--hard"], cwd=str(root),
-                        capture_output=True, text=True, timeout=30,
-                    )
-                else:
-                    _log("Pulling updates...")
-                    result = subprocess.run(
-                        ["git", "pull"], cwd=str(root),
-                        capture_output=True, text=True, timeout=30,
-                    )
+                _log("Updating...")
+                result = subprocess.run(
+                    ["git", "reset", "--hard", target_sha or "origin/HEAD"], cwd=str(root),
+                    capture_output=True, text=True, timeout=30,
+                )
 
                 if result.returncode == 0:
                     new_rev = subprocess.run(
@@ -908,6 +895,7 @@ class S4App(App):
 
         # Auto-restart if update succeeded and no unsaved changes
         if updated_ok:
+            _, dirty = self._check_busy_or_dirty()
             if dirty:
                 self.notify(t("update_done_manual_restart"), severity="warning", timeout=15)
             else:

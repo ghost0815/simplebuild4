@@ -2,34 +2,55 @@
 # SimpleBuild4 launcher
 cd "$(dirname "$(readlink -f "$0")")"
 
-# --- Self-update (./s4 update) — no Python needed ---
+# --- Self-update (./s4 update [sha|branch|tag]) — no Python needed ---
 if [ "$1" == "update" ]; then
+    TARGET="$2"
     echo -e "\n  s4 self-update"
     echo -e "  ==============\n"
 
     if [ -d .git ]; then
-        # --- Git repo: fetch + pull ---
+        # --- Git repo: fetch + reset ---
         GIT_BRANCH="$(git branch --show-current)"
-        git fetch --prune 2>&1 | sed 's/^/  /'
+        git fetch --prune --tags 2>&1 | sed 's/^/  /'
 
-        ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
-        behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
         local_rev=$(git rev-list HEAD --count)
         local_commit=$(git log HEAD -n1 --oneline)
-        online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
-        online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
+        echo "  Local:  r$local_rev $local_commit"
 
-        if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
-            echo -e "  \033[1;32ms4 is up to date\033[0m"
-            echo "  Revision $local_rev: $local_commit"
+        if [ -n "$TARGET" ]; then
+            # --- Specific target: sha, branch or tag ---
+            # Verify target exists
+            if ! git rev-parse --verify "$TARGET" >/dev/null 2>&1; then
+                echo -e "  \033[1;31mTarget '$TARGET' not found\033[0m"
+                exit 1
+            fi
+            target_commit=$(git log "$TARGET" -n1 --oneline 2>/dev/null)
+            echo "  Target: $target_commit"
+            echo ""
+
+            git checkout . 2>/dev/null
+            git clean -fd 2>/dev/null
+
+            echo "  Updating to $TARGET..."
+            git reset --hard "$TARGET" 2>&1 | sed 's/^/  /'
         else
-            echo "  Local:  r$local_rev $local_commit"
+            # --- Latest: pull or reset ---
+            ahead=$(git rev-list "origin/$GIT_BRANCH..HEAD" --count 2>/dev/null || echo 0)
+            behind=$(git rev-list "HEAD..origin/$GIT_BRANCH" --count 2>/dev/null || echo 0)
+            online_rev=$(git rev-list "origin/$GIT_BRANCH" --count 2>/dev/null || echo "?")
+            online_commit=$(git log "origin/$GIT_BRANCH" -n1 --oneline 2>/dev/null || echo "?")
+
+            if [ "$behind" -eq 0 ] && [ "$ahead" -eq 0 ]; then
+                echo -e "  \033[1;32ms4 is up to date\033[0m"
+                echo "  Revision $local_rev: $local_commit"
+                exit 0
+            fi
+
             echo "  Online: r$online_rev $online_commit"
             echo ""
             git log "HEAD..origin/$GIT_BRANCH" --oneline 2>/dev/null | sed 's/^/    /'
             echo ""
 
-            # Discard any local changes
             git checkout . 2>/dev/null
             git clean -fd 2>/dev/null
 
@@ -40,11 +61,11 @@ if [ "$1" == "update" ]; then
                 echo "  Pulling updates..."
                 git pull 2>&1 | sed 's/^/  /'
             fi
-
-            new_rev=$(git rev-list HEAD --count)
-            new_commit=$(git log HEAD -n1 --oneline)
-            echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
         fi
+
+        new_rev=$(git rev-list HEAD --count)
+        new_commit=$(git log HEAD -n1 --oneline)
+        echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
     else
         # --- No git repo: clone to temp, copy files over (like s3) ---
         S4_URL="https://git.streamboard.tv/common/simplebuild4.git"
