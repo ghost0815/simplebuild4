@@ -197,13 +197,15 @@ class DeploymentCheckModal(ModalScreen[None]):
         if self._logs_dir:
             try:
                 import re
-                self._logs_dir.mkdir(parents=True, exist_ok=True)
+                from core.log_cleanup import resolve_log_dir
+                _organize = getattr(self.app.settings, "organize_logs", False)
+                _log_dir = resolve_log_dir(self._logs_dir, "deploy", _organize)
                 timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
                 deploy_names = "-".join(
                     (d.name or d.host).replace(" ", "_").replace("/", "_")
                     for d in self._deployments
                 )
-                log_path = self._logs_dir / f"{timestamp}.{self._target_name}.{deploy_names}.deployment-check.log"
+                log_path = _log_dir / f"{timestamp}.{self._target_name}.{deploy_names}.deployment-check.log"
                 plain_lines = [re.sub(r'\[/?[a-z_ #0-9]+\]', '', line) for line in log_lines]
                 log_path.write_text("\n".join(plain_lines) + "\n", encoding="utf-8")
                 log(f"Log: {log_path}")

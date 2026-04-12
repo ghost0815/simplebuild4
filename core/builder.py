@@ -50,6 +50,7 @@ class BuildEngine:
         log_max_age_days: int = 0,
         log_max_count: int = 0,
         log_max_size_mb: int = 0,
+        organize_logs: bool = False,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -81,6 +82,7 @@ class BuildEngine:
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
         self._log_file = None  # set in build()
+        self._organize_logs = organize_logs
         self._warning_count = 0  # per-build warning counter
 
     def _log_file_only(self, msg: str) -> None:
@@ -94,10 +96,11 @@ class BuildEngine:
         import re
 
         # Setup build log file
-        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(self.logs_dir, "build", self._organize_logs)
         timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
         bs = self.target.build.build_system or "make"
-        log_path = self.logs_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
+        log_path = _log_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
         self._log_file = open(log_path, "w", encoding="utf-8")
         original_log = self._log
 

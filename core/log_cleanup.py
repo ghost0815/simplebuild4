@@ -26,6 +26,19 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 
+def resolve_log_dir(logs_dir: Path, log_type: str, organize: bool = False) -> Path:
+    """Return the directory for a log file, creating it if needed.
+
+    When organize=True, returns logs_dir/<type>/ (e.g. logs/build/).
+    When organize=False, returns logs_dir/ (flat).
+    """
+    if organize and log_type:
+        d = logs_dir / log_type
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+    return logs_dir
+
+
 def _classify(name: str) -> Tuple[str, str]:
     """Return ``(kind, bucket_key)`` for a log filename."""
     if not name.endswith(".log"):
@@ -76,7 +89,8 @@ def cleanup_logs(
         return (0, 0)
 
     buckets: Dict[str, List[Path]] = {}
-    for p in logs_dir.glob("*.log"):
+    # Scan both flat logs and subdirectory logs
+    for p in logs_dir.rglob("*.log"):
         if not p.is_file():
             continue
         _, key = _classify(p.name)

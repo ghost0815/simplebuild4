@@ -87,6 +87,7 @@ def build_library(
     cancel_check: Optional[Callable[[], bool]] = None,
     log: Optional[Callable[[str], None]] = None,
     libraries_local: Optional[Path] = None,
+    organize_logs: bool = False,
 ) -> bool:
     """Build and install a library into the toolchain sysroot.
 
@@ -108,10 +109,11 @@ def build_library(
     # Setup file logging
     log_file = None
     if logs_dir:
-        logs_dir.mkdir(parents=True, exist_ok=True)
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(logs_dir, "lib", organize_logs)
         tc_name = toolchain_dir.name
         timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-        log_path = logs_dir / f"{timestamp}.{tc_name}.{lib_name}-{version}.log"
+        log_path = _log_dir / f"{timestamp}.{tc_name}.{lib_name}-{version}.log"
         log_file = open(log_path, "w", encoding="utf-8")
 
     original_log = log

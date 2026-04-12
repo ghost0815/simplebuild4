@@ -741,8 +741,9 @@ class S4App(App):
         # Setup logging: RichLog + file
         import re
         from datetime import datetime
-        self.paths.logs_dir.mkdir(parents=True, exist_ok=True)
-        log_path = self.paths.logs_dir / f"{datetime.now().strftime('%Y-%m-%d.%H-%M-%S')}.s4-update.log"
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(self.paths.logs_dir, "s4", self.settings.organize_logs)
+        log_path = _log_dir / f"{datetime.now().strftime('%Y-%m-%d.%H-%M-%S')}.s4-update.log"
         log_file = open(log_path, "w", encoding="utf-8")
 
         def _log(msg: str) -> None:

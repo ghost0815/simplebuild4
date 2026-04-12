@@ -439,3 +439,4 @@ cmd_rescan_tc_help: "Toolchain-Registry aus installierten Verzeichnissen neu auf
 tc_rescan_done: "{count} Toolchain(s) wiederhergestellt"
 tc_rescan_none: "Keine Toolchains wiederherzustellen — alle vorhanden"
 export_libs_zip: "Shared Libs nach Build in ZIP exportieren"
+organize_logs: "Log-Ablage nach Typ organisieren"

@@ -22,6 +22,7 @@ SWITCH_MAP = {
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
     "set-export-libs-zip": "export_libs_zip",
+    "set-organize-logs": "organize_logs",
     "set-qemu-test": "qemu_test",
 }
 
@@ -92,6 +93,7 @@ class SettingsScreen(Screen):
 
             # Log retention
             with Collapsible(title=t('section_logs'), collapsed=True, id="col-logs"):
+                yield _switch_row(t("organize_logs"), s.organize_logs, "set-organize-logs")
                 yield Horizontal(
                     Static(f" {t('log_max_age_days')}", classes="s-label"),
                     Input(value=str(s.log_max_age_days), id="set-log-max-age", type="integer"),

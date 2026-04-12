@@ -439,3 +439,4 @@ cmd_rescan_tc_help: "Ricostruisci il registro delle toolchain dalle directory in
 tc_rescan_done: "{count} toolchain recuperate"
 tc_rescan_none: "Nessuna toolchain da recuperare — tutte presenti"
 export_libs_zip: "Esporta librerie condivise in ZIP dopo la build"
+organize_logs: "Organizza posizione log per tipo"

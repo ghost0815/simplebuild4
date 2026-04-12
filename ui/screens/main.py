@@ -412,6 +412,7 @@ class MainScreen(Screen):
                     log_max_age_days=self.app.settings.log_max_age_days,
                     log_max_count=self.app.settings.log_max_count,
                     log_max_size_mb=self.app.settings.log_max_size_mb,
+                    organize_logs=self.app.settings.organize_logs,
                     log=log,
                     cancel_check=cancel_check,
                 )

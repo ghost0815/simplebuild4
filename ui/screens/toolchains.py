@@ -1674,6 +1674,7 @@ class ToolchainsScreen(Screen):
                         native=tc.native,
                         cancel_check=cancel_check,
                         log=self._log,
+                        organize_logs=self.app.settings.organize_logs,
                     )
                     if success:
                         built_libs.add(lib_name)
@@ -2720,8 +2721,9 @@ class ToolchainsScreen(Screen):
         self._update_f9_state()
 
         from datetime import datetime
-        log_path = self.app.paths.logs_dir / f"{datetime.now().strftime('%Y-%m-%d.%H-%M-%S')}.{tpl.name}.selfbuild.log"
-        self.app.paths.logs_dir.mkdir(parents=True, exist_ok=True)
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(self.app.paths.logs_dir, "selfbuild", self.app.settings.organize_logs)
+        log_path = _log_dir / f"{datetime.now().strftime('%Y-%m-%d.%H-%M-%S')}.{tpl.name}.selfbuild.log"
         log_file = open(log_path, "w", encoding="utf-8")
 
         def blog(msg: str) -> None:
@@ -2889,10 +2891,10 @@ class ToolchainsScreen(Screen):
             from rich.markup import escape as rich_escape
 
             # Setup log file
-            logs_dir = self.app.paths.logs_dir
-            logs_dir.mkdir(parents=True, exist_ok=True)
+            from core.log_cleanup import resolve_log_dir
+            _log_dir = resolve_log_dir(self.app.paths.logs_dir, "backup", self.app.settings.organize_logs)
             timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-            log_path = logs_dir / f"{timestamp}.{tc.name}.backup.log"
+            log_path = _log_dir / f"{timestamp}.{tc.name}.backup.log"
             log_file = open(log_path, "w", encoding="utf-8")
 
             def blog(msg):
