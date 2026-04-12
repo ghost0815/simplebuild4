@@ -3577,8 +3577,10 @@ class ToolchainsScreen(Screen):
             log(fmt_fail("Linux", "version.h not found"))
 
         # C-Library detection (like s3: ldd --version for native, file search for cross)
+        import re as _re_libc
         libc_type = ""
         libc_ver = ""
+        libc_so = None
         if tc.native:
             try:
                 ldd_out = subprocess.check_output(
@@ -3589,41 +3591,74 @@ class ToolchainsScreen(Screen):
                 elif "glibc" in ldd_out or "gnu" in ldd_out:
                     libc_type = "glibc"
                 # Extract version number
-                import re
-                ver_match = re.search(r'(\d+\.\d+)', ldd_out)
+                ver_match = _re_libc.search(r'(\d+\.\d+)', ldd_out)
                 if ver_match:
                     libc_ver = ver_match.group(1)
             except Exception:
                 pass
         else:
-            lib_search = [sysroot_path / "lib", sysroot_path / "usr" / "lib",
-                          sysroot_path / "lib64", sysroot_path / "usr" / "lib64"]
+            # Search entire toolchain dir for libc (like s3: find . -name "libc.so.?" ...)
+            install_dir = self.app.paths.toolchains_dir / tc.name
             libc_so = None
-            for candidate in ["libc.so.6", "libc.so", "libc.so.0"]:
-                for lib_dir in lib_search:
-                    p = lib_dir / candidate
-                    if p.exists():
-                        libc_so = p
-                        break
-                if libc_so:
+            for pattern in ["libc.so.6", "libc.so.0", "libc-*.so", "libuClibc-*.so"]:
+                matches = [p for p in install_dir.rglob(pattern)
+                           if p.is_file() and "x86_64" not in str(p) and ".debug" not in str(p)]
+                if matches:
+                    libc_so = matches[0]
                     break
             if libc_so:
                 resolved = str(libc_so.resolve()) if libc_so.is_symlink() else str(libc_so)
                 if "musl" in resolved:
                     libc_type = "musl"
-                elif "uclibc" in resolved:
+                    # musl: strings libc.so | grep version pattern
+                    try:
+                        out = subprocess.check_output(
+                            ["strings", str(libc_so)], text=True, stderr=subprocess.DEVNULL, timeout=10,
+                        )
+                        for line in out.splitlines():
+                            if line.startswith("musl"):
+                                libc_type = "musl"
+                            ver_m = _re_libc.search(r'^([0-1]\.[0-9]\.[0-9][0-9]*)$', line)
+                            if ver_m:
+                                libc_ver = ver_m.group(1)
+                                break
+                    except Exception:
+                        pass
+                elif "uclibc" in resolved.lower():
                     libc_type = "uclibc"
+                    # uclibc: version from filename (libuClibc-0.9.33.so)
+                    try:
+                        name = libc_so.resolve().name
+                        ver_match = _re_libc.search(r'(\d+\.\d+\.\d+)', name)
+                        if ver_match:
+                            libc_ver = ver_match.group(1)
+                    except Exception:
+                        pass
                 else:
                     libc_type = "glibc"
-                try:
-                    name = libc_so.resolve().name
-                    ver_match = re.search(r'(\d+\.\d+)', name)
-                    if ver_match:
-                        libc_ver = ver_match.group(1)
-                except Exception:
-                    pass
+                    # glibc: strings libc.so | grep GLIBC_ → highest version (like s3)
+                    try:
+                        out = subprocess.check_output(
+                            ["strings", str(libc_so)], text=True, stderr=subprocess.DEVNULL, timeout=10,
+                        )
+                        glibc_versions = _re_libc.findall(r'GLIBC_(\d+\.\d+(?:\.\d+)?)', out)
+                        if glibc_versions:
+                            libc_ver = sorted(glibc_versions, key=lambda v: [int(x) for x in v.split(".")], reverse=True)[0]
+                    except Exception:
+                        pass
+                    # Fallback: version from resolved filename (e.g. libc-2.25.so)
+                    if not libc_ver:
+                        try:
+                            name = libc_so.resolve().name
+                            ver_match = _re_libc.search(r'(\d+\.\d+)', name)
+                            if ver_match:
+                                libc_ver = ver_match.group(1)
+                        except Exception:
+                            pass
         if libc_type:
-            log(fmt_ok("C-Library", libc_type, libc_ver))
+            libc_file = libc_so.resolve().name if libc_so else libc_type
+            libc_extra = f"{libc_ver}  ({libc_type})" if libc_ver else f"({libc_type})"
+            log(fmt_ok("C-Library", libc_file, libc_extra))
         else:
             log(fmt_fail("C-Library", "not found"))
 
