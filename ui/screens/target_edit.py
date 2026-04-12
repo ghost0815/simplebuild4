@@ -400,8 +400,19 @@ class TargetEditScreen(Screen):
                             return s
 
                         _tc_compress_sw = Switch(value=tc_compress_on, id=f"tc-compress-{sid}")
-                        import re as _re
-                        _tc_compress_sw.tooltip = _re.sub(r'\[/?[a-z_ ]+\]', '', self._upx_info).strip() if self._upx_path else "upx not found"
+                        # Tooltip: show version of the configured UPX binary
+                        _tc_upx_tooltip = ""
+                        _tc_upx_check = tc_upx or self._upx_path
+                        if _tc_upx_check:
+                            try:
+                                import subprocess as _sp
+                                _ver = _sp.check_output([_tc_upx_check, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5).splitlines()[0]
+                                _tc_upx_tooltip = f"{_tc_upx_check} — {_ver}"
+                            except Exception:
+                                _tc_upx_tooltip = f"{_tc_upx_check}"
+                        else:
+                            _tc_upx_tooltip = "upx not found"
+                        _tc_compress_sw.tooltip = _tc_upx_tooltip
                         if tc_compress_on:
                             _tc_upx_inp = Input(value=tc_upx, placeholder=t("ph_system_default"), id=f"tc-upx-{sid}")
                             _tc_upx_inp.styles.width = "1fr"
@@ -1484,6 +1495,24 @@ class TargetEditScreen(Screen):
             iid = event.input.id or ""
         except Exception:
             return
+        # Update UPX switch tooltip when UPX binary path changes
+        if iid.startswith("tc-upx-"):
+            sid = iid.split("-", 2)[2]
+            upx_path = event.input.value.strip()
+            try:
+                sw = self.query_one(f"#tc-compress-{sid}", Switch)
+                if upx_path:
+                    try:
+                        import subprocess as _sp
+                        _ver = _sp.check_output([upx_path, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5).splitlines()[0]
+                        sw.tooltip = f"{upx_path} — {_ver}"
+                    except Exception:
+                        sw.tooltip = f"{upx_path} — not found"
+                else:
+                    import re as _re
+                    sw.tooltip = _re.sub(r'\[/?[a-z_ ]+\]', '', self._upx_info).strip() if self._upx_path else "upx not found"
+            except Exception:
+                pass
         _tc_input_prefixes = ("tc-cc-", "tc-cf-", "tc-ld-", "tc-mv-", "tc-upx-", "tc-complevel-", "tc-oscampath-", "tc-confdir-")
         if any(iid.startswith(p) for p in _tc_input_prefixes):
             sid = iid.split("-", 2)[2]
