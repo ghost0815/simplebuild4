@@ -214,6 +214,16 @@ class MainScreen(Screen):
             lines.append(f"  {_lbl('libraries', 0):<{pad}} no integrated libraries")
         if hw_flags:
             lines.append(self._wrap_values(f"  {_lbl('hardware', len(hw_flags)):<{pad}} ", hw_flags))
+        # Collect per-TC overrides for compress/confdir/oscam_path
+        _tc_compress_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'use_compress') and tc.use_compress]
+        _tc_confdir_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'confdir') and tc.confdir]
+        _tc_oscam_overrides = [tc.name for tc in target.toolchains if hasattr(tc, 'oscam_path') and tc.oscam_path]
+
+        def _override_hint(tc_list):
+            if tc_list:
+                return f"  [dim]({t('overridden_by')} {', '.join(tc_list)})[/dim]"
+            return ""
+
         if b.use_compress:
             import shutil as _shutil
             import subprocess as _sp
@@ -227,11 +237,11 @@ class MainScreen(Screen):
                     upx_info = f"{upx_path} — {upx_ver}"
                 except Exception:
                     pass
-            lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_info}[/dim]")
+            lines.append(f"  {t('compress') + ':':<{pad}} USE_COMPRESS ({b.compress_level})  [dim]{upx_info}[/dim]{_override_hint(_tc_compress_overrides)}")
         confdir_str = b.confdir.strip() if b.confdir else ""
-        lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}")
+        lines.append(f"  {t('config_dir') + ':':<{pad}} {confdir_str or '-'}{_override_hint(_tc_confdir_overrides)}")
         oscamname_str = b.use_oscamname.strip() if b.use_oscamname else ""
-        lines.append(f"  {t('oscam_binary_path') + ':':<{pad}} {oscamname_str or 'data/binaries/'}")
+        lines.append(f"  {t('oscam_binary_path') + ':':<{pad}} {oscamname_str or 'data/binaries/'}{_override_hint(_tc_oscam_overrides)}")
         # Deployment destinations
         active_deps = [d for d in target.deployment if d.enabled and d.host]
         if active_deps:
