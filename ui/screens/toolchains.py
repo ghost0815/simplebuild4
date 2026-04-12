@@ -1260,30 +1260,33 @@ class ToolchainsScreen(Screen):
 
                 options: list[tuple[str, str]] = []
 
+                # Remove is only available for locally built libs (not system-provided)
+                _is_local_lib = lib.pc_file and lib.pc_file != "system"
+
                 if lib.found and lib.up_to_date:
                     options.append((t("lib_skip_uptodate"), "skip"))
                     options.append((f"{t('lib_reinstall')} {lib.version}", f"reinstall:{lib.version}"))
-                    # Remove option — only if no installed libs depend on this one
-                    from core.toolchain import check_remove_allowed
-                    dependents = check_remove_allowed(
-                        lib.name, libs,
-                        self.app.paths.defaults_dir / "libraries.yaml",
-                        self.app.paths.libraries_local,
-                    )
-                    if not dependents:
-                        options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
+                    if _is_local_lib:
+                        from core.toolchain import check_remove_allowed
+                        dependents = check_remove_allowed(
+                            lib.name, libs,
+                            self.app.paths.defaults_dir / "libraries.yaml",
+                            self.app.paths.libraries_local,
+                        )
+                        if not dependents:
+                            options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
                 elif lib.found and lib.update_version:
                     options.append((t("lib_skip"), "skip"))
                     options.append((f"→ {lib.update_version} ({t('lib_recommended')})", f"update:{lib.update_version}"))
-                    # Remove option
-                    from core.toolchain import check_remove_allowed
-                    dependents = check_remove_allowed(
-                        lib.name, libs,
-                        self.app.paths.defaults_dir / "libraries.yaml",
-                        self.app.paths.libraries_local,
-                    )
-                    if not dependents:
-                        options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
+                    if _is_local_lib:
+                        from core.toolchain import check_remove_allowed
+                        dependents = check_remove_allowed(
+                            lib.name, libs,
+                            self.app.paths.defaults_dir / "libraries.yaml",
+                            self.app.paths.libraries_local,
+                        )
+                        if not dependents:
+                            options.append((f"{t('lib_remove')} {lib.version}", f"remove:{lib.version}"))
                 elif not lib.found and lib.update_version:
                     options.append((t("lib_skip"), "skip"))
                     options.append((f"{t('lib_install')} {lib.update_version} ({t('lib_recommended')})", f"install:{lib.update_version}"))
