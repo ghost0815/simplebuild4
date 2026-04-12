@@ -3746,6 +3746,45 @@ class ToolchainsScreen(Screen):
             log(f"\n[bold]Library config[/bold]")
             log(f"  [yellow]No pkgconfig directories found[/yellow]")
 
+        # --- Local library builds (data/toolchains/native/) ---
+        if tc.native:
+            local_pc_dirs = sorted(set(install_dir.glob("**/pkgconfig")))
+            for local_pkg_dir in local_pc_dirs:
+                try:
+                    rel_pkg = local_pkg_dir.resolve().relative_to(install_dir.resolve())
+                except ValueError:
+                    rel_pkg = local_pkg_dir
+                local_pcs = sorted(local_pkg_dir.glob("*.pc"))
+                if not local_pcs:
+                    continue
+                log(f"\n[bold]Library config ----> {rel_pkg}  (local build)[/bold]")
+                log(f"  {'=' * 40}")
+                for pc_file in local_pcs:
+                    try:
+                        content = pc_file.read_text(encoding="utf-8", errors="replace")
+                        pc_name = ""
+                        pc_ver = ""
+                        for line in content.splitlines():
+                            if line.startswith("Name:"):
+                                pc_name = line.split(":", 1)[1].strip()
+                            elif line.startswith("Version:"):
+                                pc_ver = line.split(":", 1)[1].strip()
+                        lib_dir = pc_file.parent.parent
+                        base = pc_file.stem
+                        lib_base = base.replace("openssl", "libcrypto").replace("zlib", "libz")
+                        has_static = (lib_dir / f"{lib_base}.a").exists()
+                        has_dynamic = bool(list(lib_dir.glob(f"{lib_base}.so*")))
+                        link_type = ""
+                        if has_static and has_dynamic:
+                            link_type = "static+dynamic"
+                        elif has_static:
+                            link_type = "static"
+                        elif has_dynamic:
+                            link_type = "dynamic"
+                        log(fmt_ok(f"{pc_file.name:<20s}", f"{pc_name:<20s} {pc_ver}", link_type))
+                    except Exception:
+                        log(fmt_fail(pc_file.name, "unreadable"))
+
         # --- Relocate check (OE-SDK) ---
         nss = install_dir / "sysroots" / "x86_64-oesdk-linux"
         if nss.is_dir():
