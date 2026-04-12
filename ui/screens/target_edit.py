@@ -545,7 +545,8 @@ class TargetEditScreen(Screen):
                 stale_static_set = set(stale_static)
                 all_lib_flags = sorted((set(lib_flags) | stale_lib_set) - {"MBEDTLS", "OPENSSL"})
 
-                with Collapsible(title=t("section_library_flags"), collapsed=True, id="col-lib-flags"):
+                _lib_active = sum(1 for f in (set(lib_flags) | {"MBEDTLS", "OPENSSL"}) if b.use_flags.get(f, False))
+                with Collapsible(title=f"{t('section_library_flags')} ({_lib_active} {t('te_selected')})", collapsed=True, id="col-lib-flags"):
                     # MBEDTLS / OPENSSL pair — always at top, normal or stale.
                     # They always appear together as a pair.
                     stale_dual = "MBEDTLS" in stale_lib_set or "OPENSSL" in stale_lib_set
@@ -573,7 +574,8 @@ class TargetEditScreen(Screen):
                             ]
                         yield Horizontal(*widgets, classes="flag-row")
 
-                with Collapsible(title=t("section_hardware_flags"), collapsed=True, id="col-hw-flags"):
+                _hw_active = sum(1 for f in hw_flags if b.use_flags.get(f, False))
+                with Collapsible(title=f"{t('section_hardware_flags')} ({_hw_active} {t('te_selected')})", collapsed=True, id="col-hw-flags"):
                     if "STAPI" in hw_flags or "STAPI5" in hw_flags:
                         _stapi_widgets = []
                         if "STAPI" in hw_flags:
@@ -1039,6 +1041,10 @@ class TargetEditScreen(Screen):
             except Exception:
                 pass
 
+        # Update Library/Hardware Flags collapsible titles with active count
+        if sid.startswith("f-use-") or sid.startswith("f-static-"):
+            self._update_flag_counts()
+
         # STAPI toggle — refresh to show/hide stapi_lib field
         if sid in ("f-use-STAPI", "f-use-STAPI5"):
             self._refresh_screen(self._collect(), "source", sid)
@@ -1482,6 +1488,30 @@ class TargetEditScreen(Screen):
         if any(iid.startswith(p) for p in _tc_input_prefixes):
             sid = iid.split("-", 2)[2]
             self._update_tc_bold(sid)
+
+    def _update_flag_counts(self) -> None:
+        """Update Library/Hardware Flags collapsible titles with active counts."""
+        try:
+            lib_count = 0
+            hw_count = 0
+            for sw in self.query("Switch"):
+                sid = sw.id or ""
+                if sid.startswith("f-use-") and sw.value:
+                    flag = sid[6:]  # strip "f-use-"
+                    if flag in self._HARDWARE_FLAGS:
+                        hw_count += 1
+                    elif flag != "compress":
+                        lib_count += 1
+            try:
+                self.query_one("#col-lib-flags", Collapsible).title = f"{t('section_library_flags')} ({lib_count} {t('te_selected')})"
+            except Exception:
+                pass
+            try:
+                self.query_one("#col-hw-flags", Collapsible).title = f"{t('section_hardware_flags')} ({hw_count} {t('te_selected')})"
+            except Exception:
+                pass
+        except Exception:
+            pass
 
     def _update_tc_bold(self, sid: str) -> None:
         """Update toolchain label bold/normal based on whether any field has custom value."""
