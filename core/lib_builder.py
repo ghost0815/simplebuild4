@@ -310,14 +310,14 @@ def _do_build(
         if filename.endswith(".zip"):
             subprocess.run(
                 ["unzip", "-o", "-d", str(build_dir), str(filepath)],
-                capture_output=True, text=True, timeout=120, check=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
             )
             # Move contents up if extracted into subdirectory
             _flatten_single_subdir(build_dir)
         else:
             subprocess.run(
                 ["tar", "-xf", str(filepath), "--strip-components=1", "-C", str(build_dir)],
-                capture_output=True, text=True, timeout=120, check=True,
+                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
             )
     except subprocess.CalledProcessError as e:
         if log:
@@ -349,7 +349,7 @@ def _do_build(
             # Test if gcc can find system headers — if not, it needs --sysroot
             test_result = subprocess.run(
                 [gcc_path, "-c", "-x", "c", "-o", "/dev/null", "-"],
-                input="#include <stdio.h>\nint main(){return 0;}\n", text=True,
+                input="#include <stdio.h>\nint main(){return 0;}\n", text=True, encoding="utf-8", errors="replace",
                 capture_output=True, timeout=10, env=env,
             )
             if test_result.returncode != 0:
@@ -491,7 +491,7 @@ def _get_target(toolchain_dir: Path, prefix: str) -> str:
                 env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
                 triple = subprocess.check_output(
                     [str(gcc_path), "-dumpmachine"],
-                    text=True, stderr=subprocess.DEVNULL, timeout=5, env=env,
+                    text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL, timeout=5, env=env,
                 ).strip()
                 if triple:
                     return triple
@@ -501,7 +501,7 @@ def _get_target(toolchain_dir: Path, prefix: str) -> str:
     try:
         triple = subprocess.check_output(
             [gcc, "-dumpmachine"],
-            text=True, stderr=subprocess.DEVNULL, timeout=5,
+            text=True, encoding="utf-8", errors="replace", stderr=subprocess.DEVNULL, timeout=5,
         ).strip()
         if triple:
             return triple
@@ -539,7 +539,7 @@ def _download(url: str, filepath: Path, log: Optional[Callable[[str], None]] = N
     try:
         result = subprocess.run(
             ["wget", "-q", "-O", str(filepath), url],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
         )
         if result.returncode == 0 and filepath.exists() and filepath.stat().st_size > 0:
             return True
@@ -549,7 +549,7 @@ def _download(url: str, filepath: Path, log: Optional[Callable[[str], None]] = N
     try:
         result = subprocess.run(
             ["curl", "-sL", "-o", str(filepath), url],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
         )
         if result.returncode == 0 and filepath.exists() and filepath.stat().st_size > 0:
             return True
@@ -571,7 +571,8 @@ def _run_shell(
         proc = subprocess.Popen(
             ["bash", "-c", cmd],
             cwd=cwd, env=env,
-            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace",
         )
         from rich.markup import escape as rich_escape
         for line in proc.stdout:
