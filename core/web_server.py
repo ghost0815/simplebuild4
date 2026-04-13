@@ -123,6 +123,7 @@ class S4Server(Server):
                 _COOKIE_NAME, token,
                 max_age=_SESSION_MAX_AGE,
                 httponly=True,
+                secure=bool(self._ssl_certfile),
                 samesite="Lax",
             )
             return response
@@ -158,11 +159,15 @@ class S4Server(Server):
     async def _make_app(self) -> web.Application:
         """Override to inject auth middleware and login routes."""
         app = await super()._make_app()
-        if self._auth_user and self._auth_password:
+        has_auth = bool(self._auth_user and self._auth_password)
+        if has_auth:
             app.router.add_get("/login", self._handle_login_get)
             app.router.add_post("/login", self._handle_login_post)
             app.router.add_get("/logout", self._handle_logout)
             app.middlewares.insert(0, self._auth_middleware)
+        # Make has_auth available to all jinja2 templates
+        env = aiohttp_jinja2.get_env(app)
+        env.globals["has_auth"] = has_auth
         return app
 
     def serve(self, debug: bool = False) -> None:

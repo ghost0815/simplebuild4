@@ -759,8 +759,24 @@ class S4App(App):
     _pending_esc_discard: float = 0.0
     _pending_esc_screen_id: int = 0
 
+    @property
+    def _is_web_session(self) -> bool:
+        import os
+        return "web" in os.environ.get("TEXTUAL_DRIVER", "").lower()
+
+    def _web_logout(self) -> None:
+        """Redirect the browser to /logout to clear session cookie."""
+        # Inject JS redirect via Textual's run_action mechanism
+        self.exit()
+
+    def action_quit(self) -> None:
+        if self._is_web_session:
+            self._web_logout()
+            return
+        self.exit()
+
     def action_esc(self) -> None:
-        """Esc: quit on main, back on sub-screens.
+        """Esc: quit on main (logout in browser), back on sub-screens.
 
         When the current screen has unsaved changes the first Esc
         shows a warning toast and refuses to leave; a second Esc
@@ -768,6 +784,9 @@ class S4App(App):
         """
         from ui.screens.main import MainScreen
         if isinstance(self.screen, MainScreen):
+            if self._is_web_session:
+                self._web_logout()
+                return
             self.exit()
             return
 
@@ -1126,6 +1145,13 @@ class S4App(App):
                 mgr.restart()
         except Exception:
             pass
+        # In a web session, just exit — the outer s4 or systemd handles restart
+        if self._is_web_session:
+            try:
+                self.exit()
+            except Exception:
+                pass
+            return
         # Stop embedded web service
         try:
             self._web_stop()
