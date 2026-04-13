@@ -190,46 +190,15 @@ class DependencyChecker:
 
         full_cmd = " && ".join(cmds)
 
-        # Determine privilege escalation
-        if password:
-            escaped = full_cmd.replace("'", "'\\''")
-            actual_cmd = f"echo '{password}' | su -c '{escaped}'"
-            display_cmd = f"echo '***' | su -c '{escaped}'"
-        elif shutil.which("sudo"):
-            actual_cmd = f"sudo sh -c '{full_cmd}'"
-            display_cmd = actual_cmd
-        else:
-            self._log("[red]No sudo available and no password provided[/red]")
-            return False
-
         self._log(f"[bold]Installing packages...[/bold]")
-        self._log(f"[dim]$ {display_cmd}[/dim]")
 
-        try:
-            proc = subprocess.Popen(
-                actual_cmd, shell=True,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            )
-            for line in proc.stdout:
-                stripped = line.rstrip()
-                if stripped:
-                    # Mask password in output
-                    if password:
-                        stripped = stripped.replace(password, "***")
-                    self._log(f"  {stripped}")
-            proc.wait()
-            if proc.returncode == 0:
-                self._log("[green]Installation complete[/green]")
-                return True
-            else:
-                self._log(f"[red]Installation failed (exit {proc.returncode})[/red]")
-                return False
-        except Exception as e:
-            msg = str(e)
-            if password:
-                msg = msg.replace(password, "***")
-            self._log(f"[red]Error: {msg}[/red]")
-            return False
+        from core.privilege import run_privileged
+        ok = run_privileged(full_cmd, password, self._log)
+        if ok:
+            self._log("[green]Installation complete[/green]")
+        else:
+            self._log("[red]Installation failed[/red]")
+        return ok
 
     def _resolve_package(self, dep: dict) -> str:
         """Resolve the package name for the current distro."""
