@@ -5,7 +5,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Static, Select, Switch, Input, Collapsible
+from textual.widgets import Static, Select, Switch, Input, Collapsible, Button
 from ui.icons import icon
 from textual.containers import Horizontal, VerticalScroll
 
@@ -37,6 +37,7 @@ INPUT_MAP = {
     "set-qemu-expect": "qemu_expect",
     "set-web-host": "web_host",
     "set-web-port": "web_port",
+    "set-web-dns": "web_dns_name",
     "set-ctng-dir": "ctng_dir",
     "set-log-max-age": "log_max_age_days",
     "set-log-max-count": "log_max_count",
@@ -166,17 +167,37 @@ class SettingsScreen(Screen):
 
             # Web Service
             with Collapsible(title=t('section_webservice'), collapsed=True, id="col-webservice"):
-                yield _switch_row(t("enable_webservice"), s.web_enabled, "set-web-enabled")
+                _port = Input(value=str(s.web_port), id="set-web-port", type="integer", max_length=5)
+                _port.styles.width = 12
+                _port.styles.min_width = 12
+                _port.styles.max_width = 12
+                # Toggle + Status (full width, no grid)
                 yield Horizontal(
-                    Static(f" {t('web_host')}", classes="s-label"),
-                    Input(value=s.web_host, id="set-web-host"),
-                    classes="s-row",
+                    Static(f" {t('enable_webservice')}", classes="s-label"),
+                    Switch(value=s.web_enabled, id="set-web-enabled"),
+                    Static("", id="web-svc-status", classes="web-svc-status-label"),
+                    classes="s-toggle", id="web-toggle-row",
                 )
-                yield Horizontal(
-                    Static(f" {t('web_port')}", classes="s-label"),
-                    Input(value=str(s.web_port), id="set-web-port", type="integer"),
-                    classes="s-row",
-                )
+                # Host/Port + DNS in 2-column grid
+                with Grid(id="web-svc-grid"):
+                    yield Horizontal(
+                        Static(f" {t('web_host')} / {t('web_port')}", classes="s-label"),
+                        Input(value=s.web_host, placeholder="e.g. 0.0.0.0", id="set-web-host"),
+                        _port,
+                        classes="s-row",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('web_dns_name')}", classes="s-label"),
+                        Input(value=s.web_dns_name, placeholder=t("web_dns_placeholder"), id="set-web-dns"),
+                        classes="s-row",
+                    )
+                # systemd service buttons
+                with Horizontal(id="web-svc-buttons"):
+                    yield Static("", id="web-btn-spacer")
+                    yield Button(t("web_start"), id="btn-web-start", variant="success", disabled=True)
+                    yield Button(t("web_stop"), id="btn-web-stop", variant="warning", disabled=True)
+                    yield Static("", id="web-btn-gap")
+                    yield Button(t("web_setup"), id="btn-web-setup", variant="primary")
 
             # Toolchain Builders
             with Collapsible(title=t('section_builders'), collapsed=True, id="col-builders"):
@@ -197,9 +218,28 @@ class SettingsScreen(Screen):
 
     def on_mount(self) -> None:
         self.query_one("#set-language", Select).focus()
+        self._refresh_web_svc_status()
 
     def on_switch_changed(self, event) -> None:
         sid = event.switch.id or ""
+        if sid == "set-web-enabled":
+            mgr = self._get_web_svc_mgr()
+            svc_running = mgr.systemd_available() and mgr.is_installed() and mgr.is_running()
+            if not svc_running:
+                # Save host/port from current inputs before starting
+                s = self.app.settings
+                s.web_enabled = event.value
+                try:
+                    s.web_host = self.query_one("#set-web-host", Input).value
+                    s.web_port = int(self.query_one("#set-web-port", Input).value)
+                except (ValueError, Exception):
+                    pass
+                s.save(self.app.settings_path)
+                if event.value:
+                    self.app._web_start()
+                else:
+                    self.app._web_stop()
+            self._refresh_web_svc_status()
         if sid == "set-qemu-test" and event.value:
             # Check if any qemu binary is installed
             import shutil
@@ -238,6 +278,75 @@ class SettingsScreen(Screen):
 
     _language_changed: bool = False
 
+    def _get_web_svc_mgr(self):
+        from core.web_service import WebServiceManager
+        return WebServiceManager(self.app.paths.root)
+
+    def _refresh_web_svc_status(self) -> None:
+        """Update service status label and button states."""
+        mgr = self._get_web_svc_mgr()
+        available = mgr.systemd_available()
+        installed = mgr.is_installed() if available else False
+        running = mgr.is_running() if installed else False
+
+        try:
+            toggle = self.query_one("#set-web-enabled", Switch)
+            toggle_on = toggle.value
+
+            # Service running → lock the embedded toggle off
+            if running and toggle_on:
+                toggle.value = False
+                toggle_on = False
+            toggle.disabled = running
+
+            # Build status text
+            embedded_running = (
+                self.app._web_proc is not None
+                and self.app._web_proc.poll() is None
+            )
+            if running:
+                status = t(mgr.status_text())
+                status += f"  [dim]({mgr.service})[/dim]"
+            elif embedded_running:
+                port = self.app.settings.web_port or 8080
+                status = f"[green]Embedded running on :{port}[/green]"
+            else:
+                status = t(mgr.status_text())
+                if installed:
+                    status += f"  [dim]({mgr.service})[/dim]"
+            self.query_one("#web-svc-status", Static).update(
+                f" {status}")
+            # Start/Restart combined button
+            start_btn = self.query_one("#btn-web-start", Button)
+            start_btn.label = t("web_restart") if running else t("web_start")
+            start_btn.disabled = (not installed or toggle_on)
+            self.query_one("#btn-web-stop", Button).disabled = (
+                not installed or not running)
+        except Exception:
+            pass
+
+    def _web_svc_action(self, action: str) -> None:
+        """Run a service action in a background thread."""
+        import threading
+        threading.Thread(
+            target=self._do_web_svc_action, args=(action,), daemon=True,
+        ).start()
+
+    def _do_web_svc_action(self, action: str) -> None:
+        mgr = self._get_web_svc_mgr()
+
+        def _log(msg):
+            self.app.call_from_thread(self.notify, msg, timeout=5)
+
+        if action == "start":
+            mgr.start(log=_log)
+        elif action == "stop":
+            mgr.stop(log=_log)
+        elif action == "restart":
+            mgr.restart(log=_log)
+
+        self.app.call_from_thread(self._refresh_web_svc_status)
+
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-cert-browse":
             self._open_file_picker("set-sign-cert", t("signing_certificate"))
@@ -245,6 +354,17 @@ class SettingsScreen(Screen):
             self._open_file_picker("set-sign-key", t("private_key"))
         elif event.button.id == "btn-ctng-browse":
             self._open_dir_picker("set-ctng-dir", t("ctng_dir"))
+        elif event.button.id == "btn-web-setup":
+            from ui.screens.web_service_modal import WebServiceSetupModal
+            self.app.push_screen(
+                WebServiceSetupModal(),
+                callback=lambda _: self._refresh_web_svc_status(),
+            )
+        elif event.button.id == "btn-web-start":
+            mgr = self._get_web_svc_mgr()
+            self._web_svc_action("restart" if mgr.is_running() else "start")
+        elif event.button.id == "btn-web-stop":
+            self._web_svc_action("stop")
 
     def _open_file_picker(self, target_input_id: str, label: str) -> None:
         """Open file picker dialog and write the result into the given input."""

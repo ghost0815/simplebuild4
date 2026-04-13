@@ -161,7 +161,8 @@ class S4App(App):
 
         # public_url must be a routable address for the browser;
         # 0.0.0.0 is only valid as a bind address, not as a URL.
-        public_host = "localhost" if host == "0.0.0.0" else host
+        dns = self.settings.web_dns_name
+        public_host = dns or ("localhost" if host == "0.0.0.0" else host)
         app_py = str(self.paths.root / "app.py")
         templates = str(self.paths.root / "ui" / "web" / "templates")
 
@@ -192,7 +193,6 @@ class S4App(App):
         # Background thread to read output and log it
         import threading
         threading.Thread(target=self._web_log_reader, daemon=True).start()
-        self._web_log(f"[bold]Web service started on {host}:{port}[/bold]")
         self.notify(f"Web service started on {host}:{port}")
 
     def _web_log(self, msg: str) -> None:
@@ -205,11 +205,14 @@ class S4App(App):
         try:
             from ui.screens.main import MainScreen
             from textual.widgets import RichLog
-            screen = self.screen
-            if isinstance(screen, MainScreen):
-                self.call_from_thread(
-                    screen.query_one("#output", RichLog).write, msg,
-                )
+            # Find MainScreen even if it's not the active screen
+            for screen in self.screen_stack:
+                if isinstance(screen, MainScreen):
+                    try:
+                        screen.query_one("#output", RichLog).write(msg)
+                    except Exception:
+                        pass
+                    break
         except Exception:
             pass
 
@@ -235,6 +238,8 @@ class S4App(App):
                 self._web_proc.wait(timeout=1)
             except Exception:
                 pass
+            self._web_log("[bold]Web service stopped[/bold]")
+            self.notify("Web service stopped")
         self._web_proc = None
         if self._web_log_file:
             try:
@@ -1090,6 +1095,19 @@ class S4App(App):
         """Restart s4 in-place via os.execv()."""
         import os
         import sys
+        # Restart systemd web service if it's running (picks up new code)
+        try:
+            from core.web_service import WebServiceManager
+            mgr = WebServiceManager(self.paths.root)
+            if mgr.systemd_available() and mgr.is_installed() and mgr.is_running():
+                mgr.restart()
+        except Exception:
+            pass
+        # Stop embedded web service
+        try:
+            self._web_stop()
+        except Exception:
+            pass
         try:
             self.exit()
         except Exception:

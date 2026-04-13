@@ -48,6 +48,7 @@ class Settings:
     web_enabled: bool = False      # serve TUI in browser via textual-serve
     web_host: str = "0.0.0.0"     # bind address
     web_port: int = 8080          # listen port
+    web_dns_name: str = ""        # DNS name (empty = localhost or bind address)
 
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
@@ -86,6 +87,7 @@ class Settings:
             "web_enabled": self.web_enabled,
             "web_host": self.web_host,
             "web_port": self.web_port,
+            "web_dns_name": self.web_dns_name,
             "ctng_dir": self.ctng_dir,
             "log_max_age_days": self.log_max_age_days,
             "log_max_count": self.log_max_count,
@@ -133,6 +135,7 @@ class Settings:
             web_enabled=data.get("web_enabled", False),
             web_host=data.get("web_host", "0.0.0.0"),
             web_port=data.get("web_port", 8080),
+            web_dns_name=data.get("web_dns_name", ""),
             ctng_dir=data.get("ctng_dir", ""),
             log_max_age_days=data.get("log_max_age_days", 30),
             log_max_count=data.get("log_max_count", 5),

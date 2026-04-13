@@ -790,7 +790,7 @@ class TargetEditScreen(Screen):
                     _src_sel.styles.width = "1fr"
                     _tc_sel = Select(options=tc_options, value=_tc_val, id=f"t-dep-tc-{idx}", allow_blank=False)
                     _tc_sel.styles.width = "1fr"
-                    _port_inp = Input(value=str(up.port), id=f"t-dep-port-{idx}", type="integer")
+                    _port_inp = Input(value=str(up.port), id=f"t-dep-port-{idx}", type="integer", max_length=5)
                     _port_inp.styles.width = 12
                     _port_inp.styles.min_width = 12
                     _port_inp.styles.max_width = 12
