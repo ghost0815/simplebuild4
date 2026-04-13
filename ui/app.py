@@ -118,18 +118,6 @@ class S4App(App):
     # --------------------------------------------------------- web service
     _web_log_file = None
 
-    @staticmethod
-    def _port_in_use(host: str, port: int) -> bool:
-        """Return True if something is already listening on host:port."""
-        import socket
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            try:
-                s.connect((host if host != "0.0.0.0" else "127.0.0.1", port))
-                return True   # connection succeeded → port is in use
-            except (ConnectionRefusedError, OSError):
-                return False  # nothing listening → port is free
-
     def _web_start(self) -> None:
         """Start textual-serve as a separate subprocess."""
         import os
@@ -171,14 +159,6 @@ class S4App(App):
         host = self.settings.web_host or "0.0.0.0"
         port = self.settings.web_port or 8080
 
-        # Check if port is already in use (leftover from a previous crash)
-        if self._port_in_use(host, port):
-            self.notify(
-                f"Port {port} already in use — web service not started",
-                severity="warning", timeout=8,
-            )
-            return
-
         # public_url must be a routable address for the browser;
         # 0.0.0.0 is only valid as a bind address, not as a URL.
         public_host = "localhost" if host == "0.0.0.0" else host
@@ -207,6 +187,7 @@ class S4App(App):
             cwd=str(self.paths.root),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True,
+            preexec_fn=os.setsid,
         )
         # Background thread to read output and log it
         import threading
@@ -243,9 +224,13 @@ class S4App(App):
                 self._web_log(f"[dim]\\[WEB][/dim] {stripped}")
 
     def _web_stop(self) -> None:
-        """Stop the textual-serve subprocess."""
+        """Stop the textual-serve subprocess and all its children."""
+        import os, signal
         if self._web_proc is not None and self._web_proc.poll() is None:
-            self._web_proc.kill()
+            try:
+                os.killpg(os.getpgid(self._web_proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                self._web_proc.kill()
             try:
                 self._web_proc.wait(timeout=1)
             except Exception:
