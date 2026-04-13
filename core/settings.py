@@ -7,6 +7,8 @@ from pathlib import Path
 
 import yaml
 
+from core.credentials import encrypt as _encrypt, decrypt as _decrypt
+
 
 @dataclass
 class Settings:
@@ -49,6 +51,11 @@ class Settings:
     web_host: str = "0.0.0.0"     # bind address
     web_port: int = 8080          # listen port
     web_dns_name: str = ""        # DNS name (empty = localhost or bind address)
+    web_ssl: bool = False          # enable HTTPS
+    web_ssl_cert: str = ""         # path to SSL certificate (empty = auto-generate)
+    web_ssl_key: str = ""          # path to SSL private key (empty = auto-generate)
+    web_auth_user: str = ""        # Basic Auth username (empty = no auth)
+    web_auth_password: str = ""    # Basic Auth password (empty = no auth)
 
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
@@ -96,6 +103,11 @@ class Settings:
             "web_host": self.web_host,
             "web_port": self.web_port,
             "web_dns_name": self.web_dns_name,
+            "web_ssl": self.web_ssl,
+            "web_ssl_cert": self.web_ssl_cert,
+            "web_ssl_key": self.web_ssl_key,
+            "web_auth_user": self.web_auth_user,
+            "web_auth_password": _encrypt(self.web_auth_password),
             "default_compress_level": self.default_compress_level,
             "default_confdir": self.default_confdir,
             "default_build_system": self.default_build_system,
@@ -150,6 +162,11 @@ class Settings:
             web_host=data.get("web_host", "0.0.0.0"),
             web_port=data.get("web_port", 8080),
             web_dns_name=data.get("web_dns_name", ""),
+            web_ssl=data.get("web_ssl", False),
+            web_ssl_cert=data.get("web_ssl_cert", ""),
+            web_ssl_key=data.get("web_ssl_key", ""),
+            web_auth_user=data.get("web_auth_user", ""),
+            web_auth_password=_decrypt(data.get("web_auth_password", "")),
             default_compress_level=data.get("default_compress_level", cls.default_compress_level),
             default_confdir=data.get("default_confdir", cls.default_confdir),
             default_build_system=data.get("default_build_system", cls.default_build_system),

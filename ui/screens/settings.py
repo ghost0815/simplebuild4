@@ -25,6 +25,7 @@ SWITCH_MAP = {
     "set-organize-logs": "organize_logs",
     "set-qemu-test": "qemu_test",
     "set-web-enabled": "web_enabled",
+    "set-web-ssl": "web_ssl",
 }
 
 INPUT_MAP = {
@@ -38,6 +39,10 @@ INPUT_MAP = {
     "set-web-host": "web_host",
     "set-web-port": "web_port",
     "set-web-dns": "web_dns_name",
+    "set-web-ssl-cert": "web_ssl_cert",
+    "set-web-ssl-key": "web_ssl_key",
+    "set-web-auth-user": "web_auth_user",
+    "set-web-auth-pass": "web_auth_password",
     "set-ctng-dir": "ctng_dir",
     "set-log-max-age": "log_max_age_days",
     "set-log-max-count": "log_max_count",
@@ -171,15 +176,34 @@ class SettingsScreen(Screen):
                 _port.styles.width = 12
                 _port.styles.min_width = 12
                 _port.styles.max_width = 12
-                # Toggle + Status (full width, no grid)
-                yield Horizontal(
-                    Static(f" {t('enable_webservice')}", classes="s-label"),
-                    Switch(value=s.web_enabled, id="set-web-enabled"),
-                    Static("", id="web-svc-status", classes="web-svc-status-label"),
-                    classes="s-toggle", id="web-toggle-row",
-                )
-                # Host/Port + DNS in 2-column grid
-                with Grid(id="web-svc-grid"):
+                _cert_browse = Button(icon("browse"), id="btn-web-cert-browse", classes="tc-reset-btn")
+                _cert_browse.tooltip = t("ph_browse_file")
+                _key_browse = Button(icon("browse"), id="btn-web-key-browse", classes="tc-reset-btn")
+                _key_browse.tooltip = t("ph_browse_file")
+                _show_pw = Button(icon("eye"), id="btn-web-auth-pw-toggle", classes="tc-reset-btn")
+                _show_pw.tooltip = t("tt_show_password")
+                def _sp():
+                    s_ = Static(" ")
+                    s_.styles.width = 1
+                    s_.styles.min_width = 1
+                    s_.styles.max_width = 1
+                    return s_
+                # Row 1: Enable/Test toggle | HTTPS toggle
+                with Grid(classes="web-grid"):
+                    yield Horizontal(
+                        Static(f" {t('enable_webservice')}", classes="s-label"),
+                        Switch(value=s.web_enabled, id="set-web-enabled"),
+                        Static("", id="web-embedded-status"),
+                        classes="s-toggle",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('web_ssl')}", classes="s-label"),
+                        Switch(value=s.web_ssl, id="set-web-ssl"),
+                        classes="s-toggle",
+                    )
+                # Row 2: Host/Port | DNS
+                # Row 3: Username | Password
+                with Grid(classes="web-grid"):
                     yield Horizontal(
                         Static(f" {t('web_host')} / {t('web_port')}", classes="s-label"),
                         Input(value=s.web_host, placeholder="e.g. 0.0.0.0", id="set-web-host"),
@@ -191,13 +215,40 @@ class SettingsScreen(Screen):
                         Input(value=s.web_dns_name, placeholder=t("web_dns_placeholder"), id="set-web-dns"),
                         classes="s-row",
                     )
-                # systemd service buttons
-                with Horizontal(id="web-svc-buttons"):
-                    yield Static("", id="web-btn-spacer")
-                    yield Button(t("web_start"), id="btn-web-start", variant="success", disabled=True)
-                    yield Button(t("web_stop"), id="btn-web-stop", variant="warning", disabled=True)
-                    yield Static("", id="web-btn-gap")
-                    yield Button(t("web_setup"), id="btn-web-setup", variant="primary")
+                    yield Horizontal(
+                        Static(f" {t('web_auth_user')}", classes="s-label"),
+                        Input(value=s.web_auth_user, placeholder=t("web_auth_placeholder"), id="set-web-auth-user"),
+                        classes="s-row",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('web_auth_pass_ph')}", classes="s-label"),
+                        Input(value=s.web_auth_password, placeholder=t("web_auth_pass_ph"), id="set-web-auth-pass", password=True),
+                        _show_pw, _sp(),
+                        classes="s-row",
+                    )
+                # Row 4: Cert | Key
+                with Grid(classes="web-grid"):
+                    yield Horizontal(
+                        Static(f" {t('web_ssl_cert')}", classes="s-label"),
+                        Input(value=s.web_ssl_cert, placeholder=t("web_ssl_auto"), id="set-web-ssl-cert"),
+                        _cert_browse, _sp(),
+                        classes="s-row",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('web_ssl_key')}", classes="s-label"),
+                        Input(value=s.web_ssl_key, placeholder=t("web_ssl_auto"), id="set-web-ssl-key"),
+                        _key_browse, _sp(),
+                        classes="s-row",
+                    )
+                # Status + service buttons
+                with Grid(classes="web-grid", id="web-svc-buttons"):
+                    with Horizontal(classes="web-btn-row"):
+                        yield Static("", id="web-svc-status", classes="web-svc-status-label")
+                        yield Button(t("web_start"), id="btn-web-start", variant="success", disabled=True)
+                        yield Button(t("web_stop"), id="btn-web-stop", variant="warning", disabled=True)
+                    with Horizontal(classes="web-btn-row"):
+                        yield Static("", id="web-btn-gap")
+                        yield Button(t("web_setup"), id="btn-web-setup", variant="primary")
 
             # Toolchain Builders
             with Collapsible(title=t('section_builders'), collapsed=True, id="col-builders"):
@@ -313,18 +364,24 @@ class SettingsScreen(Screen):
                 self.app._web_proc is not None
                 and self.app._web_proc.poll() is None
             )
+            # Embedded status (top row, next to toggle)
+            try:
+                embed_label = self.query_one("#web-embedded-status", Static)
+                if embedded_running:
+                    embed_label.update(" [green]embedded running[/green]")
+                else:
+                    embed_label.update("")
+            except Exception:
+                pass
+            # Service status (bottom row, next to buttons)
             if running:
-                status = t(mgr.status_text())
-                status += f"  [dim]({mgr.service})[/dim]"
-            elif embedded_running:
-                port = self.app.settings.web_port or 8080
-                status = f"[green]Embedded running on :{port}[/green]"
+                svc_status = f"[green]{mgr.service}: {t(mgr.status_text())}[/green]"
+            elif installed:
+                svc_status = f"{mgr.service}: {t(mgr.status_text())}"
             else:
-                status = t(mgr.status_text())
-                if installed:
-                    status += f"  [dim]({mgr.service})[/dim]"
+                svc_status = t(mgr.status_text())
             self.query_one("#web-svc-status", Static).update(
-                f" {status}")
+                f" {svc_status}")
             # Start/Restart combined button
             start_btn = self.query_one("#btn-web-start", Button)
             start_btn.label = t("web_restart") if running else t("web_start")
@@ -363,6 +420,16 @@ class SettingsScreen(Screen):
             self._open_file_picker("set-sign-key", t("private_key"))
         elif event.button.id == "btn-ctng-browse":
             self._open_dir_picker("set-ctng-dir", t("ctng_dir"))
+        elif event.button.id == "btn-web-cert-browse":
+            self._open_file_picker("set-web-ssl-cert", t("web_ssl_cert"))
+        elif event.button.id == "btn-web-key-browse":
+            self._open_file_picker("set-web-ssl-key", t("web_ssl_key"))
+        elif event.button.id == "btn-web-auth-pw-toggle":
+            try:
+                pw = self.query_one("#set-web-auth-pass", Input)
+                pw.password = not pw.password
+            except Exception:
+                pass
         elif event.button.id == "btn-web-setup":
             from ui.screens.web_service_modal import WebServiceSetupModal
             self.app.push_screen(

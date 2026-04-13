@@ -171,6 +171,19 @@ class S4App(App):
         app_py = str(self.paths.root / "app.py")
         templates = str(self.paths.root / "ui" / "web" / "templates")
 
+        # SSL: auto-generate cert if enabled but no cert provided
+        use_ssl = self.settings.web_ssl
+        ssl_cert = self.settings.web_ssl_cert
+        ssl_key = self.settings.web_ssl_key
+        if use_ssl and (not ssl_cert or not ssl_key):
+            from core.web_service import generate_self_signed_cert
+            web_dir = self.paths.root / "data" / "web"
+            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns)
+
+        protocol = "https" if use_ssl else "http"
+        auth_user = self.settings.web_auth_user
+        auth_password = self.settings.web_auth_password
+
         # Open logfile
         from datetime import datetime
         from core.log_cleanup import resolve_log_dir
@@ -181,15 +194,20 @@ class S4App(App):
         log_path = _log_dir / f"{timestamp}.webservice.log"
         self._web_log_file = open(log_path, "w", encoding="utf-8")
 
+        # Build S4Server launch code
+        from core.web_service import _build_server_code
+        server_code = _build_server_code(
+            python=sys.executable, app_py=app_py, host=host, port=port,
+            public_host=public_host, templates=templates,
+            ssl=use_ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
+            auth_user=auth_user, auth_password=auth_password,
+            theme=self.settings.theme,
+        )
+
         # Launch as a standalone subprocess to avoid asyncio conflicts
         # with the running Textual app
         self._web_proc = subprocess.Popen(
-            [sys.executable, "-c",
-             f"from textual_serve.server import Server; "
-             f"Server(command='{sys.executable} {app_py}', "
-             f"host='{host}', port={port}, "
-             f"public_url='http://{public_host}:{port}', "
-             f"templates_path='{templates}').serve()"],
+            [sys.executable, "-c", server_code],
             cwd=str(self.paths.root),
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True,
@@ -198,7 +216,7 @@ class S4App(App):
         # Background thread to read output and log it
         import threading
         threading.Thread(target=self._web_log_reader, daemon=True).start()
-        self.notify(f"Web service started on {host}:{port}")
+        self.notify(f"Web service started on {protocol}://{public_host}:{port}")
 
     def _web_log(self, msg: str) -> None:
         """Write a message to the web service logfile and RichLog."""

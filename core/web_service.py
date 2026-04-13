@@ -16,6 +16,37 @@ _BLOCKED_PORTS = frozenset({
 })
 
 
+def generate_self_signed_cert(
+    output_dir: Path,
+    dns_name: str = "",
+) -> tuple[str, str]:
+    """Generate a self-signed ECDSA P-256 certificate.
+
+    Returns (cert_path, key_path).
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    cert_path = output_dir / "s4-web.crt"
+    key_path = output_dir / "s4-web.key"
+
+    # Build SAN list
+    san_entries = ["DNS:localhost", "IP:127.0.0.1"]
+    if dns_name and dns_name not in ("localhost",):
+        san_entries.insert(0, f"DNS:{dns_name}")
+
+    cmd = [
+        "openssl", "req", "-x509",
+        "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+        "-nodes", "-days", "365",
+        "-keyout", str(key_path),
+        "-out", str(cert_path),
+        "-subj", "/CN=simplebuild4",
+        "-addext", f"subjectAltName={','.join(san_entries)}",
+    ]
+    subprocess.run(cmd, check=True, capture_output=True)
+    os.chmod(str(key_path), 0o600)
+    return str(cert_path), str(key_path)
+
+
 def validate_port(port: int) -> str | None:
     """Return an error message if the port is blocked, or None if OK."""
     if port < 1024:
@@ -36,14 +67,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory={root}
-ExecStart={python} -c "from textual_serve.server import Server; \\
-    Server( \\
-        command='{python} {app_py}', \\
-        host='{host}', \\
-        port={port}, \\
-        public_url='http://{public_host}:{port}', \\
-        templates_path='{templates}', \\
-    ).serve()"
+ExecStart={python} -c "{server_code}"
 Restart=on-failure
 RestartSec=3
 Environment=PATH={path}
@@ -53,6 +77,35 @@ StandardError=append:{log_path}
 [Install]
 WantedBy=multi-user.target
 """
+
+def _build_server_code(
+    python: str, app_py: str, host: str, port: int,
+    public_host: str, templates: str,
+    ssl: bool = False, ssl_cert: str = "", ssl_key: str = "",
+    auth_user: str = "", auth_password: str = "",
+    theme: str = "textual-dark",
+) -> str:
+    """Build the inline Python code for launching the web server."""
+    protocol = "https" if ssl else "http"
+    parts = [
+        "import sys; sys.path.insert(0, '.');",
+        "from core.web_server import S4Server;",
+        f"S4Server(",
+        f"  command='{python} {app_py}',",
+        f"  host='{host}', port={port},",
+        f"  public_url='{protocol}://{public_host}:{port}',",
+        f"  templates_path='{templates}',",
+        f"  theme='{theme}',",
+    ]
+    if ssl and ssl_cert and ssl_key:
+        parts.append(f"  ssl_certfile='{ssl_cert}',")
+        parts.append(f"  ssl_keyfile='{ssl_key}',")
+    if auth_user:
+        parts.append(f"  auth_user='{auth_user}',")
+        parts.append(f"  auth_password='{auth_password}',")
+    parts.append(").serve()")
+    return " ".join(parts)
+
 
 _UNIT_DIR = Path("/etc/systemd/system")
 
@@ -131,6 +184,11 @@ class WebServiceManager:
         host: str = "0.0.0.0",
         port: int = 8080,
         dns_name: str = "",
+        ssl: bool = False,
+        ssl_cert: str = "",
+        ssl_key: str = "",
+        auth_user: str = "",
+        auth_password: str = "",
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
         password: str = "",
@@ -149,6 +207,12 @@ class WebServiceManager:
             if p and not p.startswith("/mnt/")
         ) or "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 
+        # Auto-generate cert if SSL enabled but no cert provided
+        if ssl and (not ssl_cert or not ssl_key):
+            web_dir = self.root / "data" / "web"
+            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns_name)
+            _log(f"  Generated self-signed certificate: {ssl_cert}")
+
         # Resolve log path
         if logs_dir:
             from core.log_cleanup import resolve_log_dir
@@ -158,11 +222,18 @@ class WebServiceManager:
             _log_dir.mkdir(parents=True, exist_ok=True)
         log_file = _log_dir / f"{self.service}.log"
 
+        protocol = "https" if ssl else "http"
+        server_code = _build_server_code(
+            python=python, app_py=app_py, host=host, port=port,
+            public_host=public_host, templates=templates,
+            ssl=ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
+            auth_user=auth_user, auth_password=auth_password,
+        )
+
         unit = _UNIT_TEMPLATE.format(
-            root=self.root, python=python, app_py=app_py,
-            host=host, port=port, public_host=public_host,
-            templates=templates, path=path, log_path=log_file,
-            user=user,
+            root=self.root, python=python,
+            server_code=server_code,
+            path=path, log_path=log_file, user=user,
         )
 
         # sudoers entry: allows start/stop/restart/status without password

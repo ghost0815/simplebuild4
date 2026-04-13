@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SimpleBuild4 - Web</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto%20Mono">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: {{ bg }};
+      color: {{ fg }};
+      font-family: "Roboto Mono", menlo, monospace;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .login-box {
+      background: {{ surface }};
+      border: 1px solid {{ panel }};
+      border-radius: 4px;
+      padding: 2rem 2.5rem;
+      width: 360px;
+    }
+    .login-box h1 {
+      font-size: 1.1rem;
+      font-weight: normal;
+      color: {{ fg }};
+    }
+    .login-box .subtitle {
+      font-size: 0.8rem;
+      color: {{ fg_dim }};
+      margin-bottom: 1.8rem;
+    }
+    label {
+      display: block;
+      font-size: 0.8rem;
+      color: {{ fg_dim }};
+      margin-bottom: 0.3rem;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%;
+      padding: 0.5rem 0.6rem;
+      background: {{ bg }};
+      border: 1px solid {{ panel }};
+      border-radius: 2px;
+      color: {{ fg }};
+      font-family: "Roboto Mono", menlo, monospace;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input:focus {
+      border-color: {{ primary }};
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: {{ primary }};
+      border: none;
+      color: #fff;
+      font-family: "Roboto Mono", menlo, monospace;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-top: 0.5rem;
+    }
+    button:hover {
+      opacity: 0.85;
+    }
+    .error {
+      background: rgba(186, 60, 91, 0.15);
+      border: 1px solid rgba(186, 60, 91, 0.3);
+      color: {{ error_color }};
+      padding: 0.5rem 0.6rem;
+      border-radius: 2px;
+      font-size: 0.8rem;
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h1>SimpleBuild4</h1>
+    <div class="subtitle">Web Interface</div>
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+    <form method="POST" action="/login">
+      <label for="username">Username</label>
+      <input type="text" id="username" name="username" autofocus required>
+      <label for="password">Password</label>
+      <input type="password" id="password" name="password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>
