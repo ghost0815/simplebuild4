@@ -190,9 +190,11 @@ class SettingsScreen(Screen):
                     return s_
                 # Row 1: Enable/Test toggle | HTTPS toggle
                 with Grid(classes="web-grid"):
+                    _web_toggle = Switch(value=s.web_enabled, id="set-web-enabled")
+                    _web_toggle.tooltip = t("tt_web_embedded")
                     yield Horizontal(
                         Static(f" {t('enable_webservice')}", classes="s-label"),
-                        Switch(value=s.web_enabled, id="set-web-enabled"),
+                        _web_toggle,
                         Static("", id="web-embedded-status"),
                         classes="s-toggle",
                     )
@@ -368,7 +370,7 @@ class SettingsScreen(Screen):
             try:
                 embed_label = self.query_one("#web-embedded-status", Static)
                 if embedded_running:
-                    embed_label.update(" [green]embedded running[/green]")
+                    embed_label.update(f" [green]{t('web_embedded_running')}[/green]")
                 else:
                     embed_label.update("")
             except Exception:
