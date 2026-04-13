@@ -158,6 +158,11 @@ class S4App(App):
                     return
         host = self.settings.web_host or "0.0.0.0"
         port = self.settings.web_port or 8080
+        from core.web_service import validate_port
+        err = validate_port(port)
+        if err:
+            self.notify(err, severity="error", timeout=5)
+            return
 
         # public_url must be a routable address for the browser;
         # 0.0.0.0 is only valid as a bind address, not as a URL.

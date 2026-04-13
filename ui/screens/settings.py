@@ -234,6 +234,15 @@ class SettingsScreen(Screen):
                     s.web_port = int(self.query_one("#set-web-port", Input).value)
                 except (ValueError, Exception):
                     pass
+                # Validate port before starting
+                if event.value:
+                    from core.web_service import validate_port
+                    err = validate_port(s.web_port)
+                    if err:
+                        self.notify(err, severity="error", timeout=5)
+                        event.switch.value = False
+                        self._refresh_web_svc_status()
+                        return
                 s.save(self.app.settings_path)
                 if event.value:
                     self.app._web_start()

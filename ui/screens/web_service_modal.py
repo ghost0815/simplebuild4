@@ -164,6 +164,12 @@ class WebServiceSetupModal(ModalScreen[None]):
             s = self.app.settings
 
             if action == "install":
+                from core.web_service import validate_port
+                port = s.web_port or 8080
+                err = validate_port(port)
+                if err:
+                    self._log(f"[red]{err}[/red]")
+                    return
                 self._log(f"[bold]Installing service...[/bold]")
                 success = mgr.install(
                     host=s.web_host or "0.0.0.0",

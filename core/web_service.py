@@ -9,6 +9,24 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+_BLOCKED_PORTS = frozenset({
+    3306, 5432, 6379, 27017,      # databases
+    8088, 8880, 9090,             # common admin interfaces
+    8888,                         # oscam WebIF
+})
+
+
+def validate_port(port: int) -> str | None:
+    """Return an error message if the port is blocked, or None if OK."""
+    if port < 1024:
+        return f"Port {port} is reserved (ports below 1024 require root)"
+    if port > 65535:
+        return f"Port {port} is out of range (max 65535)"
+    if port in _BLOCKED_PORTS:
+        return f"Port {port} is blocked (known service conflict)"
+    return None
+
+
 _UNIT_TEMPLATE = """\
 [Unit]
 Description=SimpleBuild4 Web Service ({root})
