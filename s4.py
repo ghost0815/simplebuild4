@@ -126,6 +126,8 @@ def cli_build(args: list[str]) -> int:
             log_max_count=settings.log_max_count,
             log_max_size_mb=settings.log_max_size_mb,
             organize_logs=settings.organize_logs,
+            default_confdir=settings.default_confdir,
+            default_build_system=settings.default_build_system,
             log=log,
         )
         success = engine.build()

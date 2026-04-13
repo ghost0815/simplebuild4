@@ -51,6 +51,8 @@ class BuildEngine:
         log_max_count: int = 0,
         log_max_size_mb: int = 0,
         organize_logs: bool = False,
+        default_confdir: str = "/etc/tuxbox/config",
+        default_build_system: str = "make",
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
     ):
@@ -83,6 +85,8 @@ class BuildEngine:
         self._cancel = cancel_check or (lambda: False)
         self._log_file = None  # set in build()
         self._organize_logs = organize_logs
+        self._default_confdir = default_confdir
+        self._default_build_system = default_build_system
         self._warning_count = 0  # per-build warning counter
 
     def _log_file_only(self, msg: str) -> None:
@@ -99,7 +103,7 @@ class BuildEngine:
         from core.log_cleanup import resolve_log_dir
         _log_dir = resolve_log_dir(self.logs_dir, "build", self._organize_logs)
         timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-        bs = self.target.build.build_system or "make"
+        bs = self.target.build.build_system or self._default_build_system
         log_path = _log_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
         self._log_file = open(log_path, "w", encoding="utf-8")
         original_log = self._log
@@ -1085,7 +1089,7 @@ class BuildEngine:
 
         # --- CONF_DIR ---
         # CONF_DIR: per-toolchain override
-        confdir = tcc.confdir if tcc.confdir else (b.confdir or "/usr/local/etc")
+        confdir = tcc.confdir if tcc.confdir else (b.confdir or self._default_confdir)
 
         # --- Output path (handles use_oscamname variants, per-TC override) ---
         bin_path = self._resolve_binary_path(repo_dir, src.name, tcc.name, is_native, b, tcc)

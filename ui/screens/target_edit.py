@@ -226,7 +226,7 @@ class TargetEditScreen(Screen):
                 upx_path_inp = Input(value=upx_binary_val, placeholder=t("ph_system_default"), id="t-upx-binary")
                 upx_path_inp.styles.width = "1fr"
                 if compress_enabled:
-                    lvl_inp = Input(value=b.compress_level, placeholder="--lzma", id="t-compress-level")
+                    lvl_inp = Input(value=b.compress_level, placeholder=self.app.settings.default_compress_level, id="t-compress-level")
                     lvl_inp.styles.max_width = 25
                     from textual.widgets import Button as _Btn
                     upx_browse_btn = _Btn(icon("browse"), id="btn-upx-browse", classes="tc-reset-btn")
@@ -251,7 +251,7 @@ class TargetEditScreen(Screen):
                     Static(f" {t('te_build_system')}", classes="s-label-tall"),
                     Select(
                         options=[("make", "make"), ("cmake", "cmake")],
-                        value=b.build_system or "make",
+                        value=b.build_system or self.app.settings.default_build_system,
                         id="t-build-system",
                         prompt=t("select_prompt"),
                     ),
@@ -388,7 +388,7 @@ class TargetEditScreen(Screen):
                         # Row 1: UPX (same layout as General)
                         def_compress = b.use_compress
                         def_upx = b.upx_binary or self._upx_path or ""
-                        def_complevel = b.compress_level or "--lzma"
+                        def_complevel = b.compress_level or self.app.settings.default_compress_level
                         tc_compress_on = tcc.use_compress == "1" if tcc.use_compress else def_compress
                         tc_upx = tcc.upx_binary if tcc.upx_binary else def_upx
                         tc_complevel = tcc.compress_level if tcc.compress_level else def_complevel
@@ -416,7 +416,7 @@ class TargetEditScreen(Screen):
                         if tc_compress_on:
                             _tc_upx_inp = Input(value=tc_upx, placeholder=t("ph_system_default"), id=f"tc-upx-{sid}")
                             _tc_upx_inp.styles.width = "1fr"
-                            _tc_lvl_inp = Input(value=tc_complevel, placeholder="--lzma", id=f"tc-complevel-{sid}")
+                            _tc_lvl_inp = Input(value=tc_complevel, placeholder=self.app.settings.default_compress_level, id=f"tc-complevel-{sid}")
                             _tc_lvl_inp.styles.max_width = 25
                             _tc_upx_browse = Btn(icon("browse"), id=f"btn-tc-upx-{sid}", classes="tc-reset-btn")
                             _tc_upx_browse.tooltip = t("ph_browse_upx")
@@ -446,7 +446,7 @@ class TargetEditScreen(Screen):
 
                         # Row 2: OScam path + CONF_DIR (same layout as CFLAGS/CC_OPTS)
                         def_oscampath = b.use_oscamname or ""
-                        def_confdir = b.confdir or "/etc/tuxbox/config"
+                        def_confdir = b.confdir or self.app.settings.default_confdir
                         _tc_oscampath_inp = _tc_input(tcc.oscam_path, def_oscampath, f"tc-oscampath-{sid}")
                         if not _tc_oscampath_inp.value:
                             _tc_oscampath_inp.placeholder = t("ph_oscam_binary_path")
@@ -1169,12 +1169,14 @@ class TargetEditScreen(Screen):
         from ui.screens.remote_file_picker import RemoteFilePickerScreen
         from core.credentials import decrypt
         try:
-            user = self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or "root"
+            _ds = self.app.settings
+            user = self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or _ds.default_deploy_user
             password = decrypt(self.query_one(f"#t-dep-pass-{idx}", Input).value.strip())
-            port = int(self.query_one(f"#t-dep-port-{idx}", Input).value.strip() or "22")
+            port = int(self.query_one(f"#t-dep-port-{idx}", Input).value.strip() or str(_ds.default_deploy_port))
             key = self.query_one(f"#t-dep-key-{idx}", Input).value.strip()
         except Exception:
-            user, password, port, key = "root", "", 22, ""
+            _ds = self.app.settings
+            user, password, port, key = _ds.default_deploy_user, "", _ds.default_deploy_port, ""
         current = self.query_one(f"#t-dep-path-{idx}", Input).value.strip()
         self._deploy_path_idx = idx
         self.app.push_screen(
@@ -1399,7 +1401,7 @@ class TargetEditScreen(Screen):
             except Exception:
                 pass
             try:
-                self.query_one(f"#tc-complevel-{sid}", Input).value = defaults.get("complevel", "--lzma")
+                self.query_one(f"#tc-complevel-{sid}", Input).value = defaults.get("complevel", self.app.settings.default_compress_level)
                 self.query_one(f"#tc-complevel-{sid}", Input).add_class("tc-default")
             except Exception:
                 pass
@@ -1415,7 +1417,7 @@ class TargetEditScreen(Screen):
         elif field == "confdir":
             try:
                 inp = self.query_one(f"#tc-confdir-{sid}", Input)
-                inp.value = defaults.get("confdir", "/etc/tuxbox/config")
+                inp.value = defaults.get("confdir", self.app.settings.default_confdir)
                 inp.add_class("tc-default")
             except Exception:
                 pass
@@ -1943,11 +1945,11 @@ class TargetEditScreen(Screen):
             use_flags=use_flags,
             static_flags=static_flags,
             use_compress=self._switch_on("f-use-compress"),
-            compress_level=self._input_val("t-compress-level") or "--lzma",
+            compress_level=self._input_val("t-compress-level") or self.app.settings.default_compress_level,
             upx_binary=self._input_val("t-upx-binary"),
             stapi_lib=self._input_val("f-stapi-lib"),
             use_oscamname=self._normalize_binary_path(self.query_one("#t-oscamname", Input).value)[0],
-            build_system=self.query_one("#t-build-system", Select).value or "make",
+            build_system=self.query_one("#t-build-system", Select).value or self.app.settings.default_build_system,
             confdir=self.query_one("#t-confdir", Input).value.strip(),
         )
 
@@ -1997,7 +1999,7 @@ class TargetEditScreen(Screen):
                 source=src,
                 toolchain=tc,
                 host=host,
-                user=self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or "root",
+                user=self.query_one(f"#t-dep-user-{idx}", Input).value.strip() or self.app.settings.default_deploy_user,
                 password=password,
                 port=port,
                 key=self.query_one(f"#t-dep-key-{idx}", Input).value.strip(),

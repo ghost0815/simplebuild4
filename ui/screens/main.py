@@ -425,6 +425,8 @@ class MainScreen(Screen):
                     log_max_count=self.app.settings.log_max_count,
                     log_max_size_mb=self.app.settings.log_max_size_mb,
                     organize_logs=self.app.settings.organize_logs,
+                    default_confdir=self.app.settings.default_confdir,
+                    default_build_system=self.app.settings.default_build_system,
                     log=log,
                     cancel_check=cancel_check,
                 )

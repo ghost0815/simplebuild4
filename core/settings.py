@@ -53,6 +53,14 @@ class Settings:
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
 
+    # Build / Deployment defaults (used for new targets, editable in settings.yaml)
+    default_compress_level: str = "--lzma"
+    default_confdir: str = "/etc/tuxbox/config"
+    default_build_system: str = "make"
+    default_deploy_user: str = "root"
+    default_deploy_port: int = 22
+    default_deploy_path: str = "/usr/bin/oscam"
+
     # Log retention (applied per target to build logs in logs_dir).
     # 0 = unlimited for that rule. The newest log per target is always kept.
     log_max_age_days: int = 30
@@ -88,6 +96,12 @@ class Settings:
             "web_host": self.web_host,
             "web_port": self.web_port,
             "web_dns_name": self.web_dns_name,
+            "default_compress_level": self.default_compress_level,
+            "default_confdir": self.default_confdir,
+            "default_build_system": self.default_build_system,
+            "default_deploy_user": self.default_deploy_user,
+            "default_deploy_port": self.default_deploy_port,
+            "default_deploy_path": self.default_deploy_path,
             "ctng_dir": self.ctng_dir,
             "log_max_age_days": self.log_max_age_days,
             "log_max_count": self.log_max_count,
@@ -136,6 +150,12 @@ class Settings:
             web_host=data.get("web_host", "0.0.0.0"),
             web_port=data.get("web_port", 8080),
             web_dns_name=data.get("web_dns_name", ""),
+            default_compress_level=data.get("default_compress_level", cls.default_compress_level),
+            default_confdir=data.get("default_confdir", cls.default_confdir),
+            default_build_system=data.get("default_build_system", cls.default_build_system),
+            default_deploy_user=data.get("default_deploy_user", cls.default_deploy_user),
+            default_deploy_port=data.get("default_deploy_port", cls.default_deploy_port),
+            default_deploy_path=data.get("default_deploy_path", cls.default_deploy_path),
             ctng_dir=data.get("ctng_dir", ""),
             log_max_age_days=data.get("log_max_age_days", 30),
             log_max_count=data.get("log_max_count", 5),
