@@ -79,6 +79,7 @@ class Paths:
             "libraries.yaml",
             "builders.yaml",
             "patches.yaml",
+            "dependencies.yaml",
         }
         if self.defaults_dir.is_dir():
             for default in self.defaults_dir.glob("*.yaml"):
