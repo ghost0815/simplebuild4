@@ -18,6 +18,12 @@ def main():
     app = S4App(paths=paths)
     app.run()
 
+    # Stop web service subprocess if it was running
+    try:
+        app._web_stop()
+    except Exception:
+        pass
+
     # Restore terminal state after Textual exits — prevents invisible
     # input if the app crashed or exited uncleanly from raw mode.
     try:
@@ -25,3 +31,7 @@ def main():
         subprocess.run(["stty", "sane"], stderr=subprocess.DEVNULL)
     except Exception:
         pass
+
+
+if __name__ == "__main__":
+    main()

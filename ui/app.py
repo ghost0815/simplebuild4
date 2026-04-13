@@ -51,6 +51,8 @@ class S4App(App):
         self._timer_screen: str | None = None
         self._timer_start: float | None = None
         self._timer_stopped_at: float | None = None
+        # Web service (textual-serve) subprocess
+        self._web_proc: "subprocess.Popen | None" = None
 
     _UPDATE_NOTIFY_TIMEOUT = 10
 
@@ -113,6 +115,133 @@ class S4App(App):
         from pathlib import Path
         return self.paths.root / "data" / "settings.yaml"
 
+    # --------------------------------------------------------- web service
+    _web_log_file = None
+
+    def _web_start(self) -> None:
+        """Start textual-serve as a separate subprocess."""
+        import os
+        # Skip when running inside a textual-serve web session to avoid
+        # binding the same port twice.
+        if "web" in os.environ.get("TEXTUAL_DRIVER", "").lower():
+            return
+        if self._web_proc is not None and self._web_proc.poll() is None:
+            return  # already running
+        import subprocess, sys
+        # Auto-install textual-serve if missing
+        try:
+            import textual_serve  # noqa: F401
+        except ImportError:
+            self.notify("Installing textual-serve …", timeout=5)
+            pip_cmd = [sys.executable, "-m", "pip", "install", "--user"]
+            try:
+                subprocess.check_call(
+                    pip_cmd + ["textual-serve"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                )
+            except Exception:
+                try:
+                    subprocess.check_call(
+                        pip_cmd + ["--break-system-packages", "textual-serve"],
+                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                    )
+                except subprocess.CalledProcessError as e:
+                    err = (e.stderr or b"").decode(errors="replace").strip()
+                    self.notify(
+                        f"Failed to install textual-serve:\n{err[:200]}",
+                        severity="error", timeout=15,
+                    )
+                    return
+                except Exception as e:
+                    self.notify(f"Failed to install textual-serve: {e}",
+                                severity="error", timeout=15)
+                    return
+        host = self.settings.web_host or "0.0.0.0"
+        port = self.settings.web_port or 8080
+        # public_url must be a routable address for the browser;
+        # 0.0.0.0 is only valid as a bind address, not as a URL.
+        public_host = "localhost" if host == "0.0.0.0" else host
+        app_py = str(self.paths.root / "app.py")
+        templates = str(self.paths.root / "ui" / "web" / "templates")
+
+        # Open logfile
+        from datetime import datetime
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(
+            self.paths.logs_dir, "webservice", self.settings.organize_logs,
+        )
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = _log_dir / f"{timestamp}.webservice.log"
+        self._web_log_file = open(log_path, "w", encoding="utf-8")
+
+        # Launch as a standalone subprocess to avoid asyncio conflicts
+        # with the running Textual app
+        self._web_proc = subprocess.Popen(
+            [sys.executable, "-c",
+             f"from textual_serve.server import Server; "
+             f"Server(command='{sys.executable} {app_py}', "
+             f"host='{host}', port={port}, "
+             f"public_url='http://{public_host}:{port}', "
+             f"templates_path='{templates}').serve()"],
+            cwd=str(self.paths.root),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True,
+        )
+        # Background thread to read output and log it
+        import threading
+        threading.Thread(target=self._web_log_reader, daemon=True).start()
+        self._web_log(f"[bold]Web service started on {host}:{port}[/bold]")
+        self.notify(f"Web service started on {host}:{port}")
+
+    def _web_log(self, msg: str) -> None:
+        """Write a message to the web service logfile and RichLog."""
+        import re
+        plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
+        if self._web_log_file:
+            self._web_log_file.write(plain + "\n")
+            self._web_log_file.flush()
+        try:
+            from ui.screens.main import MainScreen
+            from textual.widgets import RichLog
+            screen = self.screen
+            if isinstance(screen, MainScreen):
+                self.call_from_thread(
+                    screen.query_one("#output", RichLog).write, msg,
+                )
+        except Exception:
+            pass
+
+    def _web_log_reader(self) -> None:
+        """Background thread: read textual-serve stdout and log each line."""
+        proc = self._web_proc
+        if proc is None or proc.stdout is None:
+            return
+        for line in proc.stdout:
+            stripped = line.rstrip()
+            if stripped:
+                self._web_log(f"[dim]\\[WEB][/dim] {stripped}")
+
+    def _web_stop(self) -> None:
+        """Stop the textual-serve subprocess."""
+        if self._web_proc is not None and self._web_proc.poll() is None:
+            self._web_proc.kill()
+            try:
+                self._web_proc.wait(timeout=1)
+            except Exception:
+                pass
+        self._web_proc = None
+        if self._web_log_file:
+            try:
+                self._web_log_file.close()
+            except Exception:
+                pass
+            self._web_log_file = None
+
+    def _web_restart(self) -> None:
+        """Restart the web service (e.g. after settings change)."""
+        self._web_stop()
+        self._web_start()
+
     def watch_theme(self, theme: str) -> None:
         """Save theme to settings when changed via command palette."""
         if hasattr(self, 'settings') and self.settings.theme != theme:
@@ -165,6 +294,10 @@ class S4App(App):
 
         from ui.screens.main import MainScreen
         self.push_screen(MainScreen())
+
+        # Start web service if enabled
+        if self.settings.web_enabled:
+            self._web_start()
 
         # Check for updates in background
         if self.settings.update_check:
@@ -545,11 +678,27 @@ class S4App(App):
             return
         screen = self.screen
         if hasattr(screen, 'do_save'):
+            # Snapshot web settings before save to detect changes
+            from ui.screens.settings import SettingsScreen
+            is_settings = isinstance(screen, SettingsScreen)
+            if is_settings:
+                _was_web = self.settings.web_enabled
+                _old_host = self.settings.web_host
+                _old_port = self.settings.web_port
             # Remember focused widget so we can restore after save/refresh.
             focus_id = self.focused.id if self.focused else None
             msg = screen.do_save()
             if msg:
                 self.notify(msg)
+            # Manage web service after settings save
+            if is_settings:
+                if self.settings.web_enabled:
+                    if (not _was_web
+                            or self.settings.web_host != _old_host
+                            or self.settings.web_port != _old_port):
+                        self._web_restart()
+                elif _was_web:
+                    self._web_stop()
             # Restore focus after save (screen may have refreshed).
             if focus_id:
                 try:

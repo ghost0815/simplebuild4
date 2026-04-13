@@ -24,6 +24,7 @@ SWITCH_MAP = {
     "set-export-libs-zip": "export_libs_zip",
     "set-organize-logs": "organize_logs",
     "set-qemu-test": "qemu_test",
+    "set-web-enabled": "web_enabled",
 }
 
 INPUT_MAP = {
@@ -34,6 +35,8 @@ INPUT_MAP = {
     "set-sign-key": "sign_key",
     "set-qemu-timeout": "qemu_timeout",
     "set-qemu-expect": "qemu_expect",
+    "set-web-host": "web_host",
+    "set-web-port": "web_port",
     "set-ctng-dir": "ctng_dir",
     "set-log-max-age": "log_max_age_days",
     "set-log-max-count": "log_max_count",
@@ -158,6 +161,20 @@ class SettingsScreen(Screen):
                 yield Horizontal(
                     Static(f" {t('expected_output')}", classes="s-label"),
                     Input(value=s.qemu_expect, id="set-qemu-expect"),
+                    classes="s-row",
+                )
+
+            # Web Service
+            with Collapsible(title=t('section_webservice'), collapsed=True, id="col-webservice"):
+                yield _switch_row(t("enable_webservice"), s.web_enabled, "set-web-enabled")
+                yield Horizontal(
+                    Static(f" {t('web_host')}", classes="s-label"),
+                    Input(value=s.web_host, id="set-web-host"),
+                    classes="s-row",
+                )
+                yield Horizontal(
+                    Static(f" {t('web_port')}", classes="s-label"),
+                    Input(value=str(s.web_port), id="set-web-port", type="integer"),
                     classes="s-row",
                 )
 

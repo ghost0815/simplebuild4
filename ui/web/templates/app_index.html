@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>SimpleBuild4</title>
+    <link rel="stylesheet" href="{{ config.static.url }}css/xterm.css" />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Roboto%20Mono"
+    />
+    <script src="{{ config.static.url }}js/textual.js"></script>
+    <style>
+      body {
+        background: #0c181f;
+        margin: 0;
+        padding: 0;
+      }
+
+      body .textual-terminal {
+        opacity: 0;
+        transition: opacity 0.3s ease-out;
+      }
+
+      body.-first-byte .textual-terminal {
+        opacity: 1;
+        transition: opacity 0.3s ease-out;
+      }
+
+      .dialog-container {
+        position: absolute;
+        width: 100vw;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10;
+      }
+
+      body.-first-byte .intro-dialog {
+        opacity: 0;
+        display: none;
+      }
+
+      .shade {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        background: #0c181f;
+      }
+
+      .intro {
+        z-index: 20;
+        font-size: 16px;
+        font-family: "Roboto Mono", menlo, monospace;
+        color: rgba(255, 255, 255, 0.6);
+      }
+
+      .closed-dialog {
+        opacity: 0;
+        display: none;
+      }
+
+      body.-closed .closed-dialog {
+        opacity: 1;
+        display: flex;
+      }
+
+      .closed-dialog .intro {
+        text-align: center;
+      }
+
+      .closed-dialog button {
+        padding: 12px 24px;
+        background-color: #5e0ba7;
+        color: rgba(255, 255, 255, 0.95);
+        border: none;
+        font-family: "Roboto Mono", menlo, monospace;
+        margin-top: 16px;
+        cursor: pointer;
+      }
+
+      .closed-dialog button:hover {
+        background: #ac5af4;
+      }
+    </style>
+    <script>
+      function getStartUrl() {
+        const url = new URL(window.location.href);
+        const params = new URLSearchParams(url.search);
+        params.delete("delay");
+        return url.pathname + "?" + params.toString();
+      }
+      async function refresh() {
+        const ping_url = document.body.dataset.pingurl;
+        if (ping_url) {
+          await fetch(ping_url, { method: "GET", mode: "no-cors" });
+        }
+        window.location.href = getStartUrl();
+      }
+    </script>
+  </head>
+  <body data-pingurl="{{ ping_url }}">
+    <div class="dialog-container intro-dialog">
+      <div class="shade"></div>
+      <div class="intro">Connecting...</div>
+    </div>
+
+    <div class="dialog-container closed-dialog">
+      <div class="shade"></div>
+      <div class="intro">
+        <div>Session ended.</div>
+        <button type="button" onClick="refresh()">Reconnect</button>
+      </div>
+    </div>
+
+    <div
+      id="terminal"
+      class="textual-terminal"
+      data-session-websocket-url="{{ app_websocket_url }}"
+      data-font-size="{{ font_size }}"
+    ></div>
+  </body>
+</html>

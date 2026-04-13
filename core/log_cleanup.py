@@ -11,6 +11,7 @@ types:
     selfbuild:<template>  {ts}.{template}.selfbuild.log
     backup:<toolchain>    {ts}.{toolchain}.backup.log
     deploy:<target>       {ts}.{target}.{dests}.deployment-check.log
+    webservice            {ts}.webservice.log
     __s4__                {ts}.s4-update.log
 
 Within each bucket the newest file is always preserved so the user
@@ -52,6 +53,8 @@ def _classify(name: str) -> Tuple[str, str]:
 
     if len(rest) == 1 and rest[0] == "s4-update":
         return ("s4", "__s4__")
+    if len(rest) == 1 and rest[0] == "webservice":
+        return ("webservice", "webservice")
     if len(rest) >= 2 and rest[-1] == "selfbuild":
         tpl = ".".join(rest[:-1])
         return ("selfbuild", f"selfbuild:{tpl}")

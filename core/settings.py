@@ -44,6 +44,11 @@ class Settings:
     qemu_timeout: int = 5
     qemu_expect: str = "Server running"
 
+    # Web Service
+    web_enabled: bool = False      # serve TUI in browser via textual-serve
+    web_host: str = "0.0.0.0"     # bind address
+    web_port: int = 8080          # listen port
+
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
 
@@ -78,6 +83,9 @@ class Settings:
             "qemu_test": self.qemu_test,
             "qemu_timeout": self.qemu_timeout,
             "qemu_expect": self.qemu_expect,
+            "web_enabled": self.web_enabled,
+            "web_host": self.web_host,
+            "web_port": self.web_port,
             "ctng_dir": self.ctng_dir,
             "log_max_age_days": self.log_max_age_days,
             "log_max_count": self.log_max_count,
@@ -122,6 +130,9 @@ class Settings:
             qemu_test=data.get("qemu_test", False),
             qemu_timeout=data.get("qemu_timeout", 5),
             qemu_expect=data.get("qemu_expect", "Server running"),
+            web_enabled=data.get("web_enabled", False),
+            web_host=data.get("web_host", "0.0.0.0"),
+            web_port=data.get("web_port", 8080),
             ctng_dir=data.get("ctng_dir", ""),
             log_max_age_days=data.get("log_max_age_days", 30),
             log_max_count=data.get("log_max_count", 5),
