@@ -62,6 +62,8 @@ binaries:
       dnf: texinfo
       pacman: texinfo
       zypper: texinfo
+  - name: flex
+  - name: bison
   - name: zip
   - name: unzip
   - name: xz
