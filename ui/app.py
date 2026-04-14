@@ -33,6 +33,7 @@ class S4App(App):
         Binding("f4", "open_toolchains", show=False),
         Binding("f5", "build", show=False),
         Binding("f6", "customize", show=False),
+        Binding("f7", "open_automation", show=False),
         Binding("f9", "tc_update", show=False),
         Binding("f10", "add", show=False),
         Binding("f11", "remove", show=False),
@@ -881,6 +882,11 @@ class S4App(App):
             return
         if not isinstance(self.screen, RepositoryScreen):
             self._switch_to(RepositoryScreen())
+
+    def action_open_automation(self) -> None:
+        from ui.screens.automation import AutomationScreen
+        if not isinstance(self.screen, AutomationScreen):
+            self._switch_to(AutomationScreen())
 
     def action_open_toolchains(self) -> None:
         from ui.screens.toolchains import ToolchainsScreen

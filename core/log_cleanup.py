@@ -11,6 +11,7 @@ types:
     selfbuild:<template>  {ts}.{template}.selfbuild.log
     backup:<toolchain>    {ts}.{toolchain}.backup.log
     deploy:<target>       {ts}.{target}.{dests}.deployment-check.log
+    automation:<job>      {ts}.{job}.automation.log
     webservice            {ts}.webservice.log
     __s4__                {ts}.s4-update.log
 
@@ -55,6 +56,10 @@ def _classify(name: str) -> Tuple[str, str]:
         return ("s4", "__s4__")
     if len(rest) == 1 and rest[0] == "webservice":
         return ("webservice", "webservice")
+    if len(rest) >= 2 and rest[-1] == "automation":
+        # Automation job log: {ts}.{jobname}.automation.log
+        job = ".".join(rest[:-1])
+        return ("automation", f"automation:{job}")
     if len(rest) >= 2 and rest[-1] == "selfbuild":
         tpl = ".".join(rest[:-1])
         return ("selfbuild", f"selfbuild:{tpl}")

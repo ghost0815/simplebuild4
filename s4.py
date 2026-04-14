@@ -171,6 +171,35 @@ def cli_targets() -> int:
     return 0
 
 
+def cli_run_job(args: list[str]) -> int:
+    """CLI: ./s4 run-job <name> | --list"""
+    from pathlib import Path
+    from core.paths import Paths
+    from core.settings import Settings
+
+    paths = Paths.detect()
+    paths.ensure_dirs()
+    settings = Settings.load(paths.root / "data" / "settings.yaml")
+
+    if not args or args[0] == "--list":
+        from core.automation import load_jobs
+        jobs = load_jobs(paths.automation_yaml)
+        if not jobs:
+            print("No jobs configured (data/automation.yaml)")
+            return 0
+        print("Available jobs:")
+        for s in jobs:
+            status = "enabled" if s.enabled else "disabled"
+            actions = ", ".join(s.actions) if s.actions else "-"
+            print(f"  {s.name:<20s} [{status}] cron={s.cron or '-':<15s} actions={actions}")
+        return 0
+
+    from core.automation import run_job
+    job_name = args[0]
+    success = run_job(job_name, paths, settings)
+    return 0 if success else 1
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
@@ -180,6 +209,8 @@ if __name__ == "__main__":
             sys.exit(cli_version())
         elif cmd == "targets":
             sys.exit(cli_targets())
+        elif cmd == "run-job":
+            sys.exit(cli_run_job(sys.argv[2:]))
         elif cmd == "update":
             # Handled by shell wrapper
             print("Use ./s4 update (handled by shell wrapper)")

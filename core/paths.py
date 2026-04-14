@@ -30,6 +30,9 @@ class Paths:
     templates_local: Path      # data/templates/ user-added templates
     translation_dir: Path
     yaml_backup_dir: Path          # data/backup/yaml/ for startup backups
+    automation_yaml: Path          # data/automation.yaml
+    automation_state_yaml: Path    # data/automation_state.yaml
+    automation_logs_dir: Path      # data/logs/automation/
 
     @classmethod
     def detect(cls) -> "Paths":
@@ -57,6 +60,9 @@ class Paths:
             templates_local=data / "templates",
             translation_dir=root / "translation",
             yaml_backup_dir=data / "backups" / "yaml",
+            automation_yaml=data / "automation.yaml",
+            automation_state_yaml=data / "automation_state.yaml",
+            automation_logs_dir=data / "logs" / "automation",
         )
 
     def ensure_dirs(self) -> None:
@@ -66,7 +72,7 @@ class Paths:
             self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
             self.bin_dir, self.builders_dir, self.templates_local,
-            self.yaml_backup_dir,
+            self.yaml_backup_dir, self.automation_logs_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
 

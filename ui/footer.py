@@ -13,6 +13,7 @@ FOOTER_LEFT = [
     ("F4", "toolchains_nav", "action_open_toolchains", None),
     ("F5", "build", "action_build", {"main", "toolchains"}),
     ("F6", "customize", "action_customize", {"toolchains"}),
+    ("F7", "automation_nav", "action_open_automation", None),
 ]
 
 # Which screen each F-key navigates to (for highlighting)
@@ -21,13 +22,14 @@ SCREEN_MAP = {
     "F2": "main",
     "F3": "repository",
     "F4": "toolchains",
+    "F7": "automation",
 }
 
 # Screens where Add/Remove are available
 ADD_REMOVE_SCREENS = {"main", "repository"}
-ADD_SCREENS = {"main", "repository", "target_edit"}
-REMOVE_SCREENS = {"main", "repository", "toolchains", "target_edit"}
-UPDATE_SCREENS = {"toolchains", "target_edit"}
+ADD_SCREENS = {"main", "repository", "target_edit", "automation"}
+REMOVE_SCREENS = {"main", "repository", "toolchains", "target_edit", "automation"}
+UPDATE_SCREENS = {"toolchains", "target_edit", "automation"}
 
 
 class FooterItem(Static):
@@ -195,9 +197,10 @@ class S4Footer(Horizontal):
         yield BuildTimerWidget(screen_name=self._active_screen)
         yield FooterSpacer()
 
-        # Right: F9 Update, F10 Add, F11 Remove
+        # Right: F9 Update/Run, F10 Add, F11 Remove
         f9_disabled = self._active_screen not in UPDATE_SCREENS
-        yield FooterItem(key="F9", label=t("update"), action="action_tc_update", disabled=f9_disabled)
+        f9_label = t("run") if self._active_screen == "automation" else t("update")
+        yield FooterItem(key="F9", label=f9_label, action="action_tc_update", disabled=f9_disabled)
 
         add_disabled = self._active_screen not in ADD_SCREENS
         yield FooterItem(key="F10", label=t("add"), action="action_add", disabled=add_disabled)
@@ -212,7 +215,7 @@ class S4Footer(Horizontal):
         yield FooterItem(key="F11", label=t("remove"), action="action_remove", disabled=remove_disabled)
 
         # Right: Save
-        save_screens = {"settings", "repository", "target_edit"}
+        save_screens = {"settings", "repository", "target_edit", "automation"}
         save_disabled = self._active_screen not in save_screens
         yield FooterItem(key="F12", label=t("save"), action="action_save_action", disabled=save_disabled)
 
