@@ -1062,7 +1062,11 @@ class BuildEngine:
             # Search system paths + native toolchain local libs
             search_dirs = self._get_native_lib_paths(tc_dir)
         else:
-            search_dirs = [sysroot] if sysroot else [str(tc_dir)]
+            # Search the configured target sysroot (tc.sysroot), which contains
+            # both system libs and cross-built libs. This avoids matching libs
+            # from a native host sysroot in OE-SDK toolchains.
+            target_root = tc_dir / tc.sysroot if tc.sysroot else tc_dir
+            search_dirs = [str(target_root)]
 
         # Map flag names to static library filenames
         _STATIC_LIB_FILES = {
