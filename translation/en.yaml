@@ -389,6 +389,7 @@ some_checks_failed: "{name} — some checks failed"
 
 # Self-updater
 s4_update_available: "s4 update available ({count} new commit{s}) — press u to update"
+decrypt_failed_warning: "Some encrypted passwords could not be decrypted (different hostname or user?). Please re-enter them in Settings, Repositories, or Target Editor."
 update_busy: "Cannot update: build or library operation in progress"
 update_dirty_warning: "Unsaved changes detected — please save and restart s4 manually after update"
 update_done_restarting: "Update complete — restarting s4..."

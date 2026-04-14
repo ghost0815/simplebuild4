@@ -288,6 +288,11 @@ class MainScreen(Screen):
             from pathlib import Path
             target = Target.load(Path(event.value))
             self._update_info(target)
+            # Warn if target has undecryptable passwords (skip during startup,
+            # the app timer handles that)
+            from core.credentials import pop_decrypt_warnings
+            if getattr(self.app, '_decrypt_check_done', False) and pop_decrypt_warnings():
+                self.notify(t("decrypt_failed_warning"), severity="warning", timeout=10)
             # Remember last target
             self.app.settings.last_target = event.value
             self.app.settings.save(self.app.settings_path)

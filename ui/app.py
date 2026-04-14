@@ -118,6 +118,13 @@ class S4App(App):
     # --------------------------------------------------------- web service
     _web_log_file = None
 
+    def _check_decrypt_warnings(self) -> None:
+        """Show a single warning if any encrypted passwords failed to decrypt."""
+        from core.credentials import pop_decrypt_warnings
+        if pop_decrypt_warnings():
+            self.notify(t("decrypt_failed_warning"), severity="warning", timeout=15)
+        self._decrypt_check_done = True
+
     def _web_start(self) -> None:
         """Start textual-serve as a separate subprocess."""
         import os
@@ -328,6 +335,11 @@ class S4App(App):
 
         from ui.screens.main import MainScreen
         self.push_screen(MainScreen())
+
+        # Check for decrypt failures after all configs have loaded (settings,
+        # targets, repos).  A short timer ensures the MainScreen's on_mount
+        # has finished loading the last target before we collect warnings.
+        self.set_timer(1.0, self._check_decrypt_warnings)
 
         # Start web service if enabled
         if self.settings.web_enabled:

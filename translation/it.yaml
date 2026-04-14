@@ -389,6 +389,7 @@ some_checks_failed: "{name} — alcuni controlli falliti"
 
 # Self-updater
 s4_update_available: "Aggiornamento s4 disponibile ({count} nuovi commit) — premi u per aggiornare"
+decrypt_failed_warning: "Alcune password crittografate non possono essere decifrate (hostname o utente diverso?). Reinserirle in Impostazioni, Repository o Target Editor."
 update_busy: "Update non possibile: operazione in corso"
 update_dirty_warning: "Modifiche non salvate — salva e riavvia s4"
 update_done_restarting: "Update completato — riavvio s4..."

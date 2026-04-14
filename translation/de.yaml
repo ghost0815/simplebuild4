@@ -389,6 +389,7 @@ some_checks_failed: "{name} — einige Prüfungen fehlgeschlagen"
 
 # Self-updater
 s4_update_available: "s4 Update verfügbar ({count} neue{s} Änderungen{s}) — u drücken zum Aktualisieren"
+decrypt_failed_warning: "Einige verschlüsselte Passwörter konnten nicht entschlüsselt werden (anderer Hostname oder Benutzer?). Bitte in Einstellungen, Repositories oder Target Editor neu eingeben."
 update_busy: "Update nicht möglich: Build- oder Bibliothek-Vorgang läuft"
 update_dirty_warning: "Ungespeicherte Änderungen erkannt — bitte speichern und s4 manuell neu starten"
 update_done_restarting: "Update fertig — s4 wird neu gestartet..."

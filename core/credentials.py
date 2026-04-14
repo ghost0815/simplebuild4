@@ -42,15 +42,34 @@ def encrypt(plain: str) -> str:
     return "enc:" + base64.b64encode(xored).decode("ascii")
 
 
+_decrypt_warnings: list[str] = []
+
+
 def decrypt(stored: str) -> str:
-    """Decrypt a stored value. Plain text (no ``enc:`` prefix) passes through."""
+    """Decrypt a stored value. Plain text (no ``enc:`` prefix) passes through.
+
+    Returns empty string if decryption fails (e.g. config moved to a
+    different machine where the derived key differs). A warning is
+    appended to _decrypt_warnings for the app to display.
+    """
     if not stored:
         return ""
     if not stored.startswith("enc:"):
         return stored  # legacy plain text
-    key = _derive_key()
-    xored = base64.b64decode(stored[4:])
-    return bytes(b ^ key[i % len(key)] for i, b in enumerate(xored)).decode("utf-8")
+    try:
+        key = _derive_key()
+        xored = base64.b64decode(stored[4:])
+        return bytes(b ^ key[i % len(key)] for i, b in enumerate(xored)).decode("utf-8")
+    except (UnicodeDecodeError, Exception):
+        _decrypt_warnings.append(stored[:20])
+        return ""
+
+
+def pop_decrypt_warnings() -> list[str]:
+    """Return and clear any decrypt warnings since last call."""
+    warnings = list(_decrypt_warnings)
+    _decrypt_warnings.clear()
+    return warnings
 
 
 def build_git_env(auth_method: str, ssh_key: str = "",
