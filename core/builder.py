@@ -442,7 +442,8 @@ class BuildEngine:
         _QEMU_ARCH_MAP = {
             "arm": "arm", "armv7": "arm", "armv7l": "arm", "armv7ve": "arm",
             "armv7a": "arm", "armv7ahf": "arm", "armv6": "arm", "armv5te": "arm",
-            "aarch64": "aarch64", "arm64": "aarch64",
+            "armv8": "arm", "armv8l": "arm",
+            "aarch64": "aarch64", "arm64": "aarch64", "armv8a": "aarch64", "armv8_64": "aarch64",
             "mipsel": "mipsel", "mips32el": "mipsel",
             "mips": "mips",
             "i686": "i386", "i386": "i386",
