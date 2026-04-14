@@ -1774,19 +1774,37 @@ class TargetEditScreen(Screen):
             self._check_deployment()
 
     def _check_deployment(self) -> None:
-        """Open the deployment check modal for the focused deployment entry."""
+        """Open the deployment check modal for the active deployment entry.
+
+        The active entry is determined by finding which collapsible contains
+        the currently focused widget, or the last expanded one.
+        """
         target = self._collect()
-        # Find which deployment collapsible is expanded/focused
-        focused_idx = 0
-        for idx in range(len(target.deployment)):
-            try:
-                col = self.query_one(f"#col-dep-{idx}", Collapsible)
-                if not col.collapsed:
-                    focused_idx = idx
-                    break
-            except Exception:
-                pass
-        if focused_idx >= len(target.deployment) or not target.deployment[focused_idx].host:
+        # Find which collapsible contains the focused widget
+        focused_idx = -1
+        focused = self.app.focused
+        if focused:
+            for idx in range(len(target.deployment)):
+                try:
+                    col = self.query_one(f"#col-dep-{idx}", Collapsible)
+                    if col in focused.ancestors_with_self or focused in col.query("*"):
+                        focused_idx = idx
+                        break
+                except Exception:
+                    pass
+        # Fallback: last expanded collapsible
+        if focused_idx < 0:
+            for idx in range(len(target.deployment)):
+                try:
+                    col = self.query_one(f"#col-dep-{idx}", Collapsible)
+                    if not col.collapsed:
+                        focused_idx = idx
+                except Exception:
+                    pass
+        if focused_idx < 0:
+            self.notify("Expand a deployment entry to test it", severity="warning")
+            return
+        if not target.deployment[focused_idx].host:
             self.notify("No host configured for this deployment entry", severity="warning")
             return
         from ui.screens.deployment_check import DeploymentCheckModal

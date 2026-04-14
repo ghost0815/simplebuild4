@@ -100,7 +100,9 @@ class DeploymentCheckModal(ModalScreen[None]):
                 bin_options.append((label, str(f)))
 
         with Vertical(id="check-box"):
-            yield Static(f"[bold]Deployment — {self._target_name}[/bold]", id="check-title")
+            dep_names = [d.name or d.host for d in self._deployments]
+            dep_info = f" → {', '.join(dep_names)}" if dep_names else ""
+            yield Static(f"[bold]Deployment — {self._target_name}{dep_info}[/bold]", id="check-title")
             with Horizontal(id="check-select-row"):
                 yield Static(f" {t('dc_binary')}", classes="s-label-tall")
                 yield Select(options=bin_options, value="dry-run", id="check-binary", allow_blank=False)
