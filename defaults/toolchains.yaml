@@ -891,6 +891,7 @@ toolchains:
   arch: csky
   prefix: csky-linux-
   sysroot: csky-linux/libc
+  cflags: -isystem @TOOLCHAIN@/csky-linux/sys-include
   url: https://simplebuild.dedyn.io/toolchains/current/Toolchain-csky.tar.xz
   checksum: sha256:0958d22eef925b1a50795a1975b805f56693182f4da627a4d8b39ee2048a54c5
 

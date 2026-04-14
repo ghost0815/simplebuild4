@@ -999,9 +999,11 @@ class BuildEngine:
         tc_cc = tcc.cc_opts if tcc.cc_opts else (tc.cc_opts or "")
         cc_opts = f"{self.compiler_opt} {tc_cc}".strip() if tc_cc else (self.compiler_opt or "")
         cflags = tcc.cflags if tcc.cflags else (tc.cflags or "")
+        cflags = cflags.replace("@TOOLCHAIN@", str(tc_dir))
         if cross_sysroot and "--sysroot" not in cflags:
             cflags = f"{cflags} {cross_sysroot}".strip()
         ldflags = tcc.ldflags if tcc.ldflags else (tc.ldflags or "")
+        ldflags = ldflags.replace("@TOOLCHAIN@", str(tc_dir))
         extra_make = tcc.make_vars if tcc.make_vars else (tc.make_vars or "")
 
         # --- Native toolchain: prepend local include/lib paths so the build

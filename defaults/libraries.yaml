@@ -203,6 +203,12 @@ libraries:
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nincludedir=@PREFIX@/include\n\nName: libdvbcsa\nDescription: DVB Common Scrambling algorithm (${BITSLICE:-unknown})\nVersion: 1.1.0-${BATCHSIZE:-0}-${BITSLICE:-unknown}\nCflags: -I@PREFIX@/include\nLibs: -L@PREFIX@/lib -ldvbcsa\" > @PREFIX@/lib/pkgconfig/libdvbcsa.pc"
     extra:
       "post:csky": 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
+      fix_includes: |
+        for f in $(find . -name "dvbcsa_pv.h"); do
+          if ! grep -q "#include <stdint.h>" "$f"; then
+            { echo "#include <stdint.h>"; echo "#include <stddef.h>"; echo "#include <string.h>"; cat "$f"; } > "$f.new" && mv "$f.new" "$f"
+          fi
+        done
       auto_bitslice: |
         OPT=""; BATCHSIZE="32"; BITSLICE="uint32"
         echo "#include <altivec.h>" | @CC@ @CFLAGS@ -maltivec -c -x c -o /dev/null - 2>/dev/null && OPT="--enable-altivec" && BATCHSIZE="128" && BITSLICE="altivec"

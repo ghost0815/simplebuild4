@@ -170,6 +170,10 @@ def _do_build(
     libraries_local: Optional[Path] = None,
 ) -> bool:
     """Internal build logic."""
+    # Resolve @TOOLCHAIN@ placeholder in cflags/ldflags
+    toolchain_cflags = (toolchain_cflags or "").replace("@TOOLCHAIN@", str(toolchain_dir))
+    toolchain_ldflags = (toolchain_ldflags or "").replace("@TOOLCHAIN@", str(toolchain_dir))
+
     # Load recipe (local overrides defaults)
     recipe = _find_recipe(lib_name, version, libraries_yaml, libraries_local)
     if not recipe:
@@ -529,7 +533,8 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
         return True
     if trait == "csky" and "csky" in prefix_lower:
         return True
-    if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps", "fix_wirecheck", "fix_version"):
+    if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps",
+                 "fix_wirecheck", "fix_version", "fix_includes"):
         return True  # Always run these
     return False
 
