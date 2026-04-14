@@ -19,30 +19,94 @@ _BLOCKED_PORTS = frozenset({
 def generate_self_signed_cert(
     output_dir: Path,
     dns_name: str = "",
+    bind_host: str = "",
 ) -> tuple[str, str]:
-    """Generate a self-signed ECDSA P-256 certificate.
+    """Generate a self-signed certificate.
+
+    Uses ECDSA P-256 on modern OpenSSL (>= 1.1.1), RSA 2048 on older.
+    Uses a config file for SAN instead of -addext (not available on OpenSSL < 1.1.1).
+    Includes bind address and DNS name in SAN for browser compatibility.
 
     Returns (cert_path, key_path).
     """
+    import tempfile
+
     output_dir.mkdir(parents=True, exist_ok=True)
     cert_path = output_dir / "s4-web.crt"
     key_path = output_dir / "s4-web.key"
 
-    # Build SAN list
-    san_entries = ["DNS:localhost", "IP:127.0.0.1"]
+    # Build SAN list — dual-stack (IPv4 + IPv6 loopback always)
+    san_entries = ["DNS:localhost", "IP:127.0.0.1", "IP:::1"]
+    _wildcards = {"0.0.0.0", "::", "::/0", "localhost", "127.0.0.1", "::1"}
+    if bind_host and bind_host not in _wildcards:
+        # Strip brackets from IPv6 like [::1]
+        clean_host = bind_host.strip("[]")
+        san_entries.append(f"IP:{clean_host}")
     if dns_name and dns_name not in ("localhost",):
         san_entries.insert(0, f"DNS:{dns_name}")
 
-    cmd = [
-        "openssl", "req", "-x509",
-        "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
-        "-nodes", "-days", "365",
-        "-keyout", str(key_path),
-        "-out", str(cert_path),
-        "-subj", "/CN=simplebuild4",
-        "-addext", f"subjectAltName={','.join(san_entries)}",
-    ]
-    subprocess.run(cmd, check=True, capture_output=True)
+    # Detect OpenSSL version for feature support
+    try:
+        ver_out = subprocess.check_output(
+            ["openssl", "version"], text=True, timeout=5,
+        ).strip()
+        # e.g. "OpenSSL 1.1.1f  31 Mar 2020" or "OpenSSL 3.0.2 ..."
+        import re
+        ver_match = re.search(r'(\d+)\.(\d+)\.(\d+)', ver_out)
+        if ver_match:
+            major, minor, patch = int(ver_match.group(1)), int(ver_match.group(2)), int(ver_match.group(3))
+            modern_ssl = (major, minor, patch) >= (1, 1, 1)
+        else:
+            modern_ssl = False
+    except Exception:
+        modern_ssl = False
+
+    # Write OpenSSL config with SAN (works on all versions)
+    san_config = (
+        "[req]\n"
+        "distinguished_name = req_dn\n"
+        "x509_extensions = v3_ext\n"
+        "prompt = no\n"
+        "\n"
+        "[req_dn]\n"
+        "CN = simplebuild4\n"
+        "\n"
+        "[v3_ext]\n"
+        f"subjectAltName = {','.join(san_entries)}\n"
+    )
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".cnf", delete=False) as cnf:
+        cnf.write(san_config)
+        cnf_path = cnf.name
+
+    try:
+        if modern_ssl:
+            # ECDSA P-256
+            cmd = [
+                "openssl", "req", "-x509",
+                "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:prime256v1",
+                "-nodes", "-days", "365",
+                "-keyout", str(key_path),
+                "-out", str(cert_path),
+                "-config", cnf_path,
+            ]
+        else:
+            # RSA 2048 fallback for old OpenSSL
+            cmd = [
+                "openssl", "req", "-x509",
+                "-newkey", "rsa:2048",
+                "-nodes", "-days", "365",
+                "-keyout", str(key_path),
+                "-out", str(cert_path),
+                "-config", cnf_path,
+            ]
+        subprocess.run(cmd, check=True, capture_output=True)
+    finally:
+        try:
+            os.unlink(cnf_path)
+        except OSError:
+            pass
+
     os.chmod(str(key_path), 0o600)
     return str(cert_path), str(key_path)
 
@@ -71,8 +135,8 @@ ExecStart={python} -c "{server_code}"
 Restart=on-failure
 RestartSec=3
 Environment=PATH={path}
-StandardOutput=append:{log_path}
-StandardError=append:{log_path}
+StandardOutput={output_mode}:{log_path}
+StandardError={output_mode}:{log_path}
 
 [Install]
 WantedBy=multi-user.target
@@ -108,6 +172,28 @@ def _build_server_code(
 
 
 _UNIT_DIR = Path("/etc/systemd/system")
+
+
+def _format_host_for_url(host: str) -> str:
+    """Wrap IPv6 addresses in brackets for URL use."""
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]"
+    return host
+
+
+def _systemd_output_mode() -> str:
+    """Return 'append' if systemd >= 240, else 'file' for older versions."""
+    try:
+        out = subprocess.check_output(
+            ["systemctl", "--version"], text=True, timeout=5,
+        ).splitlines()[0]  # e.g. "systemd 245 (245.4-4ubuntu3.22)"
+        import re
+        m = re.search(r'(\d+)', out)
+        if m and int(m.group(1)) >= 240:
+            return "append"
+    except Exception:
+        pass
+    return "file"
 
 
 class WebServiceManager:
@@ -199,7 +285,9 @@ class WebServiceManager:
         python = sys.executable
         app_py = str(self.root / "app.py")
         templates = str(self.root / "ui" / "web" / "templates")
-        public_host = dns_name or ("localhost" if host == "0.0.0.0" else host)
+        _wildcards = ("0.0.0.0", "::", "::/0")
+        public_host = dns_name or ("localhost" if host in _wildcards else host)
+        public_host = _format_host_for_url(public_host)
         user = os.environ.get("USER", os.environ.get("LOGNAME", "root"))
         # Only include Linux paths, filter out Windows/WSL mount paths
         path = ":".join(
@@ -210,7 +298,7 @@ class WebServiceManager:
         # Auto-generate cert if SSL enabled but no cert provided
         if ssl and (not ssl_cert or not ssl_key):
             web_dir = self.root / "data" / "web"
-            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns_name)
+            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns_name, host)
             _log(f"  Generated self-signed certificate: {ssl_cert}")
 
         # Resolve log path
@@ -234,17 +322,21 @@ class WebServiceManager:
             root=self.root, python=python,
             server_code=server_code,
             path=path, log_path=log_file, user=user,
+            output_mode=_systemd_output_mode(),
         )
 
         # sudoers entry: allows start/stop/restart/status without password
         systemctl = shutil.which("systemctl") or "/usr/bin/systemctl"
+        tee = shutil.which("tee") or "/usr/bin/tee"
         sudoers = (
             f"# SimpleBuild4 web service — auto-generated\n"
             f"{user} ALL=(ALL) NOPASSWD: "
             f"{systemctl} start {self.service}, "
             f"{systemctl} stop {self.service}, "
             f"{systemctl} restart {self.service}, "
-            f"{systemctl} status {self.service}\n"
+            f"{systemctl} status {self.service}, "
+            f"{systemctl} daemon-reload, "
+            f"{tee} {self._unit_path}\n"
         )
 
         # Write unit file + sudoers + daemon-reload + enable via root
@@ -309,6 +401,85 @@ class WebServiceManager:
         _log("[green]Service uninstalled[/green]")
         return True
 
+    def update_unit(
+        self,
+        host: str = "0.0.0.0",
+        port: int = 8080,
+        dns_name: str = "",
+        ssl: bool = False,
+        ssl_cert: str = "",
+        ssl_key: str = "",
+        auth_user: str = "",
+        auth_password: str = "",
+        logs_dir: Optional[Path] = None,
+        organize_logs: bool = False,
+        theme: str = "textual-dark",
+        log: Optional[Callable[[str], None]] = None,
+    ) -> bool:
+        """Update the systemd unit file with current settings (no password needed).
+
+        Uses the existing sudoers entry to overwrite the unit file.
+        """
+        _log = log or (lambda m: None)
+        if not self.is_installed():
+            return False
+
+        python = sys.executable
+        app_py = str(self.root / "app.py")
+        templates = str(self.root / "ui" / "web" / "templates")
+        _wildcards = ("0.0.0.0", "::", "::/0")
+        public_host = dns_name or ("localhost" if host in _wildcards else host)
+        public_host = _format_host_for_url(public_host)
+        user = os.environ.get("USER", os.environ.get("LOGNAME", "root"))
+        path = ":".join(
+            p for p in os.environ.get("PATH", "").split(":")
+            if p and not p.startswith("/mnt/")
+        ) or "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+        if ssl and (not ssl_cert or not ssl_key):
+            web_dir = self.root / "data" / "web"
+            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns_name, host)
+
+        if logs_dir:
+            from core.log_cleanup import resolve_log_dir
+            _log_dir = resolve_log_dir(logs_dir, "webservice", organize_logs)
+        else:
+            _log_dir = self.root / "data" / "logs"
+            _log_dir.mkdir(parents=True, exist_ok=True)
+        log_file = _log_dir / f"{self.service}.log"
+
+        server_code = _build_server_code(
+            python=python, app_py=app_py, host=host, port=port,
+            public_host=public_host, templates=templates,
+            ssl=ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
+            auth_user=auth_user, auth_password=auth_password,
+            theme=theme,
+        )
+
+        unit = _UNIT_TEMPLATE.format(
+            root=self.root, python=python,
+            server_code=server_code,
+            path=path, log_path=log_file, user=user,
+            output_mode=_systemd_output_mode(),
+        )
+
+        # Write unit via sudo tee (allowed by sudoers)
+        tee = shutil.which("tee") or "/usr/bin/tee"
+        try:
+            r = subprocess.run(
+                ["sudo", tee, str(self._unit_path)],
+                input=unit, capture_output=True, text=True, timeout=10,
+            )
+            if r.returncode != 0:
+                _log(f"[red]Failed to write unit: {r.stderr.strip()}[/red]")
+                return False
+            # daemon-reload to pick up changes
+            self._sudo_systemctl("daemon-reload", _log)
+        except Exception as e:
+            _log(f"[red]Failed to update unit: {e}[/red]")
+            return False
+        return True
+
     def start(self, log: Optional[Callable[[str], None]] = None) -> bool:
         """Start the service (uses passwordless sudo via sudoers)."""
         _log = log or (lambda m: None)
@@ -334,8 +505,11 @@ class WebServiceManager:
     # --------------------------------------------------------- helpers
 
     def _sudo_systemctl(self, action: str, log: Callable) -> bool:
-        """Run sudo systemctl <action> <service> (passwordless via sudoers)."""
-        cmd = ["sudo", "systemctl", action, self.service]
+        """Run sudo systemctl <action> [<service>] (passwordless via sudoers)."""
+        if action == "daemon-reload":
+            cmd = ["sudo", "systemctl", "daemon-reload"]
+        else:
+            cmd = ["sudo", "systemctl", action, self.service]
         log(f"[dim]$ {' '.join(cmd)}[/dim]")
         try:
             r = subprocess.run(

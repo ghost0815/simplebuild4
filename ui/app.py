@@ -171,10 +171,13 @@ class S4App(App):
             self.notify(err, severity="error", timeout=5)
             return
 
-        # public_url must be a routable address for the browser;
-        # 0.0.0.0 is only valid as a bind address, not as a URL.
+        # public_url is only used for the startup log message now —
+        # URLs in the browser are derived from the request Host header.
+        from core.web_service import _format_host_for_url
         dns = self.settings.web_dns_name
-        public_host = dns or ("localhost" if host == "0.0.0.0" else host)
+        _wildcards = ("0.0.0.0", "::", "::/0")
+        public_host = dns or ("localhost" if host in _wildcards else host)
+        public_host = _format_host_for_url(public_host)
         app_py = str(self.paths.root / "app.py")
         templates = str(self.paths.root / "ui" / "web" / "templates")
 
@@ -185,7 +188,7 @@ class S4App(App):
         if use_ssl and (not ssl_cert or not ssl_key):
             from core.web_service import generate_self_signed_cert
             web_dir = self.paths.root / "data" / "web"
-            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns)
+            ssl_cert, ssl_key = generate_self_signed_cert(web_dir, dns, host)
 
         protocol = "https" if use_ssl else "http"
         auth_user = self.settings.web_auth_user

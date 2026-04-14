@@ -156,6 +156,44 @@ class S4Server(Server):
         # Redirect to login form
         return web.HTTPFound(f"/login?next={path}")
 
+    @aiohttp_jinja2.template("app_index.html")
+    async def handle_index(self, request: web.Request) -> dict:
+        """Override to derive URLs from the request's Host header.
+
+        textual-serve hardcodes public_url into WebSocket and static URLs.
+        This fails with port forwarding (WSL), reverse proxies, or when
+        accessing via different hostnames. We use the browser's Host header
+        so URLs always match how the page was accessed.
+        """
+        from textual_serve.server import to_int
+        router = request.app.router
+        font_size = to_int(request.query.get("fontsize", "16"), 16)
+
+        # Use Host header from the actual browser request
+        host_header = (
+            request.headers.get("Host", "")
+            or request.headers.get("X-Forwarded-Host", "")
+        )
+        if host_header:
+            http_proto = "https" if self._ssl_certfile else "http"
+            ws_proto = "wss" if self._ssl_certfile else "ws"
+            base_url = f"{http_proto}://{host_header}"
+        else:
+            base_url = self.public_url
+            ws_proto = "wss" if self.public_url.startswith("https") else "ws"
+
+        ws_path = router["websocket"].url_for()
+        static_path = str(router["static"].url_for(filename="/")).rstrip("/") + "/"
+
+        return {
+            "font_size": font_size,
+            "app_websocket_url": f"{ws_proto}://{host_header or self.host}{ws_path}",
+            "config": {
+                "static": {"url": f"{base_url}{static_path}"},
+            },
+            "application": {"name": self.title},
+        }
+
     async def _make_app(self) -> web.Application:
         """Override to inject auth middleware and login routes."""
         app = await super()._make_app()

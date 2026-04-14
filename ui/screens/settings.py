@@ -402,9 +402,24 @@ class SettingsScreen(Screen):
 
     def _do_web_svc_action(self, action: str) -> None:
         mgr = self._get_web_svc_mgr()
+        s = self.app.settings
 
         def _log(msg):
             self.app.call_from_thread(self.notify, msg, timeout=5)
+
+        if action in ("start", "restart") and mgr.is_installed():
+            # Update unit file with current settings before start/restart
+            if not mgr.update_unit(
+                host=s.web_host, port=s.web_port, dns_name=s.web_dns_name,
+                ssl=s.web_ssl, ssl_cert=s.web_ssl_cert, ssl_key=s.web_ssl_key,
+                auth_user=s.web_auth_user, auth_password=s.web_auth_password,
+                logs_dir=self.app.paths.logs_dir,
+                organize_logs=s.organize_logs, theme=s.theme,
+                log=_log,
+            ):
+                def _warn(msg):
+                    self.app.call_from_thread(self.notify, msg, severity="warning", timeout=8)
+                _warn("Could not update service config — run Setup to refresh permissions")
 
         if action == "start":
             mgr.start(log=_log)
