@@ -234,9 +234,10 @@ class CrosstoolNG:
         # Run ./ct-ng show-config (informational)
         self._run(["./ct-ng", "show-config"], cwd=self.ctng_dir, ignore_failure=True)
 
-        # Run ./ct-ng build
+        # Run ./ct-ng build (raise file descriptor limit — crosstool-ng
+        # needs more than the default 1024 for large toolchains)
         self.log("[bold]Running ct-ng build...[/bold]")
-        ok = self._run(["./ct-ng", "build"], cwd=self.ctng_dir)
+        ok = self._run(["bash", "-c", "ulimit -n 4096; ./ct-ng build"], cwd=self.ctng_dir)
 
         # Cleanup build artifacts (whether success or failure — saves disk)
         try:
