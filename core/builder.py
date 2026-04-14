@@ -357,7 +357,7 @@ class BuildEngine:
             if is_native:
                 self._native_smoke_test(bin_path, tc_dir)
             elif cross:
-                self._qemu_smoke_test(bin_path, cross, sysroot)
+                self._qemu_smoke_test(bin_path, cross, sysroot, tc_dir)
 
     def _native_smoke_test(self, bin_path: Path, tc_dir: Path | None = None) -> None:
         """Run a smoke test on a native binary (direct execution)."""
@@ -385,7 +385,8 @@ class BuildEngine:
         try:
             proc = subprocess.Popen(
                 native_cmd,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
                 preexec_fn=os.setsid,
                 env=env,
             )
@@ -427,7 +428,7 @@ class BuildEngine:
         except Exception as e:
             self._log(f"[red]TEST -------> ERROR: {e}[/red]")
 
-    def _qemu_smoke_test(self, bin_path: Path, cross: str, sysroot: str) -> None:
+    def _qemu_smoke_test(self, bin_path: Path, cross: str, sysroot: str, tc_dir: Path | None = None) -> None:
         """Run a QEMU smoke test on a cross-compiled binary (like s3).
 
         Starts the binary under qemu-<arch>, waits for expected output string,
@@ -501,7 +502,22 @@ class BuildEngine:
             if not _shutil.which(qemu_bin):
                 self._log(f"[yellow]QEMU -------> SKIP ({qemu_bin} not found)[/yellow]")
                 return
-            cmd = [qemu_bin, "-L", qemu_sysroot, str(bin_path), "-c", "/tmp/"]
+            # Add toolchain prefix lib dir so QEMU finds cross-built shared libs
+            # (e.g. libcrypto, libusb) that live outside the gcc sysroot
+            extra_lib_dirs = []
+            if tc_dir:
+                for candidate in [
+                    tc_dir / (dumpmachine or "") / "lib",
+                    tc_dir / "lib",
+                ]:
+                    if candidate.is_dir() and str(candidate) not in qemu_sysroot:
+                        extra_lib_dirs.append(str(candidate))
+            if extra_lib_dirs:
+                cmd = [qemu_bin, "-L", qemu_sysroot,
+                       "-E", f"LD_LIBRARY_PATH={':'.join(extra_lib_dirs)}",
+                       str(bin_path), "-c", "/tmp/"]
+            else:
+                cmd = [qemu_bin, "-L", qemu_sysroot, str(bin_path), "-c", "/tmp/"]
 
         timeout = self.qemu_timeout
         expect = self.qemu_expect
@@ -513,7 +529,8 @@ class BuildEngine:
         try:
             proc = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
                 preexec_fn=os.setsid,
             )
 
@@ -972,6 +989,9 @@ class BuildEngine:
                 if not gcc_sysroot or not Path(gcc_sysroot).is_dir():
                     cross_sysroot = f"--sysroot={sysroot}"
                     self._log(f"  Auto-injected: {cross_sysroot}")
+                elif gcc_sysroot:
+                    # Use compiler's real sysroot (e.g. for QEMU -L)
+                    sysroot = gcc_sysroot
 
         # --- CC_OPTS, CFLAGS, LDFLAGS ---
         # s4 settings = base, toolchain appends, target overrides toolchain
@@ -1189,6 +1209,9 @@ class BuildEngine:
             make_cmd.append(flag)
         for key, val in static_libs.items():
             make_cmd.append(f"{key}={val}")
+        # Static libusb needs -lrt on older glibc (clock_gettime not in libc)
+        if "LIBUSB_LIB" in static_libs:
+            make_cmd.append("EXTRA_LIBS=-lrt")
         if stapi_lib:
             make_cmd.append(stapi_lib)
         if extra_make:
@@ -1570,7 +1593,8 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
             from rich.markup import escape as rich_escape
             proc = subprocess.Popen(
                 cmd, cwd=str(cwd),
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
             )
             for line in proc.stdout:
                 if self._cancel():

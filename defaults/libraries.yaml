@@ -143,23 +143,31 @@ libraries:
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=@PREFIX@/lib/systemd/system --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install"
-    post_install: |
-      echo "Building pcsc-tools (pcsc_scan)..."
-      git clone --depth 1 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src
-      cd pcsc-tools-src
-      ./bootstrap
-      PKG_CONFIG_LIBDIR="@PREFIX@/lib/pkgconfig" ./configure --host=@TARGET@ --prefix=@PREFIX@ PCSC_LIBS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --libs libpcsclite)" PCSC_CFLAGS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --cflags libpcsclite)"
-      make -j@CPUS@
-      make install
     depends: [libusb, zlib]
     variants:
       - version: "2.4.1"
         label: "2.4.x (current)"
         requires: "c11"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
+        post_install: |
+          echo "Building pcsc-tools (pcsc_scan)..."
+          git clone --depth 1 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src
+          cd pcsc-tools-src
+          ./bootstrap
+          PKG_CONFIG_LIBDIR="@PREFIX@/lib/pkgconfig" ./configure --host=@TARGET@ --prefix=@PREFIX@ PCSC_LIBS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --libs libpcsclite)" PCSC_CFLAGS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --cflags libpcsclite)"
+          make -j@CPUS@
+          make install
       - version: "1.9.5"
         label: "1.9.x (no C11 needed)"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.bz2
+        post_install: |
+          echo "Building pcsc-tools 1.5.8 (pcsc_scan, no C11)..."
+          git clone --depth 1 --branch 1.5.8 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src
+          cd pcsc-tools-src
+          ./bootstrap
+          PKG_CONFIG_LIBDIR="@PREFIX@/lib/pkgconfig" ./configure --host=@TARGET@ --prefix=@PREFIX@ PCSC_LIBS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --libs libpcsclite)" PCSC_CFLAGS="$(PKG_CONFIG_LIBDIR=@PREFIX@/lib/pkgconfig pkg-config --cflags libpcsclite)"
+          make -j@CPUS@
+          make install
 
   - name: ccid
     pc_file: libccid.pc
