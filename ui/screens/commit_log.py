@@ -30,8 +30,9 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         align: center middle;
     }
     #log-box {
-        width: 140;
-        height: 34;
+        width: 95%;
+        max-width: 140;
+        height: 80%;
         border: solid $accent;
         background: $surface;
         padding: 1;
@@ -46,7 +47,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
     }
     #log-table {
         height: 1fr;
-        overflow-x: hidden;
+        max-height: 80vh;
     }
     #log-buttons {
         height: 3;
@@ -68,6 +69,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         self._auth_env = auth_env
         self._rows: list[tuple[str, str, str, str, str]] = []  # (rev, date, author, subject, refs)
         self._current_rows: list[tuple[str, str, str, str, str]] = []
+        self._current_rev: str = ""  # current HEAD sha/rev for highlighting
         self._sort_col: int | None = None
         self._sort_reverse: bool = False
 
@@ -105,6 +107,24 @@ class CommitLogModal(ModalScreen[Optional[str]]):
 
     def _fetch(self) -> None:
         try:
+            # Detect current HEAD/rev for highlighting
+            if self._vcs == "git":
+                try:
+                    self._current_rev = subprocess.check_output(
+                        ["git", "rev-parse", "--short", "HEAD"],
+                        cwd=self._repo_path, text=True, timeout=5,
+                    ).strip()
+                except Exception:
+                    pass
+            else:
+                try:
+                    out = subprocess.check_output(
+                        ["svnversion", "."],
+                        cwd=self._repo_path, text=True, timeout=5,
+                    ).strip().rstrip("MSP")
+                    self._current_rev = f"r{out}"
+                except Exception:
+                    pass
             if self._vcs == "git":
                 self._rows = self._fetch_git()
             else:
@@ -186,10 +206,18 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             refs_c = self._ellipsise(refs, self._MAX_REFS)
             subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
             auth_c = self._ellipsise(author, self._MAX_AUTHOR)
-            if self._vcs == "git":
-                tbl.add_row(rev, refs_c, subj_c, date, auth_c, key=rev)
+            is_current = self._current_rev and rev == self._current_rev
+            if is_current:
+                _c = "bold green"
+                if self._vcs == "git":
+                    tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{refs_c}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
+                else:
+                    tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
             else:
-                tbl.add_row(rev, subj_c, date, auth_c, key=rev)
+                if self._vcs == "git":
+                    tbl.add_row(rev, refs_c, subj_c, date, auth_c, key=rev)
+                else:
+                    tbl.add_row(rev, subj_c, date, auth_c, key=rev)
         if tbl.row_count:
             tbl.move_cursor(row=0)
             # Only move focus on the first render — don't steal it from

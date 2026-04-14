@@ -26,8 +26,9 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         align: center middle;
     }
     #s4u-box {
-        width: 140;
-        height: 36;
+        width: 95%;
+        max-width: 140;
+        height: 80%;
         border: solid $accent;
         background: $surface;
         padding: 1;
@@ -42,7 +43,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
     }
     #s4u-table {
         height: 1fr;
-        overflow-x: hidden;
+        max-height: 80vh;
     }
     #s4u-buttons {
         height: 3;
@@ -188,8 +189,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         if refs:
             lines.append(f"refs: {refs}")
         lines.append(subject)
-        if sha == self._current_sha:
-            lines.append("← current")
+
         tbl.tooltip = "\n".join(lines)
 
     # Column index → row tuple index mapping for sorting
