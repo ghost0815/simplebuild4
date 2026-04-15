@@ -20,7 +20,7 @@ def _get_version() -> str:
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
         branch = subprocess.run(
-            ["git", "branch", "--show-current"],
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
         if count and sha:

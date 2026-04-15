@@ -367,7 +367,7 @@ class S4App(App):
                 capture_output=True, text=True, timeout=15,
             )
             branch = subprocess.run(
-                ["git", "branch", "--show-current"], cwd=str(root),
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=str(root),
                 capture_output=True, text=True, timeout=5,
             ).stdout.strip()
             result = subprocess.run(

@@ -92,7 +92,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         try:
             root = str(self._root)
             self._branch = subprocess.run(
-                ["git", "branch", "--show-current"], cwd=root,
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root,
                 capture_output=True, text=True, timeout=5,
             ).stdout.strip() or "master"
 

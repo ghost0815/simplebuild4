@@ -10,7 +10,7 @@ if [ "$1" == "update" ]; then
 
     if [ -d .git ]; then
         # --- Git repo: fetch + reset ---
-        GIT_BRANCH="$(git branch --show-current)"
+        GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo master)"
         git fetch --prune --tags 2>&1 | sed 's/^/  /'
 
         local_rev=$(git rev-list HEAD --count)
