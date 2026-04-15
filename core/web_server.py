@@ -225,12 +225,21 @@ class S4Server(Server):
 
         ssl_ctx = self._make_ssl_context()
 
-        web.run_app(
-            self._make_app(),
-            host=self.host,
-            port=self.port,
-            handle_signals=False,
-            loop=loop,
-            ssl_context=ssl_ctx,
-            print=lambda *args: None,
-        )
+        try:
+            web.run_app(
+                self._make_app(),
+                host=self.host,
+                port=self.port,
+                handle_signals=False,
+                loop=loop,
+                ssl_context=ssl_ctx,
+                print=lambda *args: None,
+            )
+        except OSError as e:
+            print(
+                f"\n[s4-web] ERROR: Cannot bind to {self.host}:{self.port} — {e}\n"
+                f"Check that the address exists on this machine and the port is free.\n"
+                f"Update the bind address in s4 Settings → Web Service.",
+                flush=True,
+            )
+            raise SystemExit(1) from None
