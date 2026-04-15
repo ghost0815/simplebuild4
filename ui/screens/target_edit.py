@@ -2104,6 +2104,8 @@ class TargetEditScreen(Screen):
             self.save_path.unlink()
         target.save(new_path)
         self.save_path = new_path
+        from core.credentials import clear_persistent_warnings
+        clear_persistent_warnings()
         if target.exclude_from_automation:
             from core.automation import remove_from_jobs
             remove_from_jobs(self.app.paths.automation_yaml, target=target.name)

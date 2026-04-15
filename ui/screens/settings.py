@@ -544,6 +544,8 @@ class SettingsScreen(Screen):
         """Save settings (called by App)."""
         old_ascii = self.app.settings.ascii_mode
         self._save()
+        from core.credentials import clear_persistent_warnings
+        clear_persistent_warnings()
         if self._language_changed:
             self.notify(t("language_changed"), severity="warning", timeout=5)
         if self.app.settings.ascii_mode != old_ascii:

@@ -917,6 +917,8 @@ class RepositoryScreen(Screen):
                 except Exception:
                     pass
         save_repos(self._repos, self.app.paths.repos_config)
+        from core.credentials import clear_persistent_warnings
+        clear_persistent_warnings()
         if notify:
             self._log_sync(f"[green]Saved repo '{repo.name}'[/green]")
         # If the branch changed and the repo is already cloned, switch
