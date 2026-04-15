@@ -205,6 +205,92 @@ def _migrate_actions(actions: list[str]) -> list[str]:
     return [_ACTION_MIGRATION.get(a, a) for a in actions]
 
 
+def _resolve_installed_version(
+    tc_dir: Path, sysroot: str, lib_name: str, native: bool, fallback: str
+) -> str:
+    """After a successful build_library, return the version pkg-config
+    reports for the freshly installed lib. Falls back to the version that
+    was passed to build_library when the rescan can't find it (which
+    shouldn't happen if the build truly succeeded)."""
+    try:
+        from core.toolchain import scan_libraries
+        for lib in scan_libraries(tc_dir, sysroot, native=native):
+            if lib.name == lib_name and lib.found and lib.version:
+                return lib.version
+    except Exception:
+        pass
+    return fallback
+
+
+def _recipe_pick_variant_for(recipes: list[dict], lib_name: str, recorded_version: str) -> str:
+    """Pick the recipe variant to (re-)install a library with.
+
+    ``recorded_version`` is the ``.pc``-file version as captured from
+    a previous install (e.g. ``"1.1.0-32-uint32"`` for libdvbcsa). The
+    same string is rarely a recipe variant verbatim — recipes use
+    selectors like ``"1.1.0-32"`` or ``"auto"`` and the bitslice/CPU
+    suffix is added by the install step. We map back via:
+
+    1. Exact match — works for libs whose .pc version IS the variant
+       (OpenSSL ``3.5.6`` → variant ``3.5.6``).
+    2. Longest-prefix match — works for libs whose .pc version extends
+       the variant (``1.1.0-32-uint32`` → variant ``1.1.0-32``).
+    3. Fallback to the recommended variant (latest non-prerelease).
+    """
+    if not lib_name:
+        return ""
+    recommended = _recipe_recommended_version(recipes, lib_name, recorded_version)
+    if not recorded_version:
+        return recommended
+    for r in recipes:
+        if r.get("name") != lib_name:
+            continue
+        variants = r.get("variants", []) or []
+        # 1) Exact match
+        for v in variants:
+            vv = v.get("version", "")
+            if vv and vv == recorded_version:
+                return vv
+        # 2) Longest-prefix match (skip selector-only variants like
+        #    "auto"/"master" which would prefix-match anything).
+        candidates = [
+            v.get("version", "") for v in variants
+            if v.get("version") and v.get("version") not in ("auto", "master")
+        ]
+        candidates.sort(key=len, reverse=True)
+        for vv in candidates:
+            if recorded_version.startswith(vv + "-") or recorded_version == vv:
+                return vv
+        return recommended
+    return recommended
+
+
+def _recipe_recommended_version(recipes: list[dict], lib_name: str, hint_version: str = "") -> str:
+    """Pick the recommended version for a library from libraries.yaml.
+
+    Used when re-installing libs into a freshly rebuilt toolchain where
+    the sysroot is empty (so scan_libraries has no base to work with).
+    Prefers the latest non-prerelease variant; falls back to ``hint_version``
+    if the recipe lists it, else returns the first variant."""
+    _prerelease = ("alpha", "beta", "preview", "rc", "dev")
+    for r in recipes:
+        if r.get("name") != lib_name:
+            continue
+        variants = r.get("variants", []) or []
+        stable = [
+            v.get("version", "") for v in variants
+            if v.get("version")
+            and not any(tag in v.get("version", "").lower() for tag in _prerelease)
+        ]
+        if stable:
+            return stable[0]
+        if hint_version and any(v.get("version") == hint_version for v in variants):
+            return hint_version
+        if variants:
+            return variants[0].get("version", "")
+    return ""
+
+
 def load_jobs(path: Path) -> list[JobConfig]:
     """Load jobs from YAML."""
     if not path.exists():
@@ -719,6 +805,9 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 default_confdir=settings.default_confdir,
                 default_build_system=settings.default_build_system,
                 log=log,
+                # All sub-action output flows into the single job log;
+                # no separate per-target build log file from automation.
+                write_log_file=False,
             )
             if not engine.build():
                 all_ok = False
@@ -923,6 +1012,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
             return False
 
         all_ok = True
+        installed_count = 0
         updated_count = 0
 
         for tc_name in sorted(tc_names):
@@ -931,19 +1021,63 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 log(f"Toolchain not installed: {tc_name}")
                 continue
             tc_dir = paths.toolchains_dir / tc.name
-            log(f"Scanning libraries for toolchain '{tc.name}'...")
 
-            libs = scan_libraries(tc_dir, tc.sysroot, native=tc.native)
-            check_library_updates(libs, recipes, has_c11=True)
+            # Scan what is currently in the sysroot + merge with the
+            # persistent 'libraries' record in toolchains.local.yaml.
+            # The record is the source of truth for "what this toolchain
+            # should have" — after a build-toolchains rebuild the sysroot
+            # is empty, but the record still lists the libraries that
+            # were previously integrated; update-libraries restores them.
+            log(f"Scanning libraries for toolchain '{tc.name}'...")
+            scanned = scan_libraries(tc_dir, tc.sysroot, native=tc.native)
+            check_library_updates(scanned, recipes, has_c11=True)
+            scanned_by_name = {lib.name: lib for lib in scanned}
+
+            # Build the target list: everything in the registry record,
+            # plus anything the scan additionally found (belt & braces,
+            # in case manual installs bypassed record_library).
+            target_names: list[str] = list(tc.libraries.keys())
+            for lib in scanned:
+                if lib.found and lib.name not in target_names:
+                    target_names.append(lib.name)
 
             tc_updated = False
-            for lib in libs:
-                if not lib.found or not lib.update_version or lib.up_to_date:
+            for lib_name in target_names:
+                scanned_lib = scanned_by_name.get(lib_name)
+                recorded_version = tc.libraries.get(lib_name, "")
+                in_sysroot = bool(scanned_lib and scanned_lib.found)
+
+                # Pick the recommended (same-branch-latest) version from
+                # the recipe; fall back to the recorded version if the
+                # recipe no longer knows about it.
+                version_to_build = ""
+                if in_sysroot and scanned_lib.up_to_date:
+                    # Already at recommended version — nothing to do
                     continue
-                log(f"  Updating {lib.name}: {lib.version} → {lib.update_version}")
+                if in_sysroot and scanned_lib.update_version:
+                    version_to_build = scanned_lib.update_version
+                    action = "update"
+                else:
+                    # Missing from sysroot (or scan has no upgrade info)
+                    # → re-install. Map the recorded .pc version back to
+                    # a recipe variant so a previous explicit choice
+                    # (e.g. libdvbcsa "1.1.0-32") survives a rebuild.
+                    version_to_build = _recipe_pick_variant_for(
+                        recipes, lib_name, recorded_version,
+                    )
+                    action = "install"
+                if not version_to_build:
+                    log(f"  Skip {lib_name}: no version available")
+                    continue
+
+                if action == "update":
+                    log(f"  Updating {lib_name}: {scanned_lib.version} → {version_to_build}")
+                else:
+                    log(f"  Installing {lib_name} {version_to_build} (missing from sysroot)")
+
                 ok = build_library(
-                    lib_name=lib.name,
-                    version=lib.update_version,
+                    lib_name=lib_name,
+                    version=version_to_build,
                     toolchain_dir=tc_dir,
                     toolchain_prefix=tc.prefix,
                     toolchain_sysroot=tc.sysroot,
@@ -952,14 +1086,30 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                     libraries_yaml=paths.defaults_dir / "libraries.yaml",
                     libraries_local=paths.libraries_local,
                     downloads_dir=paths.downloads_dir,
-                    logs_dir=paths.logs_dir,
+                    # logs_dir=None → no separate per-lib log file; the
+                    # full output ends up only in the job log.
+                    logs_dir=None,
                     max_cpus=settings.max_cpus,
                     native=tc.native,
                     log=log,
                     organize_logs=settings.organize_logs,
                 )
                 if ok:
-                    updated_count += 1
+                    # Re-scan the sysroot so we record the *actual*
+                    # version reported by the .pc file (recipe variants
+                    # like libdvbcsa's "auto" are selectors, not real
+                    # versions — auto resolves to e.g. "1.1.0-128-neon"
+                    # after the build).
+                    actual_version = _resolve_installed_version(
+                        tc_dir, tc.sysroot, lib_name, tc.native,
+                        fallback=version_to_build,
+                    )
+                    registry.record_library(tc.name, lib_name, actual_version)
+                    tc.libraries[lib_name] = actual_version
+                    if action == "update":
+                        updated_count += 1
+                    else:
+                        installed_count += 1
                     tc_updated = True
                 else:
                     all_ok = False
@@ -967,10 +1117,14 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
             if tc_updated:
                 from core.toolchain_backup import backup_toolchain
                 log(f"Backing up '{tc.name}' after library updates...")
-                if not backup_toolchain(tc, paths, registry, settings, log=log):
+                # write_log_file=False → no separate backup.log; full
+                # tar output ends up only in the job log.
+                if not backup_toolchain(
+                    tc, paths, registry, settings, log=log, write_log_file=False,
+                ):
                     all_ok = False
 
-        log(f"Library updates complete: {updated_count} updated")
+        log(f"Library updates complete: {installed_count} installed, {updated_count} updated")
         return all_ok
 
     # Action dispatch

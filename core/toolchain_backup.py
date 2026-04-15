@@ -25,6 +25,7 @@ def backup_toolchain(
     registry: "ToolchainRegistry",
     settings,
     log: Callable[[str], None] | None = None,
+    write_log_file: bool = True,
 ) -> bool:
     """Backup a single installed toolchain to a .tar.xz archive.
 
@@ -38,6 +39,10 @@ def backup_toolchain(
         registry:  ToolchainRegistry instance (used for local YAML update).
         settings:  Settings instance (needs .organize_logs for log directory layout).
         log:       Optional rich-markup-capable log callback; prints plain text if None.
+        write_log_file: When False, skip creating a separate backup.log
+                        file. Used by the automation update-libraries
+                        action so the full output ends up only in the
+                        single job log instead of being duplicated.
 
     Returns:
         True on success, False on failure.
@@ -56,15 +61,19 @@ def backup_toolchain(
     backup_dir.mkdir(parents=True, exist_ok=True)
     backup_file = backup_dir / f"Toolchain-{tc.name}.tar.xz"
 
-    _log_dir = resolve_log_dir(paths.logs_dir, "backup", settings.organize_logs)
-    timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-    log_path = _log_dir / f"{timestamp}.{tc.name}.backup.log"
-    log_file = open(log_path, "w", encoding="utf-8")
+    log_file = None
+    log_path = None
+    if write_log_file:
+        _log_dir = resolve_log_dir(paths.logs_dir, "backup", settings.organize_logs)
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = _log_dir / f"{timestamp}.{tc.name}.backup.log"
+        log_file = open(log_path, "w", encoding="utf-8")
 
     def blog(msg: str) -> None:
-        plain = re.sub(r"\[/?[a-z_ ]+\]", "", msg)
-        log_file.write(plain + "\n")
-        log_file.flush()
+        if log_file is not None:
+            plain = re.sub(r"\[/?[a-z_ ]+\]", "", msg)
+            log_file.write(plain + "\n")
+            log_file.flush()
         _log(msg)
 
     new_checksum: str | None = None
@@ -109,7 +118,8 @@ def backup_toolchain(
         blog(f"Size: {size_mb:.1f} MB")
         if new_checksum:
             blog(f"Checksum: {new_checksum}")
-        blog(f"Log: {log_path}")
+        if log_path is not None:
+            blog(f"Log: {log_path}")
         blog(f"[green]{tc.name} backed up to {backup_file.name}[/green]")
         return True
 
@@ -118,7 +128,8 @@ def backup_toolchain(
         return False
 
     finally:
-        log_file.close()
+        if log_file is not None:
+            log_file.close()
         try:
             run_retention(paths.logs_dir, settings, log=_log)
         except Exception:

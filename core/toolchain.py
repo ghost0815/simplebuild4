@@ -50,6 +50,13 @@ class Toolchain:
     native: bool = False           # True if this is the host system compiler
     exclude_from_automation: bool = False  # hide from F7 automation dropdowns; skip on "all"
 
+    # Libraries integrated into this toolchain's sysroot. Name → version.
+    # Persistent record of "what should be in here" — survives a full
+    # rebuild of the toolchain (build-toolchains action) so that the
+    # update-libraries automation action can re-install missing libs.
+    # Only meaningful on installed toolchains; written to toolchains.local.yaml.
+    libraries: dict[str, str] = field(default_factory=dict)
+
     # Runtime state (not persisted, set at load time)
     installed: bool = False
 
@@ -686,6 +693,11 @@ class ToolchainRegistry:
             else:
                 tc.installed = (self.install_dir / tc.name).is_dir()
 
+        # One-shot migration: back-fill the libraries dict for installed
+        # toolchains that don't have it yet. update-libraries automation
+        # needs this record to re-install libs after a toolchain rebuild.
+        self._backfill_libraries(self._local_tcs)
+
         # Load defaults = PreBuild catalog
         self._default_tcs = self._load_file(self.defaults_path)
         for tc in self._default_tcs:
@@ -801,6 +813,10 @@ class ToolchainRegistry:
                 selfbuild=entry.get("selfbuild", False),
                 native=entry.get("native", False),
                 exclude_from_automation=entry.get("exclude_from_automation", False),
+                libraries=(
+                    {str(k): str(v) for k, v in entry["libraries"].items()}
+                    if isinstance(entry.get("libraries"), dict) else {}
+                ),
             )
             if tc.name:
                 result.append(tc)
@@ -812,6 +828,65 @@ class ToolchainRegistry:
             return  # never overwrite a file we couldn't parse
         tcs = toolchains if toolchains is not None else self._get_local_only()
         self._save_file(self.local_path, tcs)
+
+    def _backfill_libraries(self, local_tcs: list[Toolchain]) -> None:
+        """One-shot migration: populate ``libraries`` for installed
+        toolchains that have no entry yet, by scanning the sysroot via
+        scan_libraries(). Only touches the file when something changed
+        and parsing of toolchains.local.yaml succeeded."""
+        if self.yaml_error:
+            return
+        changed = False
+        for tc in local_tcs:
+            if tc.libraries:
+                continue
+            if tc.native or not tc.installed:
+                continue
+            try:
+                tc_dir = self.install_dir / tc.name
+                libs = scan_libraries(tc_dir, tc.sysroot, native=tc.native)
+            except Exception:
+                continue
+            detected = {lib.name: lib.version for lib in libs if lib.found and lib.version}
+            if detected:
+                tc.libraries = detected
+                changed = True
+        if changed:
+            try:
+                self._save_file(self.local_path, local_tcs)
+            except Exception:
+                pass
+
+    def record_library(self, toolchain_name: str, lib_name: str, version: str) -> None:
+        """Record a lib install/update in toolchains.local.yaml. Persistent
+        record used by the update-libraries automation action to re-install
+        libraries after a toolchain rebuild."""
+        if self.yaml_error:
+            return
+        local_tcs = self._load_file(self.local_path)
+        if self.yaml_error:
+            return
+        found = False
+        for tc in local_tcs:
+            if tc.name == toolchain_name:
+                tc.libraries[lib_name] = version
+                found = True
+                break
+        if found:
+            self._save_file(self.local_path, local_tcs)
+
+    def forget_library(self, toolchain_name: str, lib_name: str) -> None:
+        """Remove a lib from the toolchain's persistent libraries record."""
+        if self.yaml_error:
+            return
+        local_tcs = self._load_file(self.local_path)
+        if self.yaml_error:
+            return
+        for tc in local_tcs:
+            if tc.name == toolchain_name and lib_name in tc.libraries:
+                del tc.libraries[lib_name]
+                self._save_file(self.local_path, local_tcs)
+                return
 
     def _save_file(self, path: Path, toolchains: list[Toolchain]) -> None:
         """Save toolchains to a YAML file. Omits empty/default fields."""
@@ -838,6 +913,8 @@ class ToolchainRegistry:
                 "native": tc.native,
             }.items() if v != getattr(defaults, k)}
             entry["exclude_from_automation"] = tc.exclude_from_automation  # always write
+            if tc.libraries:
+                entry["libraries"] = dict(tc.libraries)
             entries.append(entry)
         data = {"toolchains": entries}
         path.parent.mkdir(parents=True, exist_ok=True)

@@ -485,7 +485,7 @@ s4u_downgrade_warn: "Downgrade may cause issues with newer settings. Press again
 
 # Automation screen
 auto_crontab: "Crontab"
-auto_crontab_help: "Installs/removes enabled jobs in the system crontab. Off = no jobs run automatically (manual Run via F9 still works)."
+auto_crontab_help: "Installs/removes enabled jobs in the system crontab. Off = no jobs run automatically (manual Run via F9 still works). Every job — whether started by cron or by F9 — runs as its own detached s4 subprocess in the background, so the s4 GUI does not need to be running and can be safely closed."
 auto_tab_details: "Details"
 auto_tab_output: "Output"
 auto_output_border: "Output"

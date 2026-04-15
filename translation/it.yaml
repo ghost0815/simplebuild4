@@ -485,7 +485,7 @@ s4u_downgrade_warn: "Il downgrade potrebbe causare problemi con impostazioni rec
 
 # Automation screen
 auto_crontab: "Crontab"
-auto_crontab_help: "Installa/rimuove i job abilitati nella crontab di sistema. Off = nessun job parte automaticamente (Run manuale via F9 funziona comunque)."
+auto_crontab_help: "Installa/rimuove i job abilitati nella crontab di sistema. Off = nessun job parte automaticamente (Run manuale via F9 funziona comunque). Ogni job — sia avviato da cron che da F9 — gira come proprio sottoprocesso s4 distaccato in background, quindi la GUI di s4 non deve essere in esecuzione e può essere chiusa senza problemi."
 auto_tab_details: "Details"
 auto_tab_output: "Output"
 auto_output_border: "Output"

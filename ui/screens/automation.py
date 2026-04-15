@@ -458,7 +458,7 @@ class AutomationScreen(Screen):
     }
     #sched-crontab-help {
         width: 1fr;
-        padding: 1 0 0 2;
+        padding: 0 0 0 2;
         color: $text-muted;
     }
     """

@@ -55,6 +55,7 @@ class BuildEngine:
         default_build_system: str = "make",
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        write_log_file: bool = True,
     ):
         self.target = target
         self.repos_dir = repos_dir
@@ -84,6 +85,7 @@ class BuildEngine:
         self._log = log or (lambda msg: None)
         self._cancel = cancel_check or (lambda: False)
         self._log_file = None  # set in build()
+        self._write_log_file = write_log_file
         self._organize_logs = organize_logs
         self._default_confdir = default_confdir
         self._default_build_system = default_build_system
@@ -99,23 +101,26 @@ class BuildEngine:
         """Run the full build pipeline for all source x toolchain combinations."""
         import re
 
-        # Setup build log file
-        from core.log_cleanup import resolve_log_dir
-        _log_dir = resolve_log_dir(self.logs_dir, "build", self._organize_logs)
-        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-        bs = self.target.build.build_system or self._default_build_system
-        log_path = _log_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
-        self._log_file = open(log_path, "w", encoding="utf-8")
-        original_log = self._log
+        # Setup build log file (skipped when invoked from automation —
+        # the job log already captures everything via the callback).
+        log_path = None
+        if self._write_log_file:
+            from core.log_cleanup import resolve_log_dir
+            _log_dir = resolve_log_dir(self.logs_dir, "build", self._organize_logs)
+            timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+            bs = self.target.build.build_system or self._default_build_system
+            log_path = _log_dir / f"{timestamp}.{self.target.name}.build-{bs}.log"
+            self._log_file = open(log_path, "w", encoding="utf-8")
+            original_log = self._log
 
-        def _log_both(msg: str):
-            # Strip Rich markup for file
-            plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
-            self._log_file.write(plain + "\n")
-            self._log_file.flush()
-            original_log(msg)
+            def _log_both(msg: str):
+                # Strip Rich markup for file
+                plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
+                self._log_file.write(plain + "\n")
+                self._log_file.flush()
+                original_log(msg)
 
-        self._log = _log_both
+            self._log = _log_both
 
         try:
             return self._do_build(log_path)
@@ -575,18 +580,20 @@ class BuildEngine:
         except Exception as e:
             self._log(f"[red]{label} -------> ERROR: {e}[/red]")
 
-    def _close_log(self, log_path: Path) -> None:
+    def _close_log(self, log_path: Optional[Path]) -> None:
         """Show the log path, apply retention, then close the log file.
 
         Retention must run *before* the file is closed so the
         "Log retention: removed …" message still reaches both the
         GUI *and* the freshly written log file (the wrapped self._log
-        writes to both).
+        writes to both). When no per-build log file was opened
+        (``write_log_file=False``), the path message is skipped.
         """
-        try:
-            self._log(f"Log: {log_path}")
-        except Exception:
-            pass
+        if log_path is not None:
+            try:
+                self._log(f"Log: {log_path}")
+            except Exception:
+                pass
         # Apply global log retention (per-bucket). Cleans every log
         # type (build, library, selfbuild, backup, s4-update) within
         # its own group. The current log is the newest of its bucket
@@ -604,10 +611,11 @@ class BuildEngine:
                 self._log(f"Log retention: removed {removed} old log(s), freed {mb:.2f} MB")
         except Exception:
             pass
-        try:
-            self._log_file.close()
-        except Exception:
-            pass
+        if self._log_file is not None:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
 
 
     # -------------------------------------------------------------------------

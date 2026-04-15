@@ -1670,6 +1670,11 @@ class ToolchainsScreen(Screen):
                         if success:
                             built_libs.add(lib_name)
                             _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]removed[/green]")
+                            # Keep the persistent libraries record in sync
+                            try:
+                                self._get_registry().forget_library(tc.name, lib_name)
+                            except Exception:
+                                pass
                         else:
                             _set_lib_status(lib_name, f"[bold red]{lib_name:<15s}[/bold red] [red]failed[/red]")
                         continue
@@ -1699,6 +1704,24 @@ class ToolchainsScreen(Screen):
                     if success:
                         built_libs.add(lib_name)
                         _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]done[/green]")
+                        # Persist "this toolchain has <lib> <version>" so
+                        # the update-libraries automation action can re-
+                        # install after a full toolchain rebuild. Re-scan
+                        # the sysroot to capture the actual version (the
+                        # passed `version` may be a recipe selector like
+                        # libdvbcsa's "auto", not a real version).
+                        try:
+                            actual = version
+                            for lib in scan_libraries(
+                                self.app.paths.toolchains_dir / tc.name,
+                                tc.sysroot, native=tc.native,
+                            ):
+                                if lib.name == lib_name and lib.found and lib.version:
+                                    actual = lib.version
+                                    break
+                            self._get_registry().record_library(tc.name, lib_name, actual)
+                        except Exception:
+                            pass
                         # Export shared libs to zip if enabled
                         if self.app.settings.export_libs_zip:
                             try:
@@ -2328,6 +2351,19 @@ class ToolchainsScreen(Screen):
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
                 return ""
+            # libraries: dict[str, str] — allow empty/missing; if given,
+            # must be a mapping of strings to strings.
+            if k == "libraries":
+                if v is None:
+                    continue
+                if not isinstance(v, dict) or not all(
+                    isinstance(lk, str) and isinstance(lv, (str, int, float))
+                    for lk, lv in v.items()
+                ):
+                    msg = t("yaml_wrong_type", field=k, expected="dict[str, str]")
+                    self._log_sync(f"  [red]✗ {msg}[/red]")
+                    self.notify(msg, severity="error", timeout=10)
+                    return ""
         self._log_sync("  [green]✓ Field types OK[/green]")
 
         # Detect rename: name field changed
