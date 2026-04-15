@@ -102,15 +102,19 @@ class WebServiceSetupModal(ModalScreen[None]):
             self._log_widget.write(f"  Service: {mgr.service}")
             self._log_widget.write(f"  Unit: {mgr._unit_path}")
 
+        wsl_pre_systemd = not available and mgr._is_wsl()
         if not available:
             self._log_widget.write(f"\n[yellow]systemd is not running as PID 1[/yellow]")
-            if mgr._is_wsl():
+            if wsl_pre_systemd:
                 self._log_widget.write(
                     "[yellow]WSL detected — systemd will be enabled on install[/yellow]"
                 )
 
+        # For WSL without systemd: allow install (it will configure wsl.conf
+        # and guide the user to restart WSL before the full install).
+        install_enabled = available or wsl_pre_systemd
         try:
-            self.query_one("#ws-install", Button).disabled = not available
+            self.query_one("#ws-install", Button).disabled = not install_enabled
             self.query_one("#ws-remove", Button).disabled = not installed
         except Exception:
             pass
@@ -166,6 +170,12 @@ class WebServiceSetupModal(ModalScreen[None]):
             if action == "install":
                 from core.web_service import validate_port
                 port = s.web_port or 8080
+                # WSL without systemd: only configure wsl.conf, then guide restart
+                if mgr._is_wsl() and not mgr.systemd_available():
+                    self._log("[bold]Configuring WSL for systemd...[/bold]")
+                    mgr.install_wsl_systemd_only(password=password, log=self._log)
+                    self.app.call_from_thread(self._show_status)
+                    return
                 err = validate_port(port)
                 if err:
                     self._log(f"[red]{err}[/red]")

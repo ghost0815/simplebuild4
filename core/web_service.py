@@ -383,6 +383,24 @@ class WebServiceManager:
         _log("[green]Service installed[/green]")
         return True
 
+    def install_wsl_systemd_only(
+        self,
+        password: str = "",
+        log: Optional[Callable[[str], None]] = None,
+    ) -> None:
+        """WSL pre-step: write /etc/wsl.conf and instruct the user to restart.
+
+        Called when WSL is detected but systemd is not yet running as PID 1.
+        The full install() must be run again after the WSL restart.
+        """
+        _log = log or (lambda m: None)
+        self._ensure_wsl_systemd(password, _log)
+        _log("")
+        _log("[yellow]WSL restart required to activate systemd.[/yellow]")
+        _log("[yellow]From Windows CMD or PowerShell, run:[/yellow]")
+        _log("[bold]  wsl.exe --shutdown[/bold]")
+        _log("[yellow]Then reopen s4 and install the service again.[/yellow]")
+
     def uninstall(
         self,
         password: str = "",
