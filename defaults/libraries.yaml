@@ -63,7 +63,9 @@ libraries:
       - version: "1.1.0l"
         label: "1.1.0 (old)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_1_0l.tar.gz
-        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests"
+        # no-tests does not exist in OpenSSL 1.1.0 — tests are skipped
+        # by simply not running `make test` (we never do).
+        configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared"
       - version: "1.0.2u"
         label: "1.0.2 (very old)"
         source: https://github.com/openssl/openssl/archive/refs/tags/OpenSSL_1_0_2u.tar.gz
