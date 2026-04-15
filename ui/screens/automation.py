@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
+from textual.message import Message
 from textual.screen import Screen
-from textual.widgets import Static, Switch, Input, RichLog, Collapsible, Checkbox
+from textual.widgets import Static, Switch, Input, RichLog, Collapsible, Checkbox, OptionList
+from textual.widgets.option_list import Option
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from translation import t
@@ -23,6 +25,37 @@ _ACTION_ITEMS = [
     "build-targets-conditional",
     "build-targets-force",
 ]
+
+class LogBox(RichLog):
+    """RichLog that posts TitleClicked when the user clicks the top border (title area)."""
+
+    class TitleClicked(Message):
+        """Posted when the border-title row is clicked."""
+        def __init__(self, overlay_id: str) -> None:
+            super().__init__()
+            self.overlay_id = overlay_id
+
+    def on_click(self, event) -> None:
+        if event.offset.y == 0:
+            event.stop()
+            overlay_id = (
+                "log-history-output" if self.id == "sched-log-big"
+                else "log-history-details"
+            )
+            self.post_message(self.TitleClicked(overlay_id))
+
+
+class LogHistoryOverlay(OptionList):
+    """Floating single-select list of log files for the current job."""
+
+    def on_blur(self) -> None:
+        self.display = False
+
+    def on_key(self, event) -> None:
+        if event.key == "escape":
+            self.display = False
+            event.stop()
+
 
 def _fmt_duration(sec: int) -> str:
     """Format duration in seconds as 'HHh MMm SSs', 'MMm SSs', or 'SSs'."""
@@ -182,11 +215,13 @@ class AutomationScreen(Screen):
             with VerticalScroll(id="sched-entries"):
                 for idx, sched in enumerate(self._schedules):
                     yield from self._compose_entry(idx, sched, states, crontab_on)
-            yield RichLog(id="sched-log", wrap=True, markup=True)
+            yield LogHistoryOverlay(id="log-history-details")
+            yield LogBox(id="sched-log", wrap=True, markup=True)
 
         # Output panel: big log view (same stream, larger area)
         with Vertical(id="sched-panel-output"):
-            yield RichLog(id="sched-log-big", wrap=True, markup=True)
+            yield LogHistoryOverlay(id="log-history-output")
+            yield LogBox(id="sched-log-big", wrap=True, markup=True)
 
         yield S4Footer(active_screen="automation")
 
@@ -367,6 +402,21 @@ class AutomationScreen(Screen):
     #sched-log-big:focus {
         border: heavy $accent;
     }
+    LogHistoryOverlay {
+        display: none;
+        overlay: screen;
+        constrain: none inside;
+        width: 1fr;
+        height: auto;
+        max-height: 14;
+        margin: 1 2;
+        background: $surface;
+        border: tall $border-blurred;
+        color: $foreground;
+    }
+    LogHistoryOverlay:focus {
+        border: tall $border;
+    }
     #sched-controls Switch {
         margin: 0 1;
     }
@@ -397,6 +447,7 @@ class AutomationScreen(Screen):
         self._log_tail_path = None  # Path being tailed
         self._log_tail_pos = 0      # Byte offset within that file
         self._log_tail_job = ""     # Job name whose log is shown
+        self._log_pinned_path = None  # Path | None — pinned historic log (None = live)
         self._active_job_idx = -1   # Index of the job currently 'active' (focus-driven)
         self._state_mtime = 0       # last seen mtime of state file
         # Initial lock-state + F9/F11 update for running jobs
@@ -512,6 +563,20 @@ class AutomationScreen(Screen):
             return None
         return max(candidates, key=lambda p: p.stat().st_mtime)
 
+    def _find_all_logs(self, job_name: str) -> list:
+        """Return all automation log files for the given job, newest first."""
+        if not job_name:
+            return []
+        import re as _re
+        safe = _re.sub(r'[^A-Za-z0-9_-]+', '_', job_name)
+        from core.log_cleanup import resolve_log_dir
+        log_dir = resolve_log_dir(
+            self.app.paths.logs_dir, "automation",
+            self.app.settings.organize_logs,
+        )
+        candidates = list(log_dir.glob(f"*.{safe}.automation.log"))
+        return sorted(candidates, key=lambda p: p.stat().st_mtime, reverse=True)
+
     def _get_expanded_job(self) -> tuple[int, "JobConfig | None"]:
         """Return (index, JobConfig) of the currently expanded collapsible."""
         for idx, sched in enumerate(self._schedules):
@@ -600,6 +665,10 @@ class AutomationScreen(Screen):
         both the small Details log and the big Output log so switching
         tabs always shows the same stream.
         """
+        # A pinned historic log is shown statically — don't tail
+        if getattr(self, "_log_pinned_path", None) is not None:
+            return
+
         # Update active index from current focus before picking a job
         self._detect_active_from_focus()
         idx = getattr(self, "_active_job_idx", -1)
@@ -632,17 +701,21 @@ class AutomationScreen(Screen):
                 self._log_tail_path = None
                 self._log_tail_pos = 0
                 self._log_tail_job = sched.name
+                self._update_log_border_title(sched.name)
             return
+
+        # Switched to a different job → reset pin and reload
+        if self._log_tail_job != sched.name:
+            self._log_pinned_path = None
 
         # Switched to a different job or different log file → reset
         if self._log_tail_path != log_path or self._log_tail_job != sched.name:
-            _ob = t("auto_output_border")
             for w in widgets:
                 w.clear()
-                w.border_title = f"{_ob} — {sched.name}"
             self._log_tail_path = log_path
             self._log_tail_pos = 0
             self._log_tail_job = sched.name
+            self._update_log_border_title(sched.name)
 
         # Read new bytes from current position
         try:
@@ -783,6 +856,104 @@ class AutomationScreen(Screen):
                 col.title = title
             except Exception:
                 continue
+
+    # ── Log history overlay ───────────────────────────────────────────────
+
+    def on_log_box_title_clicked(self, event: LogBox.TitleClicked) -> None:
+        """Open the history overlay when the log box border-title is clicked."""
+        self._open_log_history_overlay(event.overlay_id)
+
+    def _open_log_history_overlay(self, overlay_id: str) -> None:
+        """Populate and show the log history overlay for the given panel."""
+        try:
+            overlay = self.query_one(f"#{overlay_id}", LogHistoryOverlay)
+        except Exception:
+            return
+
+        _, sched = self._get_expanded_job()
+        job_name = sched.name if sched else ""
+        logs = self._find_all_logs(job_name)
+
+        overlay.clear_options()
+        overlay.add_option(Option("⟳  current", id="__current__"))
+        for p in logs:
+            overlay.add_option(Option(p.name, id=str(p)))
+
+        # Pre-highlight the active selection
+        if self._log_pinned_path is None:
+            overlay.highlighted = 0
+        else:
+            for i, p in enumerate(logs, start=1):
+                if str(p) == str(self._log_pinned_path):
+                    overlay.highlighted = i
+                    break
+
+        overlay.display = True
+        overlay.focus()
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Handle a log file selection from either history overlay."""
+        if not isinstance(event.control, LogHistoryOverlay):
+            return
+        event.control.display = False
+
+        option_id = event.option.id or ""
+        if option_id == "__current__":
+            # Back to live tail
+            self._log_pinned_path = None
+            self._log_tail_path = None
+            self._log_tail_pos = 0
+            self._log_tail_job = ""
+            for w in self._log_widgets():
+                w.clear()
+            self._update_log_border_title()
+        else:
+            from pathlib import Path
+            pinned = Path(option_id)
+            self._log_pinned_path = pinned
+            self._load_pinned_log(pinned)
+            self._update_log_border_title()
+
+    def _load_pinned_log(self, path) -> None:
+        """Load a historic log file fully into both log widgets."""
+        for w in self._log_widgets():
+            w.clear()
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+            for line in content.splitlines():
+                for w in self._log_widgets():
+                    w.write(line)
+        except Exception:
+            pass
+
+    def _update_log_border_title(self, job_name: str = "") -> None:
+        """Sync border_title on both log widgets to reflect current state.
+
+        Format: ``Output — <jobname> — <logfile>``
+        The log file is the pinned path (history mode) or the currently
+        tailed path (live mode). If no log exists yet, the filename part
+        is omitted.
+        """
+        if not job_name:
+            _, sched = self._get_expanded_job()
+            job_name = sched.name if sched else ""
+        _ob = t("auto_output_border")
+        # Pinned log takes priority; fall back to the live-tail file
+        active_log = (
+            getattr(self, "_log_pinned_path", None)
+            or getattr(self, "_log_tail_path", None)
+        )
+        if active_log and job_name:
+            suffix = f" — {job_name} — {active_log.name}"
+        elif active_log:
+            suffix = f" — {active_log.name}"
+        elif job_name:
+            suffix = f" — {job_name}"
+        else:
+            suffix = ""
+        title = f"{_ob}{suffix} ▾"
+        for w in self._log_widgets():
+            w.border_title = title
 
     def _parse_csv(self, value: str) -> list[str]:
         """Parse comma-separated input, 'all' = ['all'], empty = []."""
