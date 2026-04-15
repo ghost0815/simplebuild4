@@ -9,7 +9,7 @@ import threading
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Select, Switch, RichLog, Collapsible
+from textual.widgets import Static, Input, Button, Select, Switch, RichLog, Collapsible, Checkbox
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.repo import RepoConfig, RepoManager, RepoState
@@ -85,6 +85,9 @@ class RepositoryScreen(Screen):
                 with Horizontal(classes="repo-actions-row"):
                     repo_names = [(r.name, r.name) for r in self._repos]
                     yield Select(options=repo_names, value=self._repos[0].name if self._repos else None, id="repo-select", prompt=t("select_prompt"))
+                    first = self._repos[0] if self._repos else None
+                    excl_chk = Checkbox("Exclude from automation", value=first.exclude_from_automation if first else False, id="chk-excl-auto")
+                    yield excl_chk
                     yield Static("", classes="spacer")
                     # Dynamic label: Clone for git, Checkout for svn
                     repo = self._get_selected_repo_from_list()
@@ -282,6 +285,10 @@ class RepositoryScreen(Screen):
             self.query_one("#edit-repo-ssh-key", Input).value = repo.ssh_key
             self.query_one("#edit-repo-user", Input).value = repo.auth_user
             self.query_one("#edit-repo-pass", Input).value = repo.auth_pass
+        except Exception:
+            pass
+        try:
+            self.query_one("#chk-excl-auto", Checkbox).value = repo.exclude_from_automation
         except Exception:
             pass
         self._update_auth_visibility(repo.auth_method or "")
@@ -651,6 +658,16 @@ class RepositoryScreen(Screen):
             self.app.call_from_thread(self._full_refresh)
         thread = threading.Thread(target=wrapper, daemon=True)
         thread.start()
+
+    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
+        if event.checkbox.id == "chk-excl-auto":
+            repo = self._get_selected_repo()
+            if repo:
+                repo.exclude_from_automation = event.value
+                save_repos(self._repos, self.app.paths.repos_config)
+                if event.value:
+                    from core.automation import remove_from_jobs
+                    remove_from_jobs(self.app.paths.automation_yaml, repo=repo.name)
 
     def on_select_changed(self, event: Select.Changed) -> None:
         """Fill edit fields when selecting a different repo or auth method."""

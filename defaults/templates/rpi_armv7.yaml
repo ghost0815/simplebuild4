@@ -1,5 +1,6 @@
 name: rpi_armv7
 description: Raspberry Pi 2 Model B
+exclude_from_automation: true
 builder: crosstool-ng
 arch: armv7
 

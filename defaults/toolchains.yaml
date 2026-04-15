@@ -4,6 +4,7 @@
 #
 # - name: my_toolchain              # Unique identifier (required)
 #   description: "My custom TC"     # Human-readable description
+#   exclude_from_automation: false   # true = hide from F7 automation dropdowns
 #   category: common                # Category: common, stb, android, openwrt, router, nas, minipc, tv, legacy, custom
 #   arch: aarch64                   # Architecture: aarch64, arm, armv7, mips, mipsel, sh4, powerpc, x86, csky
 #   machines: "dm920 dm900"         # Space-separated list of target devices
@@ -34,6 +35,7 @@ toolchains:
 
 - name: aarch64_universal
   description: aarch64 stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: aarch64
   prefix: aarch64-buildroot-linux-gnu-
@@ -44,6 +46,7 @@ toolchains:
 
 - name: armv5_universal
   description: armv5 devices (generic)
+  exclude_from_automation: false
   category: common
   arch: armv5
   prefix: arm-buildroot-linux-gnueabi-
@@ -54,6 +57,7 @@ toolchains:
 
 - name: armv6_universal
   description: armv6 stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: armv6
   prefix: arm-buildroot-linux-gnueabihf-
@@ -64,6 +68,7 @@ toolchains:
 
 - name: armv7_universal
   description: armv7 stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: armv7
   prefix: arm-buildroot-linux-gnueabihf-
@@ -74,6 +79,7 @@ toolchains:
 
 - name: mips32el_universal
   description: mips32el stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
@@ -84,6 +90,7 @@ toolchains:
 
 - name: powerpc_universal
   description: powerpc stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: powerpc
   prefix: powerpc-buildroot-linux-gnu-
@@ -94,6 +101,7 @@ toolchains:
 
 - name: sh4_universal
   description: sh4 stb's (generic)
+  exclude_from_automation: false
   category: common
   arch: sh4
   prefix: sh4-buildroot-linux-gnu-
@@ -104,6 +112,7 @@ toolchains:
 
 - name: aarch64_oealliance_5.6
   description: oealliance 5.6 aarch64
+  exclude_from_automation: false
   category: stb
   arch: aarch64
   machines: dreamone dreamtwo
@@ -116,6 +125,7 @@ toolchains:
 
 - name: aarch64_oealliance_6.0
   description: oealliance 6.0 aarch64
+  exclude_from_automation: false
   category: stb
   arch: aarch64
   machines: dreamone dreamtwo
@@ -128,6 +138,7 @@ toolchains:
 
 - name: aarch64_opendreambox_pyro
   description: opendreambox pyro aarch64
+  exclude_from_automation: false
   category: stb
   arch: aarch64
   machines: dreamone dreamtwo
@@ -139,6 +150,7 @@ toolchains:
 
 - name: armv7ahf_openpli_scarthgap
   description: openpli scarthgap armv7ahf-neon
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: et1x000 lunix3-4k lunix4k vuduo4k vuduo4kse vusolo4k vuultimo4k vuuno4k
@@ -152,6 +164,7 @@ toolchains:
 
 - name: armv7vehf_openpli_scarthgap
   description: openpli scarthgap armv7vehf-neon-vfpv4
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: osmini4k osmio4k osmio4kplus
@@ -164,6 +177,7 @@ toolchains:
 
 - name: cortexa15hf_oealliance_5.6
   description: oealliance 5.6 cortexa15hf-neon-vfpv4
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: dags7252 dags72604 dagsmv200 hd51 hd60 hd66se hd61 vs1500 h7 h17 h9 i55plus
@@ -181,6 +195,7 @@ toolchains:
 
 - name: cortexa15hf_oealliance_6.0
   description: oealliance 6.0 cortexa15hf-neon-vfpv4
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: pulse4k pulse4kmini h10 h11 h17 h7 h9 h9combo h9combose h9se i55plus i55se
@@ -198,6 +213,7 @@ toolchains:
 
 - name: cortexa15hf_opendreambox_krogoth
   description: opendreambox krogoth cortexa15hf-neon-vfpv4
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: dm900 dm920
@@ -210,6 +226,7 @@ toolchains:
 
 - name: cortexa15hf_openpli_scarthgap
   description: openpli scarthgap cortexa15hf-neon-vfpv4
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: pulse4k pulse4kmini e4hd bre2ze4k hd51 hd60 hd61 hd66se vs1500 gbquad4k
@@ -225,6 +242,7 @@ toolchains:
 
 - name: cortexa7hf_oealliance_5.6
   description: oealliance 5.6 cortexa7hf
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: h8 hzero sfx6008
@@ -237,6 +255,7 @@ toolchains:
 
 - name: cortexa7hf_oealliance_6.0
   description: oealliance 6.0 cortexa7hf
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: h8 hzero sfx6008
@@ -249,6 +268,7 @@ toolchains:
 
 - name: cortexa7hf_openpli_scarthgap
   description: openpli scarthgap cortexa7hf
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: sfx6008 h8
@@ -261,6 +281,7 @@ toolchains:
 
 - name: cortexa7thf_openpli_scarthgap
   description: openpli scarthgap cortexa7thf
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: hzero
@@ -273,6 +294,7 @@ toolchains:
 
 - name: cortexa7vfp_arm
   description: HiSilicon Cortex-A7 MV430 devices
+  exclude_from_automation: false
   category: stb
   arch: armv7
   prefix: arm-cortexa7vfp-linux-gnueabihf-
@@ -283,6 +305,7 @@ toolchains:
 
 - name: cortexa9hf_oealliance_5.6
   description: oealliance 5.6 cortexa9hf-neon
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: u41 u42 u43 u45
@@ -295,6 +318,7 @@ toolchains:
 
 - name: cortexa9hf_oealliance_6.0
   description: oealliance 6.0 cortexa9hf-neon
+  exclude_from_automation: false
   category: stb
   arch: armv7
   machines: u41 u42 u43 u45
@@ -307,6 +331,7 @@ toolchains:
 
 - name: mips32el-nf_openpli_scarthgap
   description: openpli scarthgap mips32el-nf
+  exclude_from_automation: false
   category: stb
   arch: mips32el
   machines: hd1100 hd500c
@@ -318,6 +343,7 @@ toolchains:
 
 - name: mips32el_oealliance_5.6
   description: oealliance 5.6 mips32el
+  exclude_from_automation: false
   category: stb
   arch: mips32el
   machines: dags7335 dags7356 dags7362 dags73625 odinm7 odinm9 e3hd inihdx inihde
@@ -338,6 +364,7 @@ toolchains:
 
 - name: mips32el_oealliance_6.0
   description: oealliance 6.0 mips32el
+  exclude_from_automation: false
   category: stb
   arch: mips32el
   machines: h3 h4 h5 h6 i55 lc sh1 triplex ultrabox blackbox7405 g100 g101 g300 7000s
@@ -358,6 +385,7 @@ toolchains:
 
 - name: mips32el_opendreambox_krogoth
   description: opendreambox krogoth mips32el
+  exclude_from_automation: false
   category: stb
   arch: mips32el
   machines: dm520 dm7080 dm820
@@ -370,6 +398,7 @@ toolchains:
 
 - name: mips32el_openpli_scarthgap
   description: openpli scarthgap mips32el
+  exclude_from_automation: false
   category: stb
   arch: mips32el
   machines: vipercombo vipercombohdd viperslim vipert2c dm8000 osmega osmini osminiplus
@@ -386,6 +415,7 @@ toolchains:
 
 - name: android_10_arm
   description: Android 10 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -401,6 +431,7 @@ toolchains:
 
 - name: android_11_arm
   description: Android 11 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -416,6 +447,7 @@ toolchains:
 
 - name: android_12_arm
   description: Android 12 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -431,6 +463,7 @@ toolchains:
 
 - name: android_13_arm
   description: Android 13 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -446,6 +479,7 @@ toolchains:
 
 - name: android_14_arm
   description: Android 14 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -461,6 +495,7 @@ toolchains:
 
 - name: android_15_arm
   description: Android 15 STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -476,6 +511,7 @@ toolchains:
 
 - name: android_nougat_arm
   description: Android 7.x Nougat STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -491,6 +527,7 @@ toolchains:
 
 - name: android_oreo_arm
   description: Android 8.x Oreo STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -506,6 +543,7 @@ toolchains:
 
 - name: android_pie_arm
   description: Android 9.x Pie STBs
+  exclude_from_automation: false
   category: android
   arch: armv7
   prefix: arm-linux-androideabi-
@@ -521,6 +559,7 @@ toolchains:
 
 - name: aarch64--musl--stable-2020.02-2_universal
   description: aarch64 devices (generic)
+  exclude_from_automation: false
   category: openwrt
   arch: aarch64
   prefix: aarch64-buildroot-linux-musl-
@@ -531,6 +570,7 @@ toolchains:
 
 - name: armv5-eabi--musl--stable-2020.02-2_universal
   description: armv5-eabi devices (generic)
+  exclude_from_automation: false
   category: openwrt
   arch: armv5
   prefix: arm-buildroot-linux-musleabi-
@@ -541,6 +581,7 @@ toolchains:
 
 - name: armv6-eabihf--musl--stable-2020.02-2_universal
   description: armv6-eabihf devices (generic)
+  exclude_from_automation: false
   category: openwrt
   arch: armv6
   prefix: arm-buildroot-linux-musleabihf-
@@ -551,6 +592,7 @@ toolchains:
 
 - name: openwrt1505cc
   description: OpenWRT 15.05.1 Chaos Calmer
+  exclude_from_automation: false
   category: openwrt
   arch: mips
   prefix: mips-openwrt-linux-uclibc-
@@ -559,6 +601,7 @@ toolchains:
 
 - name: owrt_ar71xx_mips
   description: OpenWrt 18.06 ar71xx, mips_24kc BE devices
+  exclude_from_automation: false
   category: openwrt
   arch: mips
   prefix: mips-ar71xx-linux-musl-
@@ -568,6 +611,7 @@ toolchains:
 
 - name: owrt_ath79_mips
   description: OpenWrt 19.07|21.02 ath79, mips_24kc BE devices
+  exclude_from_automation: false
   category: openwrt
   arch: mips
   prefix: mips-ath79-linux-musl-
@@ -577,6 +621,7 @@ toolchains:
 
 - name: owrt_kirkwood_arm
   description: OpenWrt 19.07|21.02 kirkwood, Pogoplug V2 LE devices
+  exclude_from_automation: false
   category: openwrt
   arch: arm
   prefix: arm-kirkwood-linux-musleabi-
@@ -586,6 +631,7 @@ toolchains:
 
 - name: owrt_mediatek_armv8
   description: OpenWrt 19.07|21.02 mediatek, GLinet Brume2 devices
+  exclude_from_automation: false
   category: openwrt
   arch: aarch64
   prefix: aarch64-mediatek-linux-musl-
@@ -595,6 +641,7 @@ toolchains:
 
 - name: owrt_mpc85xx_ppc
   description: OpenWrt 19.07|21.02 mpc85xx, Freescale MPC85xx BE devices
+  exclude_from_automation: false
   category: openwrt
   arch: powerpc
   prefix: powerpc-mpc85xx-linux-musl-
@@ -604,6 +651,7 @@ toolchains:
 
 - name: owrt_ramips_mips
   description: OpenWrt 19.07|21.02 ramips, Mediatek/Ralink mips_24kc LE devices
+  exclude_from_automation: false
   category: openwrt
   arch: mipsel
   prefix: mipsel-ramips-linux-musl-
@@ -613,6 +661,7 @@ toolchains:
 
 - name: owrt_rpi_armv6
   description: OpenWrt 19.07|21.02 Raspberry Pi Zero W|WH, 1 Model A|A+|B|B+
+  exclude_from_automation: false
   category: openwrt
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
@@ -622,6 +671,7 @@ toolchains:
 
 - name: owrt_rpi_armv7
   description: OpenWrt 19.07|21.02 Raspberry Pi 2 Model B
+  exclude_from_automation: false
   category: openwrt
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
@@ -631,6 +681,7 @@ toolchains:
 
 - name: fritz3272_3370_3390_6840_7272_7330_7330SL_7360v2_7390_ssl_multi_mips-freetz
   description: FRITZ!Box 3272 3370 3390 6840 7272 7330 7330SL 7360v2 7390 SSL multi
+  exclude_from_automation: false
     by MasterSaMMy
   category: router
   arch: mips
@@ -641,6 +692,7 @@ toolchains:
 
 - name: fritz3490_5490_5491_6890_7430_7490_7560_7580_7583_7583vdsl_7590_7590AX_7690_ssl_multi_mips-freetz
   description: FRITZ!Box 3490 5490 5491 6890 7430 7490 7560 7580 7583 7583vdsl 7590
+  exclude_from_automation: false
     7590AX 7690 SSL multi by MasterSaMMy
   category: router
   arch: mips
@@ -652,6 +704,7 @@ toolchains:
 
 - name: fritz4020_7362_ssl_multi_mips-freetz
   description: FRITZ!Box 4020 7362 SSL Multi by MasterSaMMy
+  exclude_from_automation: false
   category: router
   arch: mips
   prefix: mips-linux-uclibc-
@@ -661,6 +714,7 @@ toolchains:
 
 - name: fritz4040_4050_4060_5590_5690Pro_68504g_68505g_7510_7520_7520B_7530_7530AX_ssl_multi_arm-freetz
   description: FRITZ!Box 4040 4050 4060 5590 5690Pro 68504g 68505g 7510 7520 7520B
+  exclude_from_automation: false
     7530 7530AX SSL multi by MasterSaMMy
   category: router
   arch: arm
@@ -672,6 +726,7 @@ toolchains:
 
 - name: fritz6430_6490_6590_6591_6660_6670_6690_ssl_multi_i686-freetz
   description: FRITZ!Box 6430 6490 6590 6591 6660 6670 6690 SSL multi by MasterSaMMy
+  exclude_from_automation: false
   category: router
   arch: i686
   prefix: i686-linux-uclibc-
@@ -682,6 +737,7 @@ toolchains:
 
 - name: fritz73xxOS65
   description: Fritzbox73xx Fritz OS V6.5
+  exclude_from_automation: false
   category: router
   arch: mips
   prefix: mips-linux-uclibc-
@@ -690,6 +746,7 @@ toolchains:
 
 - name: fritz74xxOS65
   description: Fritzbox74xx Fritz OS V6.5
+  exclude_from_automation: false
   category: router
   arch: mips
   prefix: mips-linux-uclibc-
@@ -698,6 +755,7 @@ toolchains:
 
 - name: ubnt_aarch64
   description: Ubiquiti Networks devices, UDM|UDM-Pro
+  exclude_from_automation: false
   category: router
   arch: aarch64
   prefix: aarch64-ubnt-linux-gnu-
@@ -707,6 +765,7 @@ toolchains:
 
 - name: ubnt_mips64
   description: Ubiquiti Networks devices, USG|USG-Pro
+  exclude_from_automation: false
   category: router
   arch: mips64
   prefix: mips-ubnt-linux-gnu-
@@ -716,6 +775,7 @@ toolchains:
 
 - name: qnap_armv5
   description: QNAP Marvell 628x devices, QNAP TS-119P II
+  exclude_from_automation: false
   category: nas
   arch: armv5
   prefix: arm-qnap-linux-gnueabi-
@@ -725,6 +785,7 @@ toolchains:
 
 - name: qnap_armv7
   description: QNAP ARM-Cortex-A9 devices
+  exclude_from_automation: false
   category: nas
   arch: armv7
   prefix: armv7-qnap-linux-gnueabihf-
@@ -734,6 +795,7 @@ toolchains:
 
 - name: qnap_x64
   description: QNAP x64 devices
+  exclude_from_automation: false
   category: nas
   arch: x86_64
   prefix: x86_64-qnap-linux-gnu-
@@ -743,6 +805,7 @@ toolchains:
 
 - name: syn_atom
   description: SYN_ATOM
+  exclude_from_automation: false
   category: nas
   arch: x86_64
   prefix: x86_64-linux-gnu-
@@ -751,6 +814,7 @@ toolchains:
 
 - name: synology_aarch64
   description: Synology DS418
+  exclude_from_automation: false
   category: nas
   arch: aarch64
   prefix: aarch64-ds418-linux-gnu-
@@ -760,6 +824,7 @@ toolchains:
 
 - name: synology_armv5
   description: Synology Marvell 628x devices, Synology DS112x
+  exclude_from_automation: false
   category: nas
   arch: armv5
   prefix: arm-synology-linux-gnueabi-
@@ -770,6 +835,7 @@ toolchains:
 
 - name: synology_armv7
   description: Synology DS216play, ZyXEL NAS326|NAS520
+  exclude_from_automation: false
   category: nas
   arch: armv7
   prefix: arm-ds216_play-linux-gnueabi-
@@ -779,6 +845,7 @@ toolchains:
 
 - name: synology_armv7a
   description: Synology Marvell ARMADA 375 devices, Synology DS115
+  exclude_from_automation: false
   category: nas
   arch: armv7
   prefix: arm-marvell-linux-gnueabi-
@@ -788,6 +855,7 @@ toolchains:
 
 - name: synology_ppc
   description: Synology DS213+
+  exclude_from_automation: false
   category: nas
   arch: powerpc
   prefix: powerpc-ds213+-linux-gnuspe-
@@ -797,6 +865,7 @@ toolchains:
 
 - name: igel_x86
   description: Igel VIA VX855, x86 devices
+  exclude_from_automation: false
   category: minipc
   arch: x86
   prefix: i686-igel-linux-gnu-
@@ -806,6 +875,7 @@ toolchains:
 
 - name: pogoplug_arm
   description: Marvell Kirkwood devices, Pogoplug V2
+  exclude_from_automation: false
   category: minipc
   arch: arm
   prefix: arm-pogoplug-linux-gnueabi-
@@ -815,6 +885,7 @@ toolchains:
 
 - name: rpi_aarch64
   description: Raspberry Pi 3 Modell B+, 4 Model B
+  exclude_from_automation: false
   category: minipc
   arch: aarch64
   prefix: aarch64-rpi3-linux-gnu-
@@ -824,6 +895,7 @@ toolchains:
 
 - name: rpi_armv6
   description: Raspberry Pi Zero W|WH, 1 Model A|A+|B|B+
+  exclude_from_automation: false
   category: minipc
   arch: armv6
   prefix: armv6-rpi1-linux-gnueabihf-
@@ -833,6 +905,7 @@ toolchains:
 
 - name: rpi_armv7
   description: Raspberry Pi 2 Model B
+  exclude_from_automation: false
   category: minipc
   arch: armv7
   prefix: armv7-rpi2-linux-gnueabihf-
@@ -842,6 +915,7 @@ toolchains:
 
 - name: rpi_armv8
   description: Raspberry Pi 2 Model B v1.2, 3 Modell A+|B|B+, 4 Model B
+  exclude_from_automation: false
   category: minipc
   arch: armv7
   prefix: armv8-rpi3-linux-gnueabihf-
@@ -851,6 +925,7 @@ toolchains:
 
 - name: samsungtv
   description: SamsungTV
+  exclude_from_automation: false
   category: tv
   arch: arm
   prefix: arm-v7a8v3r1-linux-gnueabi-
@@ -860,6 +935,7 @@ toolchains:
 
 - name: arm_dream
   description: Dreambox ARM
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-newnigma2-linux-gnueabihf-
@@ -869,6 +945,7 @@ toolchains:
 
 - name: cool
   description: COOLSTREAM
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-cx2450x-linux-gnueabi-
@@ -878,6 +955,7 @@ toolchains:
 
 - name: cool2
   description: COOLSTREAM HD2
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-pnx8400-linux-uclibcgnueabi-
@@ -887,6 +965,7 @@ toolchains:
 
 - name: csky
   description: GX-API Box
+  exclude_from_automation: false
   category: legacy
   arch: csky
   prefix: csky-linux-
@@ -897,6 +976,7 @@ toolchains:
 
 - name: dcube
   description: Dcube-R2
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-cortex-linux-gnueabi-
@@ -906,6 +986,7 @@ toolchains:
 
 - name: dockstar
   description: Dockstar
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-none-linux-gnueabi-
@@ -915,6 +996,7 @@ toolchains:
 
 - name: dream_aarch64
   description: Dreambox ONE|TWO
+  exclude_from_automation: false
   category: legacy
   arch: aarch64
   prefix: aarch64-dreambox-linux-gnu-
@@ -924,6 +1006,7 @@ toolchains:
 
 - name: dream_arm
   description: Dreambox DM9x0 UHD
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-dreambox-linux-gnueabihf-
@@ -933,6 +1016,7 @@ toolchains:
 
 - name: dream_mipsel
   description: Dreambox 500 HD|52x|8x0 HD|70x0 HD
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-dreambox-linux-gnu-
@@ -942,6 +1026,7 @@ toolchains:
 
 - name: dream_one
   description: DreamOne aarch64
+  exclude_from_automation: false
   category: legacy
   arch: aarch64
   prefix: aarch64-dream_one-linux-gnu-
@@ -951,6 +1036,7 @@ toolchains:
 
 - name: dreambox_fpu
   description: Dreambox & VU+ (OE 2.0 FPU)
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-newnigma2-linux-gnu-
@@ -961,6 +1047,7 @@ toolchains:
 
 - name: hd51
   description: AX/Mutant HD51
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-unknown-linux-gnueabihf-
@@ -970,6 +1057,7 @@ toolchains:
 
 - name: ineos
   description: Ineos ZX4
+  exclude_from_automation: false
   category: legacy
   arch: csky
   prefix: csky-linux-
@@ -978,6 +1066,7 @@ toolchains:
 
 - name: mca
   description: MATRIX CAM AIR
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-none-linux-gnueabi-
@@ -986,6 +1075,7 @@ toolchains:
 
 - name: mips32el
   description: Dreambox 500 HD|52x|8x0 HD|70x0 HD
+  exclude_from_automation: false
   category: legacy
   arch: mips32el
   prefix: mipsel-buildroot-linux-gnu-
@@ -993,6 +1083,7 @@ toolchains:
 
 - name: mipsel
   description: Dreambox & VU+ (OE 1.6)
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-unknown-linux-gnu-
@@ -1003,6 +1094,7 @@ toolchains:
 
 - name: mipsel_s3_ssl098
   description: generic mipsel ssl 0.9.8
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
@@ -1013,6 +1105,7 @@ toolchains:
 
 - name: mipsel_s3_ssl100
   description: generic mipsel ssl 1.0.0
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
@@ -1023,6 +1116,7 @@ toolchains:
 
 - name: mipsel_s3_ssl102
   description: generic mipsel ssl 1.0.2
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
@@ -1042,6 +1136,7 @@ toolchains:
 
 - name: oe20_armv7
   description: OpenEmbedded 2.0 STBs, ARM-Cortex-A9 devices
+  exclude_from_automation: false
   category: legacy
   arch: armv7
   prefix: armv7-oe20-linux-gnueabihf-
@@ -1051,6 +1146,7 @@ toolchains:
 
 - name: oe20_mipsel
   description: OpenEmbedded 2.0 STBs
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-oe20-linux-gnu-
@@ -1060,6 +1156,7 @@ toolchains:
 
 - name: oe20_sh4
   description: OpenEmbedded 2.0 STBs
+  exclude_from_automation: false
   category: legacy
   arch: sh4
   prefix: sh4-oe20-linux-gnu-
@@ -1069,6 +1166,7 @@ toolchains:
 
 - name: oe20_sh_multilib
   description: OpenEmbedded 2.0 STBs with multilib support
+  exclude_from_automation: false
   category: legacy
   prefix: sh-oe20-linux-gnu-
   sysroot: sh-oe20-linux-gnu/sysroot
@@ -1077,6 +1175,7 @@ toolchains:
 
 - name: openpli40
   description: Openpli Dreambox Vu+ and other
+  exclude_from_automation: false
   category: legacy
   arch: mipsel
   prefix: mipsel-openpli40-linux-gnu-
@@ -1086,6 +1185,7 @@ toolchains:
 
 - name: osmio4k
   description: Edision OS MIO 4k aarch64
+  exclude_from_automation: false
   category: legacy
   arch: aarch64
   prefix: aarch64-osmio4k-linux-gnu-
@@ -1095,6 +1195,7 @@ toolchains:
 
 - name: ppcold
   description: Dbox2 / Dreambox DM500 and DM500-S
+  exclude_from_automation: false
   category: legacy
   arch: powerpc
   prefix: powerpc-linux-
@@ -1103,6 +1204,7 @@ toolchains:
 
 - name: rasb_hard
   description: RaspberryPI Hardware FPU
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-bcm2708hardfp-linux-gnueabi-
@@ -1112,6 +1214,7 @@ toolchains:
 
 - name: sh4
   description: SH4
+  exclude_from_automation: false
   category: legacy
   arch: sh4
   prefix: sh4-linux-
@@ -1122,6 +1225,7 @@ toolchains:
 
 - name: sh_4
   description: SH4
+  exclude_from_automation: false
   category: legacy
   arch: sh4
   prefix: sh4-streamboard-linux-gnu-
@@ -1131,6 +1235,7 @@ toolchains:
 
 - name: solo4k
   description: VU+ Solo4k
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-linux-gnueabihf-
@@ -1140,6 +1245,7 @@ toolchains:
 
 - name: vuplus4k_arm
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
+  exclude_from_automation: false
   category: legacy
   arch: arm
   prefix: arm-vuplus4k-linux-gnueabihf-
@@ -1149,6 +1255,7 @@ toolchains:
 
 - name: vuplus4k_armv7
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
+  exclude_from_automation: false
   category: legacy
   arch: armv7
   prefix: armv7-vuplus4k-linux-gnueabihf-
@@ -1158,6 +1265,7 @@ toolchains:
 
 - name: vuplus4k_armv7a
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
+  exclude_from_automation: false
   category: legacy
   arch: armv7
   prefix: armv7a-vuplus4k-linux-gnueabihf-
@@ -1167,6 +1275,7 @@ toolchains:
 
 - name: vusolo4k_atv
   description: Vu+ Zero|Uno|Duo|Solo|Ultimo 4K
+  exclude_from_automation: false
   category: legacy
   arch: armv7
   prefix: armv7-vusolo4k_atv-linux-gnueabihf-

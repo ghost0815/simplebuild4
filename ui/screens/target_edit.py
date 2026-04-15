@@ -7,7 +7,7 @@ from ui.icons import icon
 
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Switch, Input, Collapsible, Select, Button
+from textual.widgets import Static, Switch, Input, Collapsible, Select, Button, Checkbox
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.target import Target, BuildSettings, DeploymentConfig, SourceConfig, ToolchainConfig
@@ -210,6 +210,7 @@ class TargetEditScreen(Screen):
                 yield Horizontal(
                     Static(f" {t('te_name')}", classes="s-label-tall"),
                     Input(value=tgt.name, placeholder=t("ph_target_name"), id="t-name"),
+                    Checkbox("Exclude from automation", value=tgt.exclude_from_automation, id="t-excl-auto"),
                     classes="s-row",
                 )
                 yield Horizontal(
@@ -805,7 +806,6 @@ class TargetEditScreen(Screen):
 
                     with Grid(classes="up-grid"):
                         # Row 1 left: Checkbox + Name
-                        from textual.widgets import Checkbox
                         _cb = Checkbox("", value=up.enabled, id=f"t-dep-enabled-{idx}")
                         _cb.styles.width = 5
                         _cb.styles.min_width = 5
@@ -2027,6 +2027,11 @@ class TargetEditScreen(Screen):
                 post_cmd=self.query_one(f"#t-dep-post-{idx}", Input).value.strip(),
             ))
 
+        try:
+            excl_auto = self.query_one("#t-excl-auto", Checkbox).value
+        except Exception:
+            excl_auto = self.target.exclude_from_automation
+
         return Target(
             name=name,
             description=desc,
@@ -2034,6 +2039,7 @@ class TargetEditScreen(Screen):
             toolchains=toolchains,
             build=build,
             deployment=deployment,
+            exclude_from_automation=excl_auto,
         )
 
     def _input_val(self, widget_id: str) -> str:
@@ -2098,6 +2104,9 @@ class TargetEditScreen(Screen):
             self.save_path.unlink()
         target.save(new_path)
         self.save_path = new_path
+        if target.exclude_from_automation:
+            from core.automation import remove_from_jobs
+            remove_from_jobs(self.app.paths.automation_yaml, target=target.name)
         # Remember for main screen to select after returning
         self.app._last_saved_target = str(new_path)
         return t("target_saved", name=target.name)

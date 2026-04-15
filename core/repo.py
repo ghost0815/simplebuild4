@@ -36,6 +36,8 @@ class RepoConfig:
     ssh_key: str = ""          # path to private key file
     auth_user: str = ""        # username (plain)
     auth_pass: str = ""        # encrypted password or token
+    # Automation
+    exclude_from_automation: bool = False  # hide from F7 dropdowns; skip on "all"
 
 
 @dataclass

@@ -56,6 +56,7 @@ class Template:
     # from the .config) untouched. Otherwise, paths are resolved relative to
     # the project root.
     download_location: str = ""
+    exclude_from_automation: bool = False
 
     # Internal — set when loaded
     yaml_path: Path | None = None
@@ -89,6 +90,7 @@ def load_template(yaml_path: Path) -> Template | None:
         machines=data.get("machines", ""),
         config=data.get("config", ""),
         download_location=data.get("download_location", ""),
+        exclude_from_automation=bool(data.get("exclude_from_automation", False)),
         yaml_path=yaml_path,
     )
 

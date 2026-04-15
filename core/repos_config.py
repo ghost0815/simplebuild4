@@ -43,6 +43,7 @@ def load_repos(path: Path) -> list[RepoConfig]:
             ssh_key=entry.get("ssh_key", ""),
             auth_user=entry.get("auth_user", ""),
             auth_pass=decrypt(entry.get("auth_pass", "")),
+            exclude_from_automation=bool(entry.get("exclude_from_automation", False)),
         ))
     return repos
 
@@ -61,7 +62,8 @@ def save_repos(repos: list[RepoConfig], path: Path) -> None:
                 "ssh_key": r.ssh_key,
                 "auth_user": r.auth_user,
                 "auth_pass": encrypt(r.auth_pass),
-            }.items() if v not in ("", 0, None)}
+                "exclude_from_automation": r.exclude_from_automation or None,
+            }.items() if v not in ("", 0, None, False)}
             for r in repos
         ]
     }

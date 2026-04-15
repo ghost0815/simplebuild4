@@ -190,6 +190,7 @@ class JobConfig:
     targets: list[str] = field(default_factory=list)
     repos: list[str] = field(default_factory=list)
     toolchains: list[str] = field(default_factory=list)
+    templates: list[str] = field(default_factory=list)
 
 
 _ACTION_MIGRATION = {
@@ -224,8 +225,27 @@ def load_jobs(path: Path) -> list[JobConfig]:
             targets=entry.get("targets", []) or [],
             repos=entry.get("repos", []) or [],
             toolchains=entry.get("toolchains", []) or [],
+            templates=entry.get("templates", []) or [],
         ))
     return jobs
+
+
+def remove_from_jobs(path: Path, *, repo: str = "", target: str = "", toolchain: str = "") -> None:
+    """Remove a named item from all job configs and re-save."""
+    jobs = load_jobs(path)
+    changed = False
+    for job in jobs:
+        if repo and repo in job.repos:
+            job.repos = [r for r in job.repos if r != repo]
+            changed = True
+        if target and target in job.targets:
+            job.targets = [t for t in job.targets if t != target]
+            changed = True
+        if toolchain and toolchain in job.toolchains:
+            job.toolchains = [tc for tc in job.toolchains if tc != toolchain]
+            changed = True
+    if changed:
+        save_jobs(jobs, path)
 
 
 def save_jobs(jobs: list[JobConfig], path: Path) -> None:
@@ -240,6 +260,7 @@ def save_jobs(jobs: list[JobConfig], path: Path) -> None:
                 "targets": s.targets or None,
                 "repos": s.repos or None,
                 "toolchains": s.toolchains or None,
+                "templates": s.templates or None,
             }.items() if v is not None}
             for s in jobs
         ]
@@ -658,7 +679,10 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
         from core.target import Target
         all_ok = True
         available = dict(Target.list_targets(paths.targets_dir))
-        target_list = list(available.keys()) if "all" in s.targets else s.targets
+        if "all" in s.targets:
+            target_list = [n for n, p in available.items() if not Target.load(p).exclude_from_automation]
+        else:
+            target_list = s.targets
         for target_name in target_list:
             if target_name not in available:
                 log(f"Target not found: {target_name}")
@@ -710,7 +734,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
         repo_names: set[str] = set()
         if s.repos:
             if "all" in s.repos:
-                repo_names = {r.name for r in all_repos_config}
+                repo_names = {r.name for r in all_repos_config if not r.exclude_from_automation}
             else:
                 repo_names = set(s.repos)
         elif s.targets:
@@ -883,7 +907,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
         tc_names: set[str] = set()
         if s.toolchains:
             if "all" in s.toolchains:
-                tc_names = {t.name for t in registry.installed_toolchains()}
+                tc_names = {t.name for t in registry.installed_toolchains() if not t.exclude_from_automation}
             else:
                 tc_names = set(s.toolchains)
         elif s.targets:
@@ -950,11 +974,43 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
         return all_ok
 
     # Action dispatch
+    def _action_build_toolchains(s: JobConfig) -> bool:
+        from core.template import load_templates
+        from core.toolchain_builder import build_toolchain
+
+        all_templates = load_templates(paths.templates_defaults, paths.templates_local)
+        # Deduplicate: local overrides default
+        tpl_by_name = {tpl.name: tpl for tpl in all_templates}
+
+        tpl_names: list[str] = []
+        if s.templates:
+            if "all" in s.templates:
+                tpl_names = [name for name, tpl in tpl_by_name.items() if not tpl.exclude_from_automation]
+            else:
+                tpl_names = s.templates
+        if not tpl_names:
+            log("No templates specified")
+            return False
+
+        all_ok = True
+        for tpl_name in tpl_names:
+            tpl = tpl_by_name.get(tpl_name)
+            if not tpl:
+                log(f"Template not found: {tpl_name}")
+                all_ok = False
+                continue
+            log(f"Building toolchain from template '{tpl_name}'...")
+            ok = build_toolchain(tpl=tpl, paths=paths, settings=settings, log=log)
+            if not ok:
+                all_ok = False
+        return all_ok
+
     _action_map = {
         "update-repositories": _action_update_repos,
         "update-libraries": _action_update_libs,
         "build-targets-conditional": _action_build_conditional,
         "build-targets-force": _action_build,
+        "build-toolchains": _action_build_toolchains,
     }
 
     # Expand 'all' → every known action in their defined order. The
@@ -963,6 +1019,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
     # job dispatcher has to accept it too. Order matters: libs before
     # repos before conditional before force, to match the pipeline.
     _ACTION_ORDER = (
+        "build-toolchains",
         "update-libraries",
         "update-repositories",
         "build-targets-conditional",

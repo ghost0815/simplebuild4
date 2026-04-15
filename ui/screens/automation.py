@@ -20,6 +20,7 @@ from core.automation import (
 
 # Atomic actions in execution order
 _ACTION_ITEMS = [
+    "build-toolchains",
     "update-libraries",
     "update-repositories",
     "build-targets-conditional",
@@ -91,6 +92,7 @@ def _action_description(action: str) -> str:
         "update-repositories": "auto_desc_update_repos",
         "build-targets-conditional": "auto_desc_build_cond",
         "build-targets-force": "auto_desc_build_force",
+        "build-toolchains": "auto_desc_build_toolchains",
     }.get(action, "")
     return t(key) if key else action
 
@@ -134,6 +136,12 @@ def _validate_job(sched: JobConfig) -> tuple[list[str], list[str]]:
 
     if "build-targets-force" in actions and not sched.targets:
         warnings.append(t("auto_warn_force_no_targets"))
+
+    if "build-toolchains" in actions and not sched.templates:
+        warnings.append(t("auto_warn_build_toolchains_needs_templates"))
+
+    if "build-toolchains" in actions and "update-libraries" not in actions:
+        warnings.append(t("auto_warn_build_toolchains_without_libs"))
 
     if "build-targets-conditional" in actions and "update-repositories" not in actions:
         warnings.append(t("auto_warn_cond_needs_repos"))
@@ -282,6 +290,7 @@ class AutomationScreen(Screen):
             placeholder=t("auto_ph_select_actions"),
             show_all_none=False,
             id=f"s-actions-{idx}",
+            classes="actions-ms",
         )
         _actions_ms.tooltip = _actions_tooltip(sched.actions)
 
@@ -289,16 +298,25 @@ class AutomationScreen(Screen):
         from core.repos_config import load_repos
         from core.target import Target
         from core.toolchain import ToolchainRegistry
+        from core.template import load_templates
 
-        avail_repos = [r.name for r in load_repos(self.app.paths.repos_config)]
-        avail_targets = [name for name, _ in Target.list_targets(self.app.paths.targets_dir)]
+        avail_repos = [r.name for r in load_repos(self.app.paths.repos_config) if not r.exclude_from_automation]
+        avail_targets = [
+            name for name, path in Target.list_targets(self.app.paths.targets_dir)
+            if not Target.load(path).exclude_from_automation
+        ]
         reg = ToolchainRegistry(
             self.app.paths.toolchains_defaults,
             self.app.paths.toolchains_local,
             self.app.paths.toolchains_dir,
         )
         reg.load()
-        avail_toolchains = [tc.name for tc in reg.installed_toolchains()]
+        avail_toolchains = [tc.name for tc in reg.installed_toolchains() if not tc.exclude_from_automation]
+        avail_templates = list({
+            tpl.name: tpl.name
+            for tpl in load_templates(self.app.paths.templates_defaults, self.app.paths.templates_local)
+            if not tpl.exclude_from_automation
+        })
 
         def _sel(items, saved):
             """Convert saved list to selected set. Default = None (empty)."""
@@ -310,48 +328,49 @@ class AutomationScreen(Screen):
 
         with Collapsible(title=title, collapsed=idx > 0, id=f"col-sched-{idx}"):
             with Grid(classes="up-grid"):
-                # Row 1 left: Enabled + Name
+                # Row 1 left (40%): Enabled + Name
                 yield Horizontal(
                     Static(f" {t('re_name')}", classes="s-label-tall"),
                     _cb,
                     Input(value=sched.name, placeholder=f"#{idx + 1}", id=f"s-name-{idx}"),
                     classes="s-row",
                 )
-                # Row 1 right: Cron
+                # Row 1 right (60%): Actions + Schedule
                 _cron_inp = Input(value=sched.cron, placeholder="*/30 * * * *", id=f"s-cron-{idx}")
                 _cron_help = cron_to_human(sched.cron) if sched.cron else ""
                 _cron_inp.tooltip = (
                     f"→ {_cron_help}\n\n" if _cron_help else ""
                 ) + t("auto_cron_tooltip")
                 yield Horizontal(
-                    Static(t("auto_label_schedule"), classes="s-label-tall"),
+                    Static(f" {t('auto_label_actions')} / {t('auto_label_schedule')}", classes="s-label-tall"),
+                    _actions_ms,
                     _cron_inp,
                     classes="s-row",
                 )
-                # Row 2 left: Repositories
-                yield Horizontal(
-                    Static(t("auto_label_repositories"), classes="s-label-tall"),
-                    MultiSelect(items=avail_repos, selected=_sel(avail_repos, sched.repos), placeholder=t("auto_ph_none"), id=f"s-repos-{idx}"),
-                    classes="s-row",
-                )
-                # Row 2 right: Targets
-                yield Horizontal(
-                    Static(t("auto_label_targets_sched"), classes="s-label-tall"),
-                    MultiSelect(items=avail_targets, selected=_sel(avail_targets, sched.targets), placeholder=t("auto_ph_none"), id=f"s-targets-{idx}"),
-                    classes="s-row",
-                )
-                # Row 3 left: Actions
-                yield Horizontal(
-                    Static(t("auto_label_actions"), classes="s-label-tall"),
-                    _actions_ms,
-                    classes="s-row",
-                )
-                # Row 3 right: Toolchains
-                yield Horizontal(
-                    Static(t("auto_label_toolchains_sched"), classes="s-label-tall"),
-                    MultiSelect(items=avail_toolchains, selected=_sel(avail_toolchains, sched.toolchains), placeholder=t("auto_ph_none"), id=f"s-toolchains-{idx}"),
-                    classes="s-row",
-                )
+                # Row 2: Repositories + Targets (50/50)
+                with Horizontal(classes="row2-wrapper"):
+                    yield Horizontal(
+                        Static(t("auto_label_repositories"), classes="s-label-tall"),
+                        MultiSelect(items=avail_repos, selected=_sel(avail_repos, sched.repos), placeholder=t("auto_ph_none"), id=f"s-repos-{idx}"),
+                        classes="s-row row2-half",
+                    )
+                    yield Horizontal(
+                        Static(t("auto_label_targets_sched"), classes="s-label-tall"),
+                        MultiSelect(items=avail_targets, selected=_sel(avail_targets, sched.targets), placeholder=t("auto_ph_none"), id=f"s-targets-{idx}"),
+                        classes="s-row row2-half",
+                    )
+                # Row 3: Toolchains + Templates (50/50)
+                with Horizontal(classes="row3-wrapper"):
+                    yield Horizontal(
+                        Static(t("auto_label_toolchains_sched"), classes="s-label-tall"),
+                        MultiSelect(items=avail_toolchains, selected=_sel(avail_toolchains, sched.toolchains), placeholder=t("auto_ph_none"), id=f"s-toolchains-{idx}"),
+                        classes="s-row row3-half",
+                    )
+                    yield Horizontal(
+                        Static(" Templates", classes="s-label-tall"),
+                        MultiSelect(items=avail_templates, selected=_sel(avail_templates, sched.templates), placeholder=t("auto_ph_none"), id=f"s-templates-{idx}"),
+                        classes="s-row row3-half",
+                    )
 
     CSS = """
     #sched-controls {
@@ -376,7 +395,19 @@ class AutomationScreen(Screen):
         margin: 0 2;
     }
     #sched-entries .up-grid {
-        grid-columns: 1fr 1fr;
+        grid-columns: 2fr 3fr;
+    }
+    #sched-entries .up-grid .row2-wrapper,
+    #sched-entries .up-grid .row3-wrapper {
+        column-span: 2;
+        height: auto;
+    }
+    #sched-entries .row2-half,
+    #sched-entries .row3-half {
+        width: 1fr;
+    }
+    .actions-ms > MultiSelectOverlay {
+        min-width: 28;
     }
     #sched-log {
         height: 40%;
@@ -991,11 +1022,15 @@ class AutomationScreen(Screen):
                 toolchains = self.query_one(f"#s-toolchains-{idx}", MultiSelect).get_selected_values()
             except Exception:
                 toolchains = []
+            try:
+                templates = self.query_one(f"#s-templates-{idx}", MultiSelect).get_selected_values()
+            except Exception:
+                templates = []
 
             schedules.append(JobConfig(
                 name=name, enabled=enabled, cron=cron,
                 actions=actions, targets=targets, repos=repos,
-                toolchains=toolchains,
+                toolchains=toolchains, templates=templates,
             ))
             idx += 1
         return schedules

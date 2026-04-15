@@ -48,6 +48,7 @@ class Toolchain:
     strip_components: int = 0      # tar --strip-components (0 = most STB toolchains)
     selfbuild: bool = False        # True if toolchain was built locally (not downloaded)
     native: bool = False           # True if this is the host system compiler
+    exclude_from_automation: bool = False  # hide from F7 automation dropdowns; skip on "all"
 
     # Runtime state (not persisted, set at load time)
     installed: bool = False
@@ -799,6 +800,7 @@ class ToolchainRegistry:
                 strip_components=entry.get("strip_components", 0),
                 selfbuild=entry.get("selfbuild", False),
                 native=entry.get("native", False),
+                exclude_from_automation=entry.get("exclude_from_automation", False),
             )
             if tc.name:
                 result.append(tc)
@@ -814,30 +816,30 @@ class ToolchainRegistry:
     def _save_file(self, path: Path, toolchains: list[Toolchain]) -> None:
         """Save toolchains to a YAML file. Omits empty/default fields."""
         defaults = Toolchain()
-        data = {
-            "toolchains": [
-                {k: v for k, v in {
-                    "name": tc.name,
-                    "description": tc.description,
-                    "category": tc.category,
-                    "arch": tc.arch,
-                    "machines": tc.machines,
-                    "prefix": tc.prefix,
-                    "sysroot": tc.sysroot,
-                    "cc_opts": tc.cc_opts,
-                    "cflags": tc.cflags,
-                    "ldflags": tc.ldflags,
-                    "make_vars": tc.make_vars,
-                    "stapi_lib": tc.stapi_lib,
-                    "url": tc.url,
-                    "checksum": tc.checksum,
-                    "strip_components": tc.strip_components,
-                    "selfbuild": tc.selfbuild,
-                    "native": tc.native,
-                }.items() if v != getattr(defaults, k)}
-                for tc in toolchains
-            ]
-        }
+        entries = []
+        for tc in toolchains:
+            entry = {k: v for k, v in {
+                "name": tc.name,
+                "description": tc.description,
+                "category": tc.category,
+                "arch": tc.arch,
+                "machines": tc.machines,
+                "prefix": tc.prefix,
+                "sysroot": tc.sysroot,
+                "cc_opts": tc.cc_opts,
+                "cflags": tc.cflags,
+                "ldflags": tc.ldflags,
+                "make_vars": tc.make_vars,
+                "stapi_lib": tc.stapi_lib,
+                "url": tc.url,
+                "checksum": tc.checksum,
+                "strip_components": tc.strip_components,
+                "selfbuild": tc.selfbuild,
+                "native": tc.native,
+            }.items() if v != getattr(defaults, k)}
+            entry["exclude_from_automation"] = tc.exclude_from_automation  # always write
+            entries.append(entry)
+        data = {"toolchains": entries}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
             yaml.dump(data, default_flow_style=False, sort_keys=False),

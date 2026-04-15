@@ -1,5 +1,6 @@
 name: qnap_x64
 description: QNAP x64 devices
+exclude_from_automation: true
 builder: crosstool-ng
 arch: x86_64
 

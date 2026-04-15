@@ -138,6 +138,7 @@ class Target:
     toolchains: list[ToolchainConfig] = field(default_factory=list)
     build: BuildSettings = field(default_factory=BuildSettings)
     deployment: list[DeploymentConfig] = field(default_factory=list)
+    exclude_from_automation: bool = False
 
     def save(self, path: Path) -> None:
         """Save target to YAML file."""
@@ -205,6 +206,8 @@ class Target:
                 if u.host  # only save entries with a host
             ],
         }
+        if self.exclude_from_automation:
+            data["exclude_from_automation"] = True
         path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")
 
     @staticmethod
@@ -310,6 +313,7 @@ class Target:
             toolchains=_load_toolchains(data.get("toolchains", [])),
             build=build,
             deployment=deployments,
+            exclude_from_automation=bool(data.get("exclude_from_automation", False)),
         )
 
     @classmethod

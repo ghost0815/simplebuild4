@@ -23,6 +23,20 @@ from translation import t
 from ui.header import S4Header
 
 
+def _ensure_excl_auto(yaml_text: str) -> str:
+    """Inject 'exclude_from_automation: false' after the description line if missing."""
+    if "exclude_from_automation" in yaml_text:
+        return yaml_text
+    lines = yaml_text.splitlines(keepends=True)
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("description:"):
+            indent = line[: len(line) - len(line.lstrip())]
+            lines.insert(i + 1, f"{indent}exclude_from_automation: false\n")
+            return "".join(lines)
+    # Fallback: append at end
+    return yaml_text.rstrip("\n") + "\nexclude_from_automation: false\n"
+
+
 class S4DataTable(DataTable):
     """DataTable with a leading marker column and focus-aware cursor.
 
@@ -1858,7 +1872,7 @@ class ToolchainsScreen(Screen):
                 self._editor_loaded_text = editor.text
                 return
             try:
-                editor.text = tpl.yaml_path.read_text(encoding="utf-8")
+                editor.text = _ensure_excl_auto(tpl.yaml_path.read_text(encoding="utf-8"))
                 editor.disabled = False
             except Exception as e:
                 editor.text = f"# Error: {e}"
@@ -1883,7 +1897,7 @@ class ToolchainsScreen(Screen):
             return
 
         editor.disabled = False
-        editor.text = block
+        editor.text = _ensure_excl_auto(block)
         self._editor_loaded_text = editor.text
 
     def _extract_yaml_block(self, tc_name: str) -> "str | None":
@@ -2334,6 +2348,9 @@ class ToolchainsScreen(Screen):
                 self.notify(msg, severity="error", timeout=10)
                 return ""
             self._log_sync(f"  [green]✓ Written to toolchains.local.yaml[/green]")
+            if entry.get("exclude_from_automation", False):
+                from core.automation import remove_from_jobs
+                remove_from_jobs(self.app.paths.automation_yaml, toolchain=name)
             final_name = name
             result_msg = t("yaml_saved", name=name)
 
@@ -2744,56 +2761,16 @@ class ToolchainsScreen(Screen):
 
         def do_build():
             try:
-                from core.builders import load_builder_recipes
-                from core.builders.crosstool_ng import CrosstoolNG
-                recipes = load_builder_recipes(self.app.paths.builders_recipes)
-                recipe = recipes.get(tpl.builder)
-                if not recipe:
-                    blog(f"[red]No recipe for builder '{tpl.builder}' in builders.yaml[/red]")
-                    return
-                ctng = CrosstoolNG(
-                    ctng_dir=ctng_path,
-                    toolchains_dir=self.app.paths.toolchains_dir,
-                    downloads_dir=self.app.paths.downloads_dir,
-                    recipe=recipe,
-                    max_cpus=self.app.settings.max_cpus,
+                from core.toolchain_builder import build_toolchain
+                ok = build_toolchain(
+                    tpl=tpl,
+                    paths=self.app.paths,
+                    settings=self.app.settings,
                     log=blog,
                     cancel_check=cancel_check,
                 )
-                # Setup if needed
-                if not ctng.is_installed():
-                    blog("[bold]Setting up crosstool-ng (one-time)...[/bold]")
-                    if not ctng.setup():
-                        blog("[red]crosstool-ng setup failed[/red]")
-                        return
-                # Build the toolchain
-                if not ctng.build(tpl):
-                    blog(f"[red]Build of {tpl.name} failed[/red]")
-                    return
-                # Post-build: relocate paths inside the new toolchain so the
-                # binaries / .pc files all reference the actual install location.
-                # crosstool-ng usually emits the right paths already, but we
-                # run the same fixups as for installed toolchains for consistency.
-                install_dir = self.app.paths.toolchains_dir / tpl.name
-                if install_dir.exists():
-                    blog("[bold]Post-build: relocating paths...[/bold]")
-                    try:
-                        pc_total, pc_fixed = self._fix_pc_files(install_dir)
-                        if pc_total:
-                            blog(f"  [green]✓ .pc files: {pc_fixed}/{pc_total} updated[/green]")
-                    except Exception as e:
-                        blog(f"  [yellow]fix_pc_files failed: {e}[/yellow]")
-                    try:
-                        la_total, la_fixed = self._fix_la_files(install_dir)
-                        if la_total:
-                            blog(f"  [green]✓ .la files: {la_fixed}/{la_total} updated[/green]")
-                    except Exception as e:
-                        blog(f"  [yellow]fix_la_files failed: {e}[/yellow]")
-                # Register the toolchain
-                blog("[bold]Registering toolchain...[/bold]")
-                self._register_built_toolchain(tpl)
-                blog(f"[green]{tpl.name} built and registered[/green]")
-                self.app.call_from_thread(self.notify, t("selfbuild_done", name=tpl.name))
+                if ok:
+                    self.app.call_from_thread(self.notify, t("selfbuild_done", name=tpl.name))
             finally:
                 self.app.call_from_thread(self.app.build_timer_stop)
                 elapsed = self.app.build_timer_format()
