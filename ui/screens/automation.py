@@ -1141,9 +1141,14 @@ class AutomationScreen(Screen):
             toolchains = self.query_one(f"#s-toolchains-{idx}", MultiSelect).get_selected_values()
         except Exception:
             toolchains = []
+        try:
+            templates = self.query_one(f"#s-templates-{idx}", MultiSelect).get_selected_values()
+        except Exception:
+            templates = []
         return JobConfig(
             name=name, enabled=enabled, cron=cron,
             actions=actions, targets=targets, repos=repos, toolchains=toolchains,
+            templates=templates,
         )
 
     def on_multi_select_changed(self, event: MultiSelect.Changed) -> None:
@@ -1153,7 +1158,7 @@ class AutomationScreen(Screen):
             selected = sorted(event.selected, key=lambda a: _ACTION_ITEMS.index(a) if a in _ACTION_ITEMS else 99)
             event.multi_select.tooltip = _actions_tooltip(selected)
         # Validate the entry this multi-select belongs to
-        for prefix in ("s-actions-", "s-repos-", "s-targets-", "s-toolchains-"):
+        for prefix in ("s-actions-", "s-repos-", "s-targets-", "s-toolchains-", "s-templates-"):
             if wid.startswith(prefix):
                 try:
                     idx = int(wid[len(prefix):])
