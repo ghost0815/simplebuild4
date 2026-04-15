@@ -22,14 +22,30 @@ from urllib.parse import urlparse, urlunparse
 
 
 def _derive_key() -> bytes:
-    """Derive a 32-byte key from the current hostname and login name."""
-    try:
-        user = os.getlogin()
-    except OSError:
-        import getpass
-        user = getpass.getuser()
-    material = f"{socket.gethostname()}:{user}".encode()
+    """Derive a 32-byte key from the current hostname and login name.
+
+    Uses getpass.getuser() which is consistent across TTY and non-TTY
+    contexts (SSH, screen, systemd services). os.getlogin() reads from
+    utmp/terminal and can return a different value or raise OSError in
+    headless/reconnected sessions, causing spurious decrypt failures.
+    """
+    import getpass
+    material = f"{socket.gethostname()}:{getpass.getuser()}".encode()
     return hashlib.sha256(material).digest()
+
+
+def _derive_key_legacy() -> bytes | None:
+    """Legacy key using os.getlogin() — used as decrypt fallback only.
+
+    Passwords saved before the getpass.getuser() switch may have been
+    encrypted with the os.getlogin() key. Returns None if getlogin()
+    is unavailable (no TTY).
+    """
+    try:
+        material = f"{socket.gethostname()}:{os.getlogin()}".encode()
+        return hashlib.sha256(material).digest()
+    except OSError:
+        return None
 
 
 def encrypt(plain: str) -> str:
@@ -48,21 +64,23 @@ _decrypt_warnings: list[str] = []
 def decrypt(stored: str) -> str:
     """Decrypt a stored value. Plain text (no ``enc:`` prefix) passes through.
 
-    Returns empty string if decryption fails (e.g. config moved to a
-    different machine where the derived key differs). A warning is
-    appended to _decrypt_warnings for the app to display.
+    Tries the primary key (getpass.getuser()) first, then falls back to
+    the legacy key (os.getlogin()) for passwords saved before the key
+    derivation was stabilised. Only appends a warning if both keys fail.
     """
     if not stored:
         return ""
     if not stored.startswith("enc:"):
         return stored  # legacy plain text
-    try:
-        key = _derive_key()
-        xored = base64.b64decode(stored[4:])
-        return bytes(b ^ key[i % len(key)] for i, b in enumerate(xored)).decode("utf-8")
-    except (UnicodeDecodeError, Exception):
-        _decrypt_warnings.append(stored[:20])
-        return ""
+    raw = base64.b64decode(stored[4:])
+    for key in filter(None, [_derive_key(), _derive_key_legacy()]):
+        try:
+            result = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw)).decode("utf-8")
+            return result
+        except (UnicodeDecodeError, ValueError):
+            continue
+    _decrypt_warnings.append(stored[:20])
+    return ""
 
 
 def pop_decrypt_warnings() -> list[str]:
