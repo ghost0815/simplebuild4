@@ -2884,89 +2884,20 @@ class ToolchainsScreen(Screen):
             self.notify(t("not_installed", name=tc.name), severity="warning")
             return
 
-        install_dir = self.app.paths.toolchains_dir / tc.name
-        backup_dir = self.app.paths.downloads_dir
-        backup_dir.mkdir(parents=True, exist_ok=True)
-        backup_file = backup_dir / f"Toolchain-{tc.name}.tar.xz"
-
         self._log_sync(f"[bold]Backing up {tc.name}...[/bold]")
         self._set_installed_row_desc(tc.name, "backing up...")
 
         def do_backup():
-            from datetime import datetime
-            from rich.markup import escape as rich_escape
-
-            # Setup log file
-            from core.log_cleanup import resolve_log_dir
-            _log_dir = resolve_log_dir(self.app.paths.logs_dir, "backup", self.app.settings.organize_logs)
-            timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
-            log_path = _log_dir / f"{timestamp}.{tc.name}.backup.log"
-            log_file = open(log_path, "w", encoding="utf-8")
-
-            def blog(msg):
-                import re
-                plain = re.sub(r'\[/?[a-z_ ]+\]', '', msg)
-                log_file.write(plain + "\n")
-                log_file.flush()
-                self._log(msg)
-
-            try:
-                blog(f"Source: {install_dir}")
-                blog(f"Target: {backup_file}")
-                blog(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                blog("")
-
-                # Create backup with verbose output
-                proc = subprocess.Popen(
-                    ["tar", "-cJvf", str(backup_file), "-C", str(self.app.paths.toolchains_dir), tc.name],
-                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            from core.toolchain_backup import backup_toolchain
+            ok = backup_toolchain(tc, self.app.paths, reg, self.app.settings, log=self._log)
+            if ok:
+                self.app.call_from_thread(
+                    self._set_installed_row_desc, tc.name, f"{tc.description} [green]✓ backed up[/green]"
                 )
-                for line in proc.stdout:
-                    blog(f"  {rich_escape(line.rstrip())}")
-                proc.wait()
-
-                if proc.returncode != 0:
-                    blog(f"[red]Backup failed (exit {proc.returncode})[/red]")
-                    self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]backup failed[/red]")
-                    return
-
-                size_mb = backup_file.stat().st_size / (1024 * 1024)
-
-                # Update checksum + url in local yaml only for local (file://) toolchains
-                if not tc.url or tc.url.startswith("file://"):
-                    import hashlib as _hashlib
-                    h = _hashlib.sha256()
-                    with open(backup_file, "rb") as bf:
-                        for chunk in iter(lambda: bf.read(8192), b""):
-                            h.update(chunk)
-                    new_checksum = f"sha256:{h.hexdigest()}"
-
-                    reg = self._get_registry()
-                    local_tcs = reg._load_file(reg.local_path)
-                    for ltc in local_tcs:
-                        if ltc.name == tc.name:
-                            ltc.url = f"file://{backup_file.name}"
-                            ltc.checksum = new_checksum
-                            break
-                    reg.save_local(local_tcs)
-
-                blog(f"")
-                blog(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-                blog(f"Size: {size_mb:.1f} MB")
-                blog(f"Checksum: {new_checksum}")
-                blog(f"Log: {log_path}")
-                blog(f"[green]{tc.name} backed up to {backup_file.name}[/green]")
-                self.app.call_from_thread(self._set_installed_row_desc, tc.name, f"{tc.description} [green]✓ backed up[/green]")
-            except Exception as e:
-                blog(f"[red]Backup failed: {e}[/red]")
-                self.app.call_from_thread(self._set_installed_row_desc, tc.name, "[red]backup failed[/red]")
-            finally:
-                log_file.close()
-                try:
-                    from core.log_cleanup import run_retention
-                    run_retention(self.app.paths.logs_dir, self.app.settings, log=self._log)
-                except Exception:
-                    pass
+            else:
+                self.app.call_from_thread(
+                    self._set_installed_row_desc, tc.name, "[red]backup failed[/red]"
+                )
 
         thread = threading.Thread(target=do_backup, daemon=True)
         thread.start()

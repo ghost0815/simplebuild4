@@ -912,6 +912,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
             libs = scan_libraries(tc_dir, tc.sysroot, native=tc.native)
             check_library_updates(libs, recipes, has_c11=True)
 
+            tc_updated = False
             for lib in libs:
                 if not lib.found or not lib.update_version or lib.up_to_date:
                     continue
@@ -935,7 +936,14 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 )
                 if ok:
                     updated_count += 1
+                    tc_updated = True
                 else:
+                    all_ok = False
+
+            if tc_updated:
+                from core.toolchain_backup import backup_toolchain
+                log(f"Backing up '{tc.name}' after library updates...")
+                if not backup_toolchain(tc, paths, registry, settings, log=log):
                     all_ok = False
 
         log(f"Library updates complete: {updated_count} updated")
