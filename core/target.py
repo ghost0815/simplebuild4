@@ -14,6 +14,7 @@ from typing import Optional
 import yaml
 
 from core.credentials import encrypt as _encrypt, decrypt as _decrypt
+from translation import t
 
 
 @dataclass
@@ -288,8 +289,10 @@ class Target:
 
         # Backward compat: read "deployment" first, fall back to "upload" for old files
         deploy_data = data.get("deployment") or data.get("upload") or []
+        _tgt_name = data.get("name", "?")
         deployments = []
         for u in deploy_data:
+            _dep_id = u.get('name') or u.get('host') or '?'
             deployments.append(DeploymentConfig(
                 name=u.get("name", ""),
                 enabled=u.get("enabled", True),
@@ -297,11 +300,11 @@ class Target:
                 toolchain=u.get("toolchain", ""),
                 host=u.get("host", ""),
                 user=u.get("user", "root"),
-                password=_decrypt(u.get("password", "")),
+                password=_decrypt(u.get("password", ""), label=lambda tn=_tgt_name, di=_dep_id: f"{t('te_password')} (Target '{tn}' / '{di}')"),
                 port=u.get("port", 22),
                 key=u.get("key", ""),
                 target_path=u.get("target_path", "/usr/bin/oscam"),
-                su_password=_decrypt(u.get("su_password", "")),
+                su_password=_decrypt(u.get("su_password", ""), label=lambda tn=_tgt_name, di=_dep_id: f"{t('te_su_password')} (Target '{tn}' / '{di}')"),
                 pre_cmd=u.get("pre_cmd", ""),
                 post_cmd=u.get("post_cmd", ""),
             ))

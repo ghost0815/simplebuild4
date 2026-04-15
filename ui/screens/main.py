@@ -290,9 +290,12 @@ class MainScreen(Screen):
             self._update_info(target)
             # Warn if target has undecryptable passwords (skip during startup,
             # the app timer handles that)
-            from core.credentials import pop_decrypt_warnings
-            if getattr(self.app, '_decrypt_check_done', False) and pop_decrypt_warnings():
-                self.notify(t("decrypt_failed_warning"), severity="warning", timeout=10)
+            if getattr(self.app, '_decrypt_check_done', False):
+                from core.credentials import pop_decrypt_warnings
+                _dw = pop_decrypt_warnings()
+                if _dw:
+                    detail = "\n".join(f"  \u2022 {w}" for w in _dw)
+                    self.notify(f"{t('decrypt_failed_warning')}\n{detail}", severity="warning", timeout=10)
             # Remember last target
             self.app.settings.last_target = event.value
             self.app.settings.save(self.app.settings_path)

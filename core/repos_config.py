@@ -8,6 +8,7 @@ import yaml
 
 from core.repo import RepoConfig
 from core.credentials import encrypt, decrypt
+from translation import t
 
 DEFAULT_REPOS = [
     RepoConfig(
@@ -42,7 +43,7 @@ def load_repos(path: Path) -> list[RepoConfig]:
             auth_method=entry.get("auth_method", ""),
             ssh_key=entry.get("ssh_key", ""),
             auth_user=entry.get("auth_user", ""),
-            auth_pass=decrypt(entry.get("auth_pass", "")),
+            auth_pass=decrypt(entry.get("auth_pass", ""), label=lambda n=entry.get("name", "?"): f"{t('re_password')} (Repository '{n}')", persistent=True),
             exclude_from_automation=bool(entry.get("exclude_from_automation", False)),
         ))
     return repos

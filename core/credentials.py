@@ -58,36 +58,79 @@ def encrypt(plain: str) -> str:
     return "enc:" + base64.b64encode(xored).decode("ascii")
 
 
-_decrypt_warnings: list[str] = []
+_decrypt_warnings: list[str | Callable[[], str]] = []
+_decrypt_persistent: list[str | Callable[[], str]] = []
 
 
-def decrypt(stored: str) -> str:
+def decrypt(stored: str, label: str | Callable[[], str] = "", persistent: bool = False) -> str:
     """Decrypt a stored value. Plain text (no ``enc:`` prefix) passes through.
 
     Tries the primary key (getpass.getuser()) first, then falls back to
     the legacy key (os.getlogin()) for passwords saved before the key
     derivation was stabilised. Only appends a warning if both keys fail.
+
+    label — optional human-readable description of the field. May be a
+    plain string or a zero-argument callable (lambda) so that t() calls
+    are deferred until the warning is actually displayed (after the UI
+    and translations are fully initialised).
     """
     if not stored:
         return ""
     if not stored.startswith("enc:"):
         return stored  # legacy plain text
-    raw = base64.b64decode(stored[4:])
+    try:
+        raw = base64.b64decode(stored[4:])
+    except Exception:
+        _store_warning(label or stored[:20], persistent)
+        return ""
     for key in filter(None, [_derive_key(), _derive_key_legacy()]):
         try:
             result = bytes(b ^ key[i % len(key)] for i, b in enumerate(raw)).decode("utf-8")
             return result
         except (UnicodeDecodeError, ValueError):
             continue
-    _decrypt_warnings.append(stored[:20])
+    _store_warning(label or stored[:20], persistent)
     return ""
 
 
+def _store_warning(label: str | Callable[[], str], persistent: bool) -> None:
+    if persistent:
+        _decrypt_persistent.append(label)
+    else:
+        _decrypt_warnings.append(label)
+
+
 def pop_decrypt_warnings() -> list[str]:
-    """Return and clear any decrypt warnings since last call."""
-    warnings = list(_decrypt_warnings)
+    """Return and clear any decrypt warnings since last call.
+
+    Callables are resolved here — at display time, after the UI and
+    translations are fully initialised. Duplicate labels are collapsed
+    (e.g. two deployments with the same host and no name).
+    """
+    seen: list[str] = []
+    # Persistent warnings (settings, repos) — included every time, never cleared
+    for w in _decrypt_persistent:
+        try:
+            label = w() if callable(w) else w
+        except Exception as e:
+            label = f"(label error: {e})"
+        if label not in seen:
+            seen.append(label)
+    # Transient warnings (per-target) — cleared after each pop
+    for w in _decrypt_warnings:
+        try:
+            label = w() if callable(w) else w
+        except Exception as e:
+            label = f"(label error: {e})"
+        if label not in seen:
+            seen.append(label)
     _decrypt_warnings.clear()
-    return warnings
+    return seen
+
+
+def clear_persistent_warnings() -> None:
+    """Clear persistent warnings — call after the user re-enters passwords."""
+    _decrypt_persistent.clear()
 
 
 def build_git_env(auth_method: str, ssh_key: str = "",

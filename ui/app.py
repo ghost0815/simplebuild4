@@ -122,8 +122,10 @@ class S4App(App):
     def _check_decrypt_warnings(self) -> None:
         """Show a single warning if any encrypted passwords failed to decrypt."""
         from core.credentials import pop_decrypt_warnings
-        if pop_decrypt_warnings():
-            self.notify(t("decrypt_failed_warning"), severity="warning", timeout=15)
+        warnings = pop_decrypt_warnings()
+        if warnings:
+            detail = "\n".join(f"  • {w}" for w in warnings)
+            self.notify(f"{t('decrypt_failed_warning')}\n{detail}", severity="warning", timeout=15)
         self._decrypt_check_done = True
 
     def _web_start(self) -> None:

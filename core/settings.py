@@ -8,6 +8,7 @@ from pathlib import Path
 import yaml
 
 from core.credentials import encrypt as _encrypt, decrypt as _decrypt
+from translation import t
 
 
 @dataclass
@@ -166,7 +167,7 @@ class Settings:
             web_ssl_cert=data.get("web_ssl_cert", ""),
             web_ssl_key=data.get("web_ssl_key", ""),
             web_auth_user=data.get("web_auth_user", ""),
-            web_auth_password=_decrypt(data.get("web_auth_password", "")),
+            web_auth_password=_decrypt(data.get("web_auth_password", ""), label=lambda: f"{t('web_auth_pass_ph')} ({t('settings_title')})", persistent=True),
             default_compress_level=data.get("default_compress_level", cls.default_compress_level),
             default_confdir=data.get("default_confdir", cls.default_confdir),
             default_build_system=data.get("default_build_system", cls.default_build_system),
