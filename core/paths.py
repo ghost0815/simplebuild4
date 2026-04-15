@@ -29,6 +29,7 @@ class Paths:
     templates_defaults: Path   # defaults/templates/ shipped toolchain templates
     templates_local: Path      # data/templates/ user-added templates
     translation_dir: Path
+    translation_user_dir: Path     # data/translation/ user overlay (overrides bundled keys)
     yaml_backup_dir: Path          # data/backup/yaml/ for startup backups
     automation_yaml: Path          # data/automation.yaml
     automation_state_yaml: Path    # data/automation_state.yaml
@@ -59,6 +60,7 @@ class Paths:
             templates_defaults=root / "defaults" / "templates",
             templates_local=data / "templates",
             translation_dir=root / "translation",
+            translation_user_dir=data / "translation",
             yaml_backup_dir=data / "backups" / "yaml",
             automation_yaml=data / "automation.yaml",
             automation_state_yaml=data / "automation_state.yaml",
@@ -73,8 +75,18 @@ class Paths:
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
             self.bin_dir, self.builders_dir, self.templates_local,
             self.yaml_backup_dir, self.automation_logs_dir,
+            self.translation_user_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
+
+        # Seed the user translation overlay README on first run so users
+        # discover the override mechanism. The defaults/translation dir
+        # ships only this README — actual default translations live in
+        # the top-level translation/ package.
+        readme_default = self.defaults_dir / "translation" / "README.yaml"
+        readme_dest = self.translation_user_dir / "README.yaml"
+        if readme_default.exists() and not readme_dest.exists():
+            shutil.copy2(readme_default, readme_dest)
 
         # seed default targets on first run — the shipped defaults/
         # directory holds target samples alongside registry files
@@ -89,6 +101,11 @@ class Paths:
         }
         if self.defaults_dir.is_dir():
             for default in self.defaults_dir.glob("*.yaml"):
+                # Top-level only — never pull files out of subdirs like
+                # defaults/translation/README.yaml even if a future glob
+                # change accidentally broadens the scan.
+                if default.parent != self.defaults_dir:
+                    continue
                 if default.name in _not_targets:
                     continue
                 dest = self.targets_dir / default.name

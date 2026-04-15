@@ -336,7 +336,10 @@ class SettingsScreen(Screen):
         import translation
         self._language_changed = s.language != translation._current_lang
         if self._language_changed:
-            translation.load(s.language)
+            # Pass user_dir so the data/translation/ overlay still wins
+            # after a runtime language switch (otherwise the bundled
+            # translation would replace the merged dict).
+            translation.load(s.language, user_dir=self.app.paths.translation_user_dir)
 
     _language_changed: bool = False
 

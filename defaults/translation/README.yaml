@@ -1,0 +1,27 @@
+# s4 — User translation overlay
+#
+# Anything you put into data/translation/<langcode>.yaml overrides the
+# bundled translation in translation/<langcode>.yaml on a per-key basis.
+# You only list the keys you want to change; everything else falls back
+# to the bundled translation, then to English, then to the key itself.
+#
+# A few examples (uncomment to enable):
+#
+#   auto_crontab: "Geplante Aufgaben"
+#   auto_crontab_help: "Mein eigener Hilfetext."
+#   settings_title: "Konfiguration"
+#
+# To add a brand-new language that s4 does not ship, drop a new file
+# data/translation/<code>.yaml here. It will appear in Settings →
+# Language. Set the display name via:
+#
+#   language_name: "Français"
+#   <key1>: "..."
+#   <key2>: "..."
+#
+# The file you are reading right now (README.yaml) is ignored by the
+# language selector — it exists purely as documentation. Feel free to
+# delete or replace it.
+#
+# Self-update of s4 never touches data/translation/, so your overrides
+# survive every update.

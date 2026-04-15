@@ -304,7 +304,7 @@ class S4App(App):
             pass
         # Load translations
         from translation import load as load_translations
-        load_translations(self.settings.language)
+        load_translations(self.settings.language, user_dir=self.paths.translation_user_dir)
         # Initialize ASCII mode for icon helper
         from ui.icons import init as _init_icons
         _init_icons(self.settings.ascii_mode)
