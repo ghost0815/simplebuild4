@@ -245,7 +245,7 @@ toolchains:
   exclude_from_automation: false
   category: stb
   arch: armv7
-  machines: h8 hzero sfx6008
+  machines: h8 h8se hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
   cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
@@ -258,7 +258,7 @@ toolchains:
   exclude_from_automation: false
   category: stb
   arch: armv7
-  machines: h8 hzero sfx6008
+  machines: h8 h8se hzero sfx6008
   prefix: arm-oe-linux-gnueabi-
   sysroot: sysroots/cortexa7hf-vfp-oe-linux-gnueabi
   cflags: -mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7
