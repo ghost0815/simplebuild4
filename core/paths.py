@@ -25,7 +25,6 @@ class Paths:
     downloads_dir: Path
     bin_dir: Path              # data/bin/ for custom tool symlinks (upx etc.)
     builders_dir: Path         # data/builders/ for toolchain builders (crosstool-ng etc.)
-    builders_recipes: Path     # defaults/builders.yaml recipes for setting them up
     templates_defaults: Path   # defaults/templates/ shipped toolchain templates
     templates_local: Path      # data/templates/ user-added templates
     translation_dir: Path
@@ -56,7 +55,6 @@ class Paths:
             downloads_dir=data / "downloads",
             bin_dir=data / "bin",
             builders_dir=data / "builders",
-            builders_recipes=root / "defaults" / "builders.yaml",
             templates_defaults=root / "defaults" / "templates",
             templates_local=data / "templates",
             translation_dir=root / "translation",

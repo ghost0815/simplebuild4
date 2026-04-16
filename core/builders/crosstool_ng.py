@@ -2,14 +2,13 @@
 
 Workflow (matches s3 behaviour):
 
-1. setup() — execute install steps from defaults/builders.yaml (clone,
-   bootstrap, configure, make) if ct-ng is not present
+1. setup() — clone crosstool-ng, bootstrap, configure, make (if ct-ng
+   is not present)
 2. build(template) — copy template config, patch CT_PREFIX_DIR/CT_LOCAL_TARBALLS_DIR/
    CT_PARALLEL_JOBS, run `./ct-ng build`, leave the result in toolchains_dir/<name>/
 
 The crosstool-ng install lives at <ctng_dir> (default: data/builders/crosstool-ng).
-The setup commands themselves come from defaults/builders.yaml — see the
-BuilderRecipe class.
+All builder configuration is hardcoded — no external YAML needed.
 """
 
 from __future__ import annotations
@@ -24,18 +23,38 @@ from typing import Callable, Optional
 from rich.markup import escape as rich_escape
 
 from core.template import Template
-from core.builders import BuilderRecipe, expand_tokens
+
+
+def _expand_tokens(cmd: list, tokens: dict) -> list:
+    """Replace @TOKEN@ placeholders in each argument of a command list."""
+    result = []
+    for arg in cmd:
+        s = str(arg)
+        for key, val in tokens.items():
+            s = s.replace(f"@{key}@", str(val))
+        result.append(s)
+    return result
 
 
 class CrosstoolNG:
     """crosstool-ng builder runner."""
+
+    # All builder configuration — no external YAML needed.
+    REPO = "https://github.com/crosstool-ng/crosstool-ng"
+    BINARY = "ct-ng"
+    SETUP_STEPS = [
+        ["git", "clone", "--progress", "@REPO@", "@INSTALL_DIR@"],
+        ["./bootstrap"],
+        ["./configure", "--enable-local"],
+        ["make", "-j@CPUS@"],
+    ]
+    CUSTOMIZE_CMD = ["./ct-ng", "menuconfig"]
 
     def __init__(
         self,
         ctng_dir: Path,
         toolchains_dir: Path,
         downloads_dir: Path,
-        recipe: Optional[BuilderRecipe] = None,
         max_cpus: int = 4,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
@@ -43,7 +62,6 @@ class CrosstoolNG:
         self.ctng_dir = ctng_dir
         self.toolchains_dir = toolchains_dir
         self.downloads_dir = downloads_dir
-        self.recipe = recipe
         self.max_cpus = max_cpus
         self.log = log or (lambda m: None)
         self.cancel_check = cancel_check or (lambda: False)
@@ -56,10 +74,9 @@ class CrosstoolNG:
         ./configure --prefix=<dir> && make install) when the
         local-build path does not exist.
         """
-        binary = (self.recipe.binary if self.recipe and self.recipe.binary else "ct-ng")
         candidates = [
-            self.ctng_dir / binary,
-            self.ctng_dir / "bin" / binary,
+            self.ctng_dir / self.BINARY,
+            self.ctng_dir / "bin" / self.BINARY,
         ]
         for c in candidates:
             if c.is_file():
@@ -73,24 +90,19 @@ class CrosstoolNG:
     # ------------------------------------------------------------------ setup
 
     def setup(self) -> bool:
-        """Execute setup commands from the BuilderRecipe. Idempotent.
+        """Execute setup steps. Idempotent.
 
         Honours an existing user-supplied install at ctng_dir:
           * If ct-ng (or bin/ct-ng) is already present and executable
             → nothing to do.
           * If the directory exists and is non-empty (a partial source
             checkout, or a system install missing only the build) →
-            skip the clone step from the recipe and run the remaining
-            steps in place.
+            skip the clone step and run the remaining steps in place.
           * Empty / missing directory → full setup.
         """
         if self.is_installed():
             self.log(f"  [green]{self.ct_ng.name} already installed at {self.ctng_dir}[/green]")
             return True
-
-        if not self.recipe or not self.recipe.setup:
-            self.log("[red]No builder recipe loaded — cannot set up crosstool-ng[/red]")
-            return False
 
         # Detect a non-empty pre-existing dir we should not overwrite
         try:
@@ -107,17 +119,14 @@ class CrosstoolNG:
         self.ctng_dir.parent.mkdir(parents=True, exist_ok=True)
 
         tokens = {
-            "REPO": self.recipe.repo,
+            "REPO": self.REPO,
             "INSTALL_DIR": str(self.ctng_dir),
             "CPUS": str(self.max_cpus),
         }
 
-        self.log(f"[bold]Setting up {self.recipe.name} → {self.ctng_dir}[/bold]")
-        for raw_cmd in self.recipe.setup:
-            if not isinstance(raw_cmd, list):
-                self.log(f"[yellow]Skipping invalid step: {raw_cmd!r}[/yellow]")
-                continue
-            cmd = expand_tokens(raw_cmd, tokens)
+        self.log(f"[bold]Setting up crosstool-ng → {self.ctng_dir}[/bold]")
+        for raw_cmd in self.SETUP_STEPS:
+            cmd = _expand_tokens(list(raw_cmd), tokens)
             is_clone = (len(cmd) >= 2 and cmd[0] == "git" and cmd[1] == "clone")
             if is_clone and preexisting:
                 self.log(f"  [dim]skip clone (existing tree at {self.ctng_dir})[/dim]")
@@ -130,10 +139,10 @@ class CrosstoolNG:
                 return False
 
         if not self.is_installed():
-            self.log(f"[red]{self.ct_ng.name} binary not found after setup[/red]")
+            self.log(f"[red]{self.BINARY} binary not found after setup[/red]")
             return False
 
-        self.log(f"[green]{self.recipe.name} setup complete[/green]")
+        self.log(f"[green]crosstool-ng setup complete[/green]")
         return True
 
     # ------------------------------------------------------------------ build
@@ -180,7 +189,6 @@ class CrosstoolNG:
         tarballs_dir: Path | None = None
         dl = (getattr(template, "download_location", "") or "").strip()
         if dl:
-            import os
             dl = os.path.expanduser(dl)
             p = Path(dl)
             if not p.is_absolute():

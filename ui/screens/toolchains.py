@@ -4120,24 +4120,16 @@ class ToolchainsScreen(Screen):
             self._customize_android_ndk(tpl)
             return
 
-        # Load recipe for the builder
-        from core.builders import load_builder_recipes, expand_tokens
-        recipes = load_builder_recipes(self.app.paths.builders_recipes)
-        recipe = recipes.get(tpl.builder)
-        if not recipe:
-            self.notify(t("builder_not_supported", builder=tpl.builder), severity="warning")
-            return
-        if not recipe.customize:
-            self.notify(t("customize_not_supported", builder=tpl.builder), severity="warning")
-            return
+        # crosstool-ng: menuconfig via app.suspend()
+        from core.builders.crosstool_ng import CrosstoolNG
 
-        # Determine install dir (same logic as _handle_selfbuild)
+        # Determine install dir
         ctng_path = self._resolve_ctng_dir()
 
         # Check builder is installed
-        binary_path = ctng_path / recipe.binary if recipe.binary else None
-        if not binary_path or not binary_path.is_file():
-            self.notify(t("customize_builder_missing", name=recipe.name), severity="warning", timeout=10)
+        binary_path = ctng_path / CrosstoolNG.BINARY
+        if not binary_path.is_file():
+            self.notify(t("customize_builder_missing", name="crosstool-ng"), severity="warning", timeout=10)
             return
 
         # If we'd need to fork later, make sure no local copy exists yet
@@ -4180,13 +4172,8 @@ class ToolchainsScreen(Screen):
         working_cfg = ctng_path / ".config"
         hash_before = _hash_file(working_cfg)
 
-        # Expand tokens and run the customize command via app.suspend()
-        tokens = {
-            "REPO": recipe.repo,
-            "INSTALL_DIR": str(ctng_path),
-            "CPUS": str(self.app.settings.max_cpus),
-        }
-        cmd = expand_tokens(list(recipe.customize), tokens)
+        # Run the customize command via app.suspend()
+        cmd = list(CrosstoolNG.CUSTOMIZE_CMD)
         def _rel(p):
             if not p:
                 return ""
@@ -4195,7 +4182,7 @@ class ToolchainsScreen(Screen):
             except Exception:
                 return str(p)
         source_label = "local" if tpl.is_local else "default"
-        self._log_sync(f"[bold]Customize: {tpl.name} via {recipe.name} — {source_label}[/bold]")
+        self._log_sync(f"[bold]Customize: {tpl.name} via crosstool-ng — {source_label}[/bold]")
         if tpl.yaml_path:
             self._log_sync(f"  template: [dim]{_rel(tpl.yaml_path)}[/dim]")
         if cfg_src:

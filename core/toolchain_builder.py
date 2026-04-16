@@ -182,20 +182,12 @@ def build_toolchain(
 
     ctng_dir = resolve_ctng_dir(settings, paths)
 
-    from core.builders import load_builder_recipes
     from core.builders.crosstool_ng import CrosstoolNG
-
-    recipes = load_builder_recipes(paths.builders_recipes)
-    recipe = recipes.get(tpl.builder)
-    if not recipe:
-        _log(f"[red]No recipe for builder '{tpl.builder}' in builders.yaml[/red]")
-        return False
 
     ctng = CrosstoolNG(
         ctng_dir=ctng_dir,
         toolchains_dir=paths.toolchains_dir,
         downloads_dir=paths.downloads_dir,
-        recipe=recipe,
         max_cpus=settings.max_cpus,
         log=log,
         cancel_check=cancel_check,
