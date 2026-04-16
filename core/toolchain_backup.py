@@ -8,6 +8,7 @@ and the automation update-libraries action (core/automation.py).
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 import subprocess
 from datetime import datetime
@@ -86,6 +87,7 @@ def backup_toolchain(
         proc = subprocess.Popen(
             ["tar", "-cJvf", str(backup_file), "-C", str(paths.toolchains_dir), tc.name],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+            env={**os.environ, "XZ_OPT": "-e9"},
         )
         for line in proc.stdout:
             blog(f"  {rich_escape(line.rstrip())}")
