@@ -30,7 +30,7 @@ libraries:
     extra:
       musl: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
       uclibc: 'export CFLAGS="$CFLAGS -DOPENSSL_NO_ASYNC"'
-      android: 'export CC=gcc; export RANLIB=ranlib; export ANDROID_NDK=@TOOLCHAIN@'
+      android: 'export ANDROID_NDK=@TOOLCHAIN@; unset CC; unset RANLIB'
     variants:
       - version: "4.0.0"
         label: "4.0.x"
@@ -142,6 +142,7 @@ libraries:
       resolve_libusb: 'export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
       fix_version: 'find . -name "configure.ac" -type f -exec sed -i "s/[0-9]\.[0-9]\.[0-9]/@VERSION@/g" {} \;'
       fix_wirecheck: 'find . -name "pcsc-wirecheck-main.c" -type f -exec sed -i "s/pcsc_assert_wire_constants ()/0/g" {} \;'
+      android: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0 -Dpthread_cancel\(t\)=0"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=@PREFIX@/lib/systemd/system --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install"
@@ -183,6 +184,7 @@ libraries:
     extra:
       "post:csky": 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
+      android: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --sysconfdir=@PREFIX@/etc --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"

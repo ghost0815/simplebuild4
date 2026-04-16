@@ -61,6 +61,7 @@ class Settings:
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
     oesdk_dir: str = ""            # OE-SDK build dir (empty = data/builders/oe-sdk)
+    andk_dir: str = ""             # Android NDK dir (empty = data/builders/android-ndk)
 
     # Build / Deployment defaults (used for new targets, editable in settings.yaml)
     default_compress_level: str = "--lzma"
@@ -118,6 +119,7 @@ class Settings:
             "default_deploy_path": self.default_deploy_path,
             "ctng_dir": self.ctng_dir,
             "oesdk_dir": self.oesdk_dir,
+            "andk_dir": self.andk_dir,
             "log_max_age_days": self.log_max_age_days,
             "log_max_count": self.log_max_count,
             "log_max_size_mb": self.log_max_size_mb,
@@ -178,6 +180,7 @@ class Settings:
             default_deploy_path=data.get("default_deploy_path", cls.default_deploy_path),
             ctng_dir=data.get("ctng_dir", ""),
             oesdk_dir=data.get("oesdk_dir", ""),
+            andk_dir=data.get("andk_dir", ""),
             log_max_age_days=data.get("log_max_age_days", 30),
             log_max_count=data.get("log_max_count", 5),
             log_max_size_mb=data.get("log_max_size_mb", 0),

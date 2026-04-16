@@ -173,6 +173,9 @@ def build_toolchain(
     if tpl.builder == "oe-sdk":
         return _build_oesdk(tpl, paths, settings, log=log, cancel_check=cancel_check)
 
+    if tpl.builder == "android-ndk":
+        return _build_android_ndk(tpl, paths, settings, log=log, cancel_check=cancel_check)
+
     if tpl.builder != "crosstool-ng":
         _log(f"[red]Builder '{tpl.builder}' is not supported[/red]")
         return False
@@ -796,3 +799,534 @@ def _oesdk_relocate(tc_dir: Path, log=None) -> None:
     except Exception as e:
         if log:
             log(f"  [yellow]relocate_sdk.py failed: {e}[/yellow]")
+
+
+# ---------------------------------------------------------------------------
+# Android NDK builder
+# ---------------------------------------------------------------------------
+
+def _andk_generate_cflags(ndk_dir: Path, arch: str, api: str) -> str:
+    """Generate cflags dynamically from NDK metadata + clang probing.
+
+    Reads meta/abis.json from the NDK to derive architecture-specific
+    flags. Common Android flags (-DANDROID, -D__ANDROID_API__, -fpic,
+    safety flags) are always included. Arch-specific flags (e.g.
+    -march=armv7-a for ARM32, -mstackrealign for x86) are added based
+    on the ABI info.
+    """
+    import json
+
+    # Common flags for all Android architectures
+    common = (
+        f"-U__ANDROID_API__ -DANDROID -D__ANDROID_API__={api} "
+        "-fpic -fno-addrsig -funwind-tables -fstack-protector-strong "
+        "-no-canonical-prefixes"
+    )
+
+    # Try to read ABI info from NDK metadata
+    arch_flags = ""
+    abi_map = {"arm": "armeabi-v7a", "aarch64": "arm64-v8a",
+               "x86": "x86", "x86_64": "x86_64"}
+    abi_name = abi_map.get(arch, "")
+
+    abis_file = ndk_dir / "meta" / "abis.json"
+    if abis_file.exists() and abi_name:
+        try:
+            abis = json.loads(abis_file.read_text(encoding="utf-8"))
+            abi_info = abis.get(abi_name, {})
+            proc = abi_info.get("proc", "")  # e.g. "armv7-a", "aarch64", "i686"
+
+            if arch == "arm":
+                arch_flags = (
+                    f"-march={proc} -mtune=cortex-a9 "
+                    "-mfloat-abi=softfp -mfpu=vfpv3-d16"
+                )
+            elif arch == "x86":
+                arch_flags = "-mstackrealign"
+            # aarch64 and x86_64: clang handles everything via target triple
+        except Exception:
+            pass
+
+    parts = [p for p in (arch_flags, common) if p]
+    return " ".join(parts)
+
+
+def _build_android_ndk(
+    tpl: Template,
+    paths,
+    settings,
+    log: Callable[[str], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+) -> bool:
+    """Build an Android NDK toolchain by downloading + extracting + cleaning up.
+
+    No compilation needed — the NDK ships a prebuilt Clang toolchain.
+    """
+    import shutil
+    import subprocess
+
+    def _log(msg):
+        if log:
+            log(msg)
+
+    def _cancelled():
+        return cancel_check() if cancel_check else False
+
+    # --- Step 1: Load config ---
+    from core.template import load_andk_config, ANDK_ARCH_MAP
+    cfg_path = tpl.config_path
+    if not cfg_path or not cfg_path.exists():
+        _log("[red]Android NDK config file not found[/red]")
+        return False
+    cfg = load_andk_config(cfg_path)
+    if not cfg.api:
+        _log("[red]No API level configured — run F6 Customize first[/red]")
+        return False
+    if not cfg.ndk_version:
+        _log("[red]No NDK version configured — run F6 Customize first[/red]")
+        return False
+
+    arch_info = ANDK_ARCH_MAP.get(cfg.arch, {})
+    if not arch_info:
+        _log(f"[red]Unknown architecture: {cfg.arch}[/red]")
+        return False
+
+    tc_name = tpl.name
+    tc_dir = paths.toolchains_dir / tc_name
+    downloads_dir = paths.downloads_dir
+    downloads_dir.mkdir(parents=True, exist_ok=True)
+
+    _log(f"[bold]Building Android NDK toolchain: {tc_name}[/bold]")
+    _log(f"  NDK:       {cfg.ndk_version}")
+    _log(f"  API:       {cfg.api}")
+    _log(f"  Arch:      {cfg.arch} ({arch_info.get('abi', '')})")
+    _log(f"  Host:      {arch_info.get('host', '')}")
+    _log(f"  Install:   {tc_dir}")
+    _log("")
+
+    # --- Step 2: Download NDK ZIP ---
+    ndk_filename = f"android-ndk-{cfg.ndk_version}-linux.zip"
+    ndk_zip = downloads_dir / ndk_filename
+    download_url = cfg.download_url
+
+    if ndk_zip.exists():
+        _log(f"[dim]Using cached {ndk_filename}[/dim]")
+    else:
+        _log(f"[bold]Downloading {ndk_filename}...[/bold]")
+        _log(f"  URL: {download_url}")
+        try:
+            r = subprocess.run(
+                ["wget", "-q", "-O", str(ndk_zip), download_url],
+                capture_output=True, text=True, timeout=1800,
+            )
+            if r.returncode != 0:
+                r = subprocess.run(
+                    ["curl", "-sL", "-o", str(ndk_zip), download_url],
+                    capture_output=True, text=True, timeout=1800,
+                )
+            if r.returncode != 0:
+                _log("[red]Download failed[/red]")
+                ndk_zip.unlink(missing_ok=True)
+                return False
+        except Exception as e:
+            _log(f"[red]Download failed: {e}[/red]")
+            ndk_zip.unlink(missing_ok=True)
+            return False
+        _log(f"  Downloaded: {ndk_zip.stat().st_size / (1024*1024):.0f} MB")
+
+    if _cancelled():
+        return False
+
+    # --- Step 3: Extract NDK (persistent under settings.andk_dir or data/builders/android-ndk/) ---
+    _andk_base = (getattr(settings, "andk_dir", "") or "").strip()
+    if _andk_base:
+        builders_ndk_dir = Path(_andk_base) if Path(_andk_base).is_absolute() else paths.root / _andk_base
+    else:
+        builders_ndk_dir = paths.builders_dir / "android-ndk"
+    builders_ndk_dir.mkdir(parents=True, exist_ok=True)
+    ndk_extract_name = f"android-ndk-{cfg.ndk_version}"
+    ndk_dir = builders_ndk_dir / ndk_extract_name
+
+    if ndk_dir.is_dir():
+        _log(f"[dim]Using existing NDK at {ndk_dir.relative_to(paths.root)}[/dim]")
+    else:
+        _log("[bold]Extracting NDK...[/bold]")
+        r = subprocess.run(
+            ["unzip", "-o", "-q", "-d", str(builders_ndk_dir), str(ndk_zip)],
+            capture_output=True, text=True, timeout=600,
+        )
+        if r.returncode != 0:
+            _log(f"[red]Unzip failed: {r.stderr}[/red]")
+            return False
+        # Find the extracted directory (may differ slightly from expected name)
+        if not ndk_dir.is_dir():
+            for d in builders_ndk_dir.iterdir():
+                if d.is_dir() and d.name.startswith("android-ndk"):
+                    ndk_dir = d
+                    break
+        if not ndk_dir.is_dir():
+            _log("[red]Could not find extracted NDK directory[/red]")
+            return False
+        _log(f"  Extracted to {ndk_dir.relative_to(paths.root)}")
+
+    if _cancelled():
+        return False
+
+    # --- Step 4: Copy prebuilt toolchain ---
+    prebuilt = ndk_dir / "toolchains" / "llvm" / "prebuilt" / "linux-x86_64"
+    if not prebuilt.is_dir():
+        _log(f"[red]Prebuilt toolchain not found at toolchains/llvm/prebuilt/linux-x86_64/[/red]")
+        return False
+
+    _log(f"[bold]Copying prebuilt toolchain...[/bold]")
+    if tc_dir.exists():
+        _log("  Removing existing toolchain directory...")
+        shutil.rmtree(tc_dir, ignore_errors=True)
+    shutil.copytree(prebuilt, tc_dir, symlinks=True)
+
+    if _cancelled():
+        return False
+
+    # --- Step 5: Cleanup ---
+    _log("[bold]Cleaning up (removing unused archs/APIs)...[/bold]")
+    _andk_cleanup(tc_dir, cfg.arch, cfg.api, log=log)
+
+    # --- Step 6: Create symlinks ---
+    _log("[bold]Creating compiler symlinks...[/bold]")
+    _andk_create_symlinks(tc_dir, cfg, log=log)
+
+    # --- Step 7: Generate cflags dynamically from NDK metadata ---
+    cflags = _andk_generate_cflags(ndk_dir, cfg.arch, cfg.api)
+    tpl.cflags = cflags
+    tpl.prefix = arch_info.get("prefix", "")
+    tpl.sysroot = "sysroot"
+    _log(f"  Cflags: {cflags}")
+
+    # --- Step 8: Fix .pc and .la files ---
+    try:
+        pc_total, pc_fixed = fix_pc_files(tc_dir, log=log)
+        if pc_total:
+            _log(f"  [green]✓ .pc files: {pc_fixed}/{pc_total} updated[/green]")
+    except Exception as e:
+        _log(f"  [yellow]fix_pc_files: {e}[/yellow]")
+    try:
+        la_total, la_fixed = fix_la_files(tc_dir, log=log)
+        if la_total:
+            _log(f"  [green]✓ .la files: {la_fixed}/{la_total} updated[/green]")
+    except Exception as e:
+        _log(f"  [yellow]fix_la_files: {e}[/yellow]")
+
+    # --- Step 8b: Ensure builtins are findable via target-triple path ---
+    # NDK r29+ (Clang 21+) looks for builtins at lib/clang/<ver>/lib/<triple>/
+    # but they live in lib/clang/<ver>/lib/linux/. Create a symlink so both work.
+    _andk_link_builtins(tc_dir, cfg, log=log)
+
+    # --- Step 9: Register ---
+    _log("[bold]Registering toolchain...[/bold]")
+    register_built_toolchain(tpl, paths, log=log)
+
+    # Android-specific: set make_vars so oscam's Makefile doesn't try
+    # to link -lrt -lpthread (Bionic has these built-in).
+    from core.toolchain import ToolchainRegistry
+    reg = ToolchainRegistry(paths.toolchains_defaults, paths.toolchains_local, paths.toolchains_dir)
+    local_tcs = reg._load_file(reg.local_path)
+    for tc in local_tcs:
+        if tc.name == tpl.name:
+            tc.make_vars = "LIB_RT= LIB_PTHREAD="
+            break
+    reg.save_local(local_tcs)
+
+    # Size
+    try:
+        r = subprocess.run(
+            ["du", "-sh", str(tc_dir)], capture_output=True, text=True, timeout=30,
+        )
+        size = r.stdout.split()[0] if r.returncode == 0 else "?"
+    except Exception:
+        size = "?"
+    _log(f"[green]{tc_name} built and registered (size: {size})[/green]")
+    return True
+
+
+def _andk_cleanup(tc_dir: Path, keep_arch: str, keep_api: str, log=None) -> None:
+    """Remove unused architectures and API levels from the NDK toolchain.
+
+    Targeted deletion instead of broad find-and-delete to avoid
+    accidentally removing files for the active architecture (e.g.
+    "arm" is a substring of "aarch64").
+    """
+    import shutil
+
+    # --- Remove other architecture sysroots ---
+    # The sysroot/usr/lib/ directory has per-triple subdirs
+    sysroot_lib = tc_dir / "sysroot" / "usr" / "lib"
+    if sysroot_lib.is_dir():
+        from core.template import ANDK_ARCH_MAP
+        keep_triple = ANDK_ARCH_MAP.get(keep_arch, {}).get("host", "")
+        for d in list(sysroot_lib.iterdir()):
+            if d.is_dir() and d.name != keep_triple:
+                shutil.rmtree(d, ignore_errors=True)
+
+    # --- Remove other architecture binaries from bin/ ---
+    bin_dir = tc_dir / "bin"
+    if bin_dir.is_dir():
+        from core.template import ANDK_ARCH_MAP
+        keep_prefixes = set()
+        keep_info = ANDK_ARCH_MAP.get(keep_arch, {})
+        if keep_info:
+            keep_prefixes.add(keep_info.get("host", ""))
+            keep_prefixes.add(keep_info.get("clang_prefix", ""))
+        # Prefixes of other architectures to remove
+        remove_prefixes = set()
+        for arch, info in ANDK_ARCH_MAP.items():
+            if arch != keep_arch:
+                remove_prefixes.add(info["host"])
+                remove_prefixes.add(info["clang_prefix"])
+        for f in list(bin_dir.iterdir()):
+            name = f.name
+            # Keep generic tools (clang, llvm-*, ld.lld, etc.)
+            if not any(name.startswith(p) for p in remove_prefixes):
+                continue
+            # Don't delete if it matches the keep arch
+            if any(name.startswith(p) for p in keep_prefixes):
+                continue
+            try:
+                if f.is_dir():
+                    shutil.rmtree(f, ignore_errors=True)
+                else:
+                    f.unlink()
+            except Exception:
+                pass
+
+    # --- Remove API-level-specific binaries for other APIs ---
+    # bin/ contains clang wrappers named like armv7a-linux-androideabi21-clang
+    if bin_dir.is_dir():
+        for f in list(bin_dir.iterdir()):
+            name = f.name
+            # Match pattern: {prefix}{api}-clang or {prefix}{api}-clang++
+            for api_num in range(21, 36):
+                if str(api_num) == keep_api:
+                    continue
+                if f"{api_num}-clang" in name:
+                    try:
+                        f.unlink()
+                    except Exception:
+                        pass
+                    break
+
+    # --- Remove unnecessary top-level directories ---
+    for d in ("include", "libexec", "share", "musl", "prebuilt_include"):
+        target = tc_dir / d
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+
+    # --- Remove host/musl/windows/baremetal libs from lib/ ---
+    # Keep only lib/clang/<ver>/lib/linux/ (Android runtime libs)
+    # and lib/clang/<ver>/include/ (builtins headers)
+    lib_dir = tc_dir / "lib"
+    if lib_dir.is_dir():
+        # Remove non-Android lib subdirs (host toolchain libs)
+        for d in list(lib_dir.iterdir()):
+            if d.is_dir() and d.name != "clang":
+                shutil.rmtree(d, ignore_errors=True)
+        # Inside lib/clang/<ver>/lib/, keep only "linux" (Android)
+        for clang_ver in lib_dir.glob("clang/*/lib"):
+            for d in list(clang_ver.iterdir()):
+                if d.is_dir() and d.name != "linux":
+                    shutil.rmtree(d, ignore_errors=True)
+            # Inside lib/clang/<ver>/lib/linux/, keep only the active arch
+            _linux_arch_map = {"arm": "arm", "aarch64": "aarch64",
+                               "x86": "i386", "x86_64": "x86_64"}
+            keep_linux_dir = _linux_arch_map.get(keep_arch, keep_arch)
+            linux_dir = clang_ver / "linux"
+            if linux_dir.is_dir():
+                # Remove subdirs for other archs
+                for d in list(linux_dir.iterdir()):
+                    if d.is_dir() and d.name != keep_linux_dir:
+                        shutil.rmtree(d, ignore_errors=True)
+                # Remove per-arch runtime libs (asan, tsan, ubsan, etc.)
+                # that sit as flat files named *-{arch}-android.*
+                # Runtime lib filenames use arch-android (e.g. arm-android,
+                # aarch64-android) — NOT the full host triple.
+                _arch_to_tag = {
+                    "arm": "arm-android",
+                    "aarch64": "aarch64-android",
+                    "x86": "i686-android",
+                    "x86_64": "x86_64-android",
+                }
+                _all_tags = set(_arch_to_tag.values()) | {"riscv64-android"}
+                _keep_tag = _arch_to_tag.get(keep_arch, "")
+                _remove_tags = _all_tags - {_keep_tag} if _keep_tag else set()
+                # Remove files for other archs + sanitizer/fuzzer/profiler
+                # libs we don't need for oscam. Keep only builtins.
+                _keep_prefixes = ("libclang_rt.builtins-",)
+                for f in list(linux_dir.iterdir()):
+                    if f.is_dir():
+                        continue
+                    name = f.name
+                    # Remove other arch files
+                    if any(tag in name for tag in _remove_tags):
+                        try:
+                            f.unlink()
+                        except Exception:
+                            pass
+                        continue
+                    # Remove sanitizer/fuzzer/profiler libs for our arch too
+                    if name.startswith("libclang_rt.") or name.startswith("liborc_rt"):
+                        if not any(name.startswith(p) for p in _keep_prefixes):
+                            try:
+                                f.unlink()
+                            except Exception:
+                                pass
+
+    # --- Remove python/cmake/test artifacts ---
+    import subprocess
+    for pattern in ("python3", "cmake", "__pycache__", "2to3", ".py"):
+        try:
+            subprocess.run(
+                ["find", str(tc_dir), "-name", f"*{pattern}*",
+                 "!", "-path", "*/sysroot/*",
+                 "-exec", "rm", "-rf", "{}", ";"],
+                capture_output=True, text=True, timeout=60,
+            )
+        except Exception:
+            pass
+
+    # --- Remove unnecessary binaries from bin/ ---
+    # Keep only essential binaries — clang itself, linker, and the
+    # llvm tools needed for cross-compilation. Remove dev tools like
+    # clang-tidy (50M), clangd (43M), clang-check (71M), etc.
+    _KEEP_BIN_NAMES = {
+        "clang", "clang++", "clang-cpp",
+        "ld", "ld.lld", "lld",
+        "llvm-ar", "llvm-ranlib", "llvm-strip", "llvm-nm",
+        "llvm-objdump", "llvm-readelf", "llvm-objcopy",
+        "llvm-strings", "llvm-size", "llvm-addr2line",
+    }
+    if bin_dir.is_dir():
+        from core.template import ANDK_ARCH_MAP
+        keep_info = ANDK_ARCH_MAP.get(keep_arch, {})
+        keep_host = keep_info.get("host", "")
+        keep_clang = keep_info.get("clang_prefix", "")
+        for f in list(bin_dir.iterdir()):
+            name = f.name
+            # Keep: our arch's target binaries (symlinks + clang wrappers)
+            if keep_host and name.startswith(keep_host):
+                continue
+            if keep_clang and name.startswith(keep_clang):
+                continue
+            # Keep: clang main binary + version-suffixed (clang-18)
+            # but NOT clang-tidy, clang-check, clang-scan-deps, clangd, etc.
+            if name == "clang" or name == "clang++" or name == "clang-cpp":
+                continue
+            if name.startswith("clang-") and name.split("-", 1)[1].isdigit():
+                # clang-18 (version binary)
+                continue
+            # Keep: essential tools by exact name
+            if name in _KEEP_BIN_NAMES:
+                continue
+            # Remove everything else
+            try:
+                if f.is_dir():
+                    shutil.rmtree(f, ignore_errors=True)
+                else:
+                    f.unlink()
+            except Exception:
+                pass
+
+    if log:
+        try:
+            r = subprocess.run(
+                ["du", "-sh", str(tc_dir)], capture_output=True, text=True, timeout=30,
+            )
+            size = r.stdout.split()[0] if r.returncode == 0 else "?"
+        except Exception:
+            size = "?"
+        log(f"  Cleaned up (size after cleanup: {size})")
+
+
+def _andk_link_builtins(tc_dir: Path, cfg, log=None) -> None:
+    """Ensure libclang_rt.builtins is findable via the target-triple path.
+
+    NDK r29+ (Clang 21+) may look for builtins at:
+      lib/clang/<ver>/lib/<clang_prefix><api>-unknown-linux-android<api>/
+    but they actually live at:
+      lib/clang/<ver>/lib/linux/libclang_rt.builtins-<arch>-android.a
+
+    Create a triple-named directory with a symlink to the actual file.
+    """
+    _arch_to_rt = {"arm": "arm", "aarch64": "aarch64", "x86": "i686", "x86_64": "x86_64"}
+    rt_arch = _arch_to_rt.get(cfg.arch, cfg.arch)
+
+    for clang_lib in tc_dir.glob("lib/clang/*/lib"):
+        # Find the builtins file in linux/
+        builtins = clang_lib / "linux" / f"libclang_rt.builtins-{rt_arch}-android.a"
+        if not builtins.exists():
+            continue
+        # Clang may search with various triple formats; create dirs for common ones
+        triple_patterns = [
+            f"{cfg.clang_prefix}{cfg.api}-unknown-linux-android{cfg.api}",
+            f"{cfg.host}{cfg.api}",
+        ]
+        for triple in triple_patterns:
+            triple_dir = clang_lib / triple
+            if not triple_dir.exists():
+                triple_dir.mkdir(parents=True, exist_ok=True)
+            link = triple_dir / builtins.name
+            if not link.exists():
+                try:
+                    # Relative symlink: ../linux/libclang_rt.builtins-arm-android.a
+                    link.symlink_to(Path("..") / "linux" / builtins.name)
+                    if log:
+                        log(f"  {triple}/{builtins.name} → linux/{builtins.name}")
+                except Exception as e:
+                    if log:
+                        log(f"  [yellow]builtins symlink failed: {e}[/yellow]")
+
+
+def _andk_create_symlinks(tc_dir: Path, cfg, log=None) -> None:
+    """Create GCC-compatible symlinks to Clang binaries.
+
+    Android NDK uses Clang but oscam's build system expects gcc/ar/ranlib/strip
+    named as {host}-gcc, {host}-ar, etc.
+    """
+    bin_dir = tc_dir / "bin"
+    if not bin_dir.is_dir():
+        return
+
+    host = cfg.host
+    clang_prefix = cfg.clang_prefix
+    api = cfg.api
+
+    symlinks = {
+        # GCC-compatible names (oscam Makefile uses CROSS=...gcc)
+        f"{host}-gcc":     f"{clang_prefix}{api}-clang",
+        f"{host}-g++":     f"{clang_prefix}{api}-clang++",
+        # Clang names without API suffix (OpenSSL Configure android-* expects these)
+        f"{host}-clang":   f"{clang_prefix}{api}-clang",
+        f"{host}-clang++": f"{clang_prefix}{api}-clang++",
+        # LLVM tools
+        f"{host}-ar":      "llvm-ar",
+        f"{host}-ranlib":  "llvm-ranlib",
+        f"{host}-strip":   "llvm-strip",
+        f"{host}-nm":      "llvm-nm",
+        f"{host}-objdump": "llvm-objdump",
+        f"{host}-readelf": "llvm-readelf",
+    }
+
+    for link_name, target_name in symlinks.items():
+        link_path = bin_dir / link_name
+        target_path = bin_dir / target_name
+        if target_path.exists() or target_path.is_symlink():
+            try:
+                if link_path.exists() or link_path.is_symlink():
+                    link_path.unlink()
+                link_path.symlink_to(target_name)
+                if log:
+                    log(f"  {link_name} → {target_name}")
+            except Exception as e:
+                if log:
+                    log(f"  [yellow]{link_name} → {target_name} failed: {e}[/yellow]")
+        else:
+            if log:
+                log(f"  [dim]{target_name} not found, skipping {link_name}[/dim]")

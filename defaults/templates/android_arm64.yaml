@@ -1,0 +1,8 @@
+name: android_arm64
+description: "Android ARM64 (arm64-v8a)"
+exclude_from_automation: true
+builder: android-ndk
+arch: aarch64
+category: android
+# Android NDK builder config (next to this file)
+config: android_arm64.config

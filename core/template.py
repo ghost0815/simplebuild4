@@ -153,6 +153,138 @@ def save_oesdk_config(config_path: Path, cfg: OeSdkConfig, description: str = ""
     config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Android NDK config (.config as KEY=value pairs)
+# ---------------------------------------------------------------------------
+
+# Arch → derived properties (host triplet, ABI, clang binary prefix)
+ANDK_ARCH_MAP = {
+    "arm":     {"host": "arm-linux-androideabi",  "abi": "armeabi-v7a",
+                "clang_prefix": "armv7a-linux-androideabi",
+                "prefix": "arm-linux-androideabi-"},
+    "aarch64": {"host": "aarch64-linux-android",  "abi": "arm64-v8a",
+                "clang_prefix": "aarch64-linux-android",
+                "prefix": "aarch64-linux-android-"},
+    "x86":     {"host": "i686-linux-android",     "abi": "x86",
+                "clang_prefix": "i686-linux-android",
+                "prefix": "i686-linux-android-"},
+    "x86_64":  {"host": "x86_64-linux-android",   "abi": "x86_64",
+                "clang_prefix": "x86_64-linux-android",
+                "prefix": "x86_64-linux-android-"},
+}
+
+# Known NDK versions for the F6 dropdown
+ANDK_KNOWN_VERSIONS = [
+    ("r29 (latest)", "r29"),
+    ("r28", "r28"),
+    ("r27d (LTS)", "r27d"),
+    ("r27c", "r27c"),
+    ("r26d", "r26d"),
+    ("r25c", "r25c"),
+]
+
+# API levels with Android version names
+ANDK_API_LEVELS = [
+    ("35 — Android 15", "35"),
+    ("34 — Android 14", "34"),
+    ("33 — Android 13", "33"),
+    ("32 — Android 12L", "32"),
+    ("31 — Android 12", "31"),
+    ("30 — Android 11", "30"),
+    ("29 — Android 10", "29"),
+    ("28 — Android 9 Pie", "28"),
+    ("27 — Android 8.1 Oreo", "27"),
+    ("26 — Android 8.0 Oreo", "26"),
+    ("25 — Android 7.1 Nougat", "25"),
+    ("24 — Android 7.0 Nougat", "24"),
+    ("23 — Android 6.0 Marshmallow", "23"),
+    ("22 — Android 5.1 Lollipop", "22"),
+    ("21 — Android 5.0 Lollipop", "21"),
+]
+
+
+@dataclass
+class AndroidNdkConfig:
+    """Parsed Android NDK builder configuration from a .config file."""
+
+    api: str = ""            # ANDK_API — Android API level (21-35)
+    arch: str = ""           # ANDK_ARCH — arm, aarch64, x86, x86_64
+    ndk_version: str = ""    # ANDK_NDK_VERSION — r29, r27d, etc.
+
+    _KEY_MAP: dict[str, str] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self):
+        self._KEY_MAP = {
+            "ANDK_API": "api",
+            "ANDK_ARCH": "arch",
+            "ANDK_NDK_VERSION": "ndk_version",
+        }
+
+    @property
+    def host(self) -> str:
+        return ANDK_ARCH_MAP.get(self.arch, {}).get("host", "")
+
+    @property
+    def abi(self) -> str:
+        return ANDK_ARCH_MAP.get(self.arch, {}).get("abi", "")
+
+    @property
+    def clang_prefix(self) -> str:
+        return ANDK_ARCH_MAP.get(self.arch, {}).get("clang_prefix", "")
+
+    @property
+    def prefix(self) -> str:
+        return ANDK_ARCH_MAP.get(self.arch, {}).get("prefix", "")
+
+    @property
+    def download_url(self) -> str:
+        if not self.ndk_version:
+            return ""
+        return f"https://dl.google.com/android/repository/android-ndk-{self.ndk_version}-linux.zip"
+
+
+def load_andk_config(config_path: Path) -> AndroidNdkConfig:
+    """Parse an Android NDK .config file (KEY=value, one per line)."""
+    cfg = AndroidNdkConfig()
+    if not config_path.exists():
+        return cfg
+    for line in config_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        attr = cfg._KEY_MAP.get(key)
+        if attr:
+            setattr(cfg, attr, value)
+    return cfg
+
+
+def save_andk_config(config_path: Path, cfg: AndroidNdkConfig, description: str = "") -> None:
+    """Write an Android NDK .config file."""
+    lines = []
+    if description:
+        lines.append(f"#toolchain template: {description}")
+    if config_path.exists():
+        for existing in config_path.read_text(encoding="utf-8").splitlines():
+            if existing.startswith("#toolchain template version:"):
+                lines.append(existing)
+                break
+        else:
+            lines.append("#toolchain template version: 1")
+    else:
+        lines.append("#toolchain template version: 1")
+    inv = {v: k for k, v in cfg._KEY_MAP.items()}
+    for attr in ("api", "arch", "ndk_version"):
+        key = inv.get(attr, attr.upper())
+        lines.append(f"{key}={getattr(cfg, attr, '')}")
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def load_template(yaml_path: Path) -> Template | None:
     """Load a single template from a YAML file."""
     try:

@@ -357,9 +357,13 @@ class BuildEngine:
                     shutil.move(str(smargo), str(dest))
                     self._log(f"Saved: {smargo.name}")
 
-        # Smoke test: QEMU for cross, direct for native
+        # Smoke test: QEMU for cross, direct for native.
+        # Skip for Android — binaries require /system/bin/linker64 which
+        # is part of the Android OS, not the NDK. QEMU can't run them.
         if self.qemu_test:
-            if is_native:
+            if cross and "android" in cross.lower():
+                self._log("[dim]QEMU test skipped (Android binaries need /system/bin/linker)[/dim]")
+            elif is_native:
                 self._native_smoke_test(bin_path, tc_dir)
             elif cross:
                 self._qemu_smoke_test(bin_path, cross, sysroot, tc_dir)
@@ -706,6 +710,12 @@ class BuildEngine:
             else:
                 self._log("  No backup found — using git reset")
                 self._git_reset(repo_dir)
+
+            # Always ensure a clean working tree after restore — the
+            # backup tarball may not cover build artifacts (build_s4/,
+            # config.h, etc.) that the previous build generated, and
+            # git pull will refuse to merge over dirty tracked files.
+            self._git_reset(repo_dir)
 
             # Pull latest (using RepoManager which has auth credentials)
             self._log("  Pulling latest changes...")
@@ -1102,6 +1112,11 @@ class BuildEngine:
         stapi_lib = ""
         if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
             stapi_val = b.stapi_lib if b.stapi_lib else (tc.stapi_lib or "")
+            # Resolve bare filenames (e.g. "libwi.a") to full path in support/stapi/
+            if stapi_val and not os.path.isabs(stapi_val) and not os.path.exists(stapi_val):
+                stapi_dir_check = self.repos_dir.parent.parent / "support" / "stapi" / stapi_val
+                if stapi_dir_check.exists():
+                    stapi_val = str(stapi_dir_check)
             # Fallback: use shipped stapi libs (like s3's support/stapi/)
             if not stapi_val:
                 stapi_dir = self.repos_dir.parent.parent / "support" / "stapi"
@@ -1210,7 +1225,26 @@ class BuildEngine:
         make_cmd = ["make", f"-j{self.max_cpus}"]
         make_cmd.append(f"CONF_DIR={confdir}")
         make_cmd.append(f"OSCAM_BIN={bin_path}")
-        if cc_opts:
+        # Detect Clang-based toolchains — they don't support some GCC-only
+        # flags that oscam's Makefile sets by default (e.g. -fno-schedule-insns).
+        # Check if {cross}gcc is actually a symlink to clang.
+        _is_clang = False
+        if cross:
+            _gcc_path = Path(f"{cross}gcc")
+            if _gcc_path.exists():
+                try:
+                    if _gcc_path.is_symlink():
+                        _is_clang = "clang" in os.readlink(str(_gcc_path))
+                    if not _is_clang:
+                        _is_clang = "clang" in _gcc_path.resolve().name
+                except Exception:
+                    pass
+        if _is_clang:
+            _clang_cc_opts = cc_opts or "-O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer"
+            for f in ("-fno-schedule-insns",):
+                _clang_cc_opts = _clang_cc_opts.replace(f, "")
+            make_cmd.append(f"CC_OPTS={' '.join(_clang_cc_opts.split())}")
+        elif cc_opts:
             make_cmd.append(f"CC_OPTS={cc_opts}")
         if cflags:
             make_cmd.append(f"EXTRA_CFLAGS={cflags}")

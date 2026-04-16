@@ -249,6 +249,20 @@ def _do_build(
         configure = configure.replace("linux-generic32 ", "").replace("linux-generic32", "")
         log(f"Native: removed linux-generic32 from configure (auto-detect host)")
 
+    # Android NDK: replace linux-generic32 with the correct android-* OpenSSL
+    # target and let OpenSSL find the compiler via ANDROID_NDK env var.
+    _is_android = "android" in toolchain_prefix.lower()
+    if _is_android and "linux-generic32" in configure:
+        _android_ssl_targets = {
+            "arm-linux-androideabi-": "android-arm",
+            "aarch64-linux-android-": "android-arm64",
+            "i686-linux-android-": "android-x86",
+            "x86_64-linux-android-": "android-x86_64",
+        }
+        ssl_target = _android_ssl_targets.get(toolchain_prefix, "android-arm")
+        configure = configure.replace("linux-generic32", ssl_target)
+        log(f"Android: OpenSSL target → {ssl_target}")
+
     # Log resolved build commands
     log(f"--- Resolved Build Commands ---")
     log(f"Source:        {source}")
@@ -342,33 +356,37 @@ def _do_build(
         env["LDFLAGS"] = toolchain_ldflags
     # Embed CFLAGS into CC (like s3 for OE-SDK) — some build systems (OpenSSL 1.0.x)
     # ignore CFLAGS env but respect CC
+    # Embed CFLAGS into CC (like s3 for OE-SDK) — some build systems (OpenSSL 1.0.x)
+    # ignore CFLAGS env but respect CC
     env["CC"] = f"{cc} {toolchain_cflags}".strip() if toolchain_cflags else cc
     env["RANLIB"] = ranlib
 
     # Auto-inject --sysroot if compiler cannot find headers (same as s3 for OE-SDK)
+    # Skip for Android — the NDK compiler has its own sysroot baked in.
     sysroot_inject = ""
-    try:
-        gcc_path = shutil.which(cc, path=env["PATH"])
-        if gcc_path:
-            # Test if gcc can find system headers — if not, it needs --sysroot
-            test_result = subprocess.run(
-                [gcc_path, "-c", "-x", "c", "-o", "/dev/null", "-"],
-                input="#include <stdio.h>\nint main(){return 0;}\n", text=True, encoding="utf-8", errors="replace",
-                capture_output=True, timeout=10, env=env,
-            )
-            if test_result.returncode != 0:
-                sysroot_inject = f"--sysroot={sysroot_path}"
-                env["CC"] = f"{cc} {toolchain_cflags} {sysroot_inject}".strip()
-                if toolchain_cflags and "--sysroot" not in toolchain_cflags:
-                    env["CFLAGS"] = f"{env.get('CFLAGS', '')} {sysroot_inject}".strip()
-                elif not toolchain_cflags:
-                    env["CFLAGS"] = sysroot_inject
-                log(f"Auto-injected: {sysroot_inject}")
-    except Exception:
-        pass
+    if not _is_android:
+        try:
+            gcc_path = shutil.which(cc, path=env["PATH"])
+            if gcc_path:
+                # Test if gcc can find system headers — if not, it needs --sysroot
+                test_result = subprocess.run(
+                    [gcc_path, "-c", "-x", "c", "-o", "/dev/null", "-"],
+                    input="#include <stdio.h>\nint main(){return 0;}\n", text=True, encoding="utf-8", errors="replace",
+                    capture_output=True, timeout=10, env=env,
+                )
+                if test_result.returncode != 0:
+                    sysroot_inject = f"--sysroot={sysroot_path}"
+                    env["CC"] = f"{cc} {toolchain_cflags} {sysroot_inject}".strip()
+                    if toolchain_cflags and "--sysroot" not in toolchain_cflags:
+                        env["CFLAGS"] = f"{env.get('CFLAGS', '')} {sysroot_inject}".strip()
+                    elif not toolchain_cflags:
+                        env["CFLAGS"] = sysroot_inject
+                    log(f"Auto-injected: {sysroot_inject}")
+        except Exception:
+            pass
 
     # Update replacements with sysroot-injected CC so extra scripts (auto_bitslice) work
-    replacements["@CC@"] = env["CC"]
+    replacements["@CC@"] = env.get("CC", cc)
     if env.get("CFLAGS"):
         replacements["@CFLAGS@"] = env["CFLAGS"]
 

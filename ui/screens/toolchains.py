@@ -1088,6 +1088,13 @@ class ToolchainsScreen(Screen):
                 return False
             cfg = load_oesdk_config(cfg_path)
             return bool(cfg.repo_branch and cfg.machine and cfg.repo_url)
+        if tpl.builder == "android-ndk":
+            from core.template import load_andk_config
+            cfg_path = tpl.config_path
+            if not cfg_path or not cfg_path.exists():
+                return False
+            cfg = load_andk_config(cfg_path)
+            return bool(cfg.api and cfg.ndk_version)
         return True
 
     def _update_active_tab(self) -> None:
@@ -2869,7 +2876,7 @@ class ToolchainsScreen(Screen):
             return
 
         # Supported builders
-        if tpl.builder not in ("crosstool-ng", "oe-sdk"):
+        if tpl.builder not in ("crosstool-ng", "oe-sdk", "android-ndk"):
             self.notify(t("builder_not_supported", builder=tpl.builder), severity="warning")
             return
 
@@ -4108,6 +4115,11 @@ class ToolchainsScreen(Screen):
             self._customize_oesdk(tpl)
             return
 
+        # Android NDK: open the NDK customize modal
+        if tpl.builder == "android-ndk":
+            self._customize_android_ndk(tpl)
+            return
+
         # Load recipe for the builder
         from core.builders import load_builder_recipes, expand_tokens
         recipes = load_builder_recipes(self.app.paths.builders_recipes)
@@ -4338,6 +4350,80 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._active_left_tab = "selfbuild"
         # Full screen refresh so the new local template appears selected
         # and all footer buttons (F5/F6) are correct.
+        self._refresh()
+
+    def _customize_android_ndk(self, tpl: "Template") -> None:
+        """F6 for android-ndk templates: open the NDK customize modal."""
+        from core.template import load_andk_config
+        cfg_path = tpl.config_path
+        if not cfg_path or not cfg_path.exists():
+            self.notify(t("template_config_missing", name=tpl.name), severity="error")
+            return
+        cfg = load_andk_config(cfg_path)
+        from ui.screens.android_ndk_modal import AndroidNdkCustomizeModal
+        self.app.push_screen(
+            AndroidNdkCustomizeModal(tpl, cfg),
+            callback=lambda result: self._on_andk_customized(tpl, result),
+        )
+
+    def _on_andk_customized(self, tpl: "Template", result) -> None:
+        """Callback from AndroidNdkCustomizeModal — save the config."""
+        if result is None:
+            return
+        from core.template import save_andk_config, AndroidNdkConfig
+        import yaml as _yaml
+
+        cfg: AndroidNdkConfig = result
+        tc_name = getattr(cfg, "_tc_name", "") or tpl.name
+
+        local_dir = self.app.paths.templates_local
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        if not tpl.is_local:
+            local_yaml = local_dir / f"{tc_name}.yaml"
+            local_config = local_dir / f"{tc_name}.config"
+            if local_yaml.exists():
+                self.notify(f"Template '{tc_name}' already exists locally", severity="error")
+                return
+            try:
+                orig_data = _yaml.safe_load(tpl.yaml_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                self.notify(f"Cannot read template: {e}", severity="error")
+                return
+            orig_data["name"] = tc_name
+            orig_data["exclude_from_automation"] = False
+            orig_data["config"] = f"{tc_name}.config"
+            local_yaml.write_text(
+                _yaml.dump(orig_data, default_flow_style=False, sort_keys=False),
+                encoding="utf-8",
+            )
+            save_andk_config(local_config, cfg, description=tc_name)
+            self._log_sync(f"[green]Created local template: {tc_name}[/green]")
+        else:
+            save_andk_config(tpl.config_path, cfg, description=tpl.description)
+            if tc_name != tpl.name:
+                try:
+                    data = _yaml.safe_load(tpl.yaml_path.read_text(encoding="utf-8"))
+                    data["name"] = tc_name
+                    data["config"] = f"{tc_name}.config"
+                    tpl.yaml_path.write_text(
+                        _yaml.dump(data, default_flow_style=False, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    new_yaml = tpl.yaml_path.parent / f"{tc_name}.yaml"
+                    new_config = tpl.yaml_path.parent / f"{tc_name}.config"
+                    if tpl.yaml_path != new_yaml:
+                        tpl.yaml_path.rename(new_yaml)
+                    if tpl.config_path and tpl.config_path != new_config:
+                        tpl.config_path.rename(new_config)
+                except Exception:
+                    pass
+            self._log_sync(f"[green]Updated Android NDK config for {tc_name}[/green]")
+
+        self.notify(f"Android NDK template '{tc_name}' saved")
+        ToolchainsScreen._selected_tc = tc_name
+        ToolchainsScreen._selected_tpl_source = "local"
+        ToolchainsScreen._active_left_tab = "selfbuild"
         self._refresh()
 
     def action_go_back(self) -> None:

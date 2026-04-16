@@ -165,7 +165,7 @@ Switch.section-switch.all-on.-on > .switch--slider {
 }
 
 .patch-grid {
-    margin: 0 0 0 2;
+    margin: 0 0 1 2;
 }
 
 .up-grid {
