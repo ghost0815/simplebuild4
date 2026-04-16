@@ -735,7 +735,7 @@ class ToolchainsScreen(Screen):
                 self._update_detail()
         else:
             self._update_detail()
-        self._update_f9_state()
+        self._update_footer_state()
         # Focus the previously-active table
         focused_tbl.focus()
         # Delay enabling event handling — tables fire RowHighlighted during render
@@ -758,7 +758,11 @@ class ToolchainsScreen(Screen):
                 or term_lower in tc.machines.lower())
 
     def _apply_filter(self, term: str) -> None:
-        """Filter toolchain tables by search term."""
+        """Filter toolchain tables by search term.
+
+        Applies to both the PreBuild catalog tables AND the SelfBuild
+        template tables so the filter input is universal.
+        """
         term_lower = term.lower().strip()
         reg = self._get_registry()
 
@@ -809,6 +813,69 @@ class ToolchainsScreen(Screen):
             except Exception:
                 pass
 
+        # Rebuild SelfBuild template tables
+        self._apply_selfbuild_filter(term_lower)
+
+    def _apply_selfbuild_filter(self, term_lower: str) -> None:
+        """Filter the SelfBuild template tables by the same search term."""
+        from core.template import load_templates
+        templates = load_templates(
+            self.app.paths.templates_defaults,
+            self.app.paths.templates_local,
+        )
+        _builder_table = {
+            "crosstool-ng": "tbl-sb-ctng",
+            "freetz-ng": "tbl-sb-freetz",
+            "oe-sdk": "tbl-sb-oesdk",
+            "android-ndk": "tbl-sb-android",
+        }
+        _builder_collapsible = {
+            "oe-sdk": ("cat-sb-oesdk", "OE-SDK"),
+            "crosstool-ng": ("cat-sb-ctng", "Crosstool-NG"),
+            "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
+            "android-ndk": ("cat-sb-android", "Android-NDK"),
+        }
+        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
+            try:
+                self.query_one(f"#{sb_id}", DataTable).clear()
+            except Exception:
+                pass
+        local_count = 0
+        builder_counts: dict[str, int] = {}
+        for tpl in templates:
+            # Reuse the same match logic — Template has name, description,
+            # arch, machines just like Toolchain.
+            if not self._tc_matches(tpl, term_lower):
+                continue
+            _reg_entry = self._get_registry().get(tpl.name)
+            installed = bool(_reg_entry and _reg_entry.installed)
+            status = "●" if installed else ""
+            if tpl.is_local:
+                try:
+                    self.query_one("#tbl-sb-local", DataTable).add_row(
+                        status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name,
+                    )
+                    local_count += 1
+                except Exception:
+                    pass
+            else:
+                tbl_id = _builder_table.get(tpl.builder)
+                if tbl_id:
+                    try:
+                        self.query_one(f"#{tbl_id}", DataTable).add_row(
+                            status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name,
+                        )
+                        builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
+                    except Exception:
+                        pass
+        try:
+            self.query_one("#cat-sb-local", Collapsible).title = f"Local ({local_count})"
+            for builder, (col_id, label) in _builder_collapsible.items():
+                count = builder_counts.get(builder, 0)
+                self.query_one(f"#{col_id}", Collapsible).title = f"{label} ({count})"
+        except Exception:
+            pass
+
     def on_click(self, event) -> None:
         """Handle clicks on tab labels."""
         widget = event.widget if hasattr(event, 'widget') else None
@@ -849,7 +916,7 @@ class ToolchainsScreen(Screen):
 
         ToolchainsScreen._active_left_tab = tab
         # Refresh F5/F9 button states for the new tab
-        self._update_f9_state()
+        self._update_footer_state()
         # Focus first focusable widget in the new panel
         panel_id = "#tc-browser" if tab == "prebuild" else "#tc-selfbuild"
         try:
@@ -998,6 +1065,25 @@ class ToolchainsScreen(Screen):
         """True if the currently selected row is a SelfBuild template (not a toolchain)."""
         return bool(ToolchainsScreen._selected_tpl_source)
 
+    def _is_template_buildable(self) -> bool:
+        """True if the selected template is ready to build.
+
+        For crosstool-ng: always True (config is self-contained).
+        For oe-sdk: True only if branch + machine + repo_url are set
+        in the .config (i.e. F6 Customize was completed).
+        """
+        tpl = self._get_selected_template()
+        if not tpl:
+            return False
+        if tpl.builder == "oe-sdk":
+            from core.template import load_oesdk_config
+            cfg_path = tpl.config_path
+            if not cfg_path or not cfg_path.exists():
+                return False
+            cfg = load_oesdk_config(cfg_path)
+            return bool(cfg.repo_branch and cfg.machine and cfg.repo_url)
+        return True
+
     def _update_active_tab(self) -> None:
         if self._is_libs_tab_active():
             self._update_libraries()
@@ -1019,7 +1105,7 @@ class ToolchainsScreen(Screen):
             self._track_template_source(event)
             self._mark_selected_row(event)
             self._update_active_tab()
-            self._update_f9_state()
+            self._update_footer_state()
             # Persist installed toolchain selection across restarts
             if event.data_table.id == "tbl-installed":
                 self.app.settings.last_toolchain = event.row_key.value
@@ -1033,7 +1119,7 @@ class ToolchainsScreen(Screen):
             self._track_template_source(event)
             self._mark_selected_row(event)
             self._update_active_tab()
-            self._update_f9_state()
+            self._update_footer_state()
 
     def _mark_selected_row(self, event) -> None:
         """Paint the marker on the row that the user just picked.
@@ -1376,7 +1462,7 @@ class ToolchainsScreen(Screen):
         except Exception:
             pass
 
-    def _update_f9_state(self) -> None:
+    def _update_footer_state(self) -> None:
         """Update F5 (Build/Cancel), F9 (Update/Cancel) and F12 (Save) buttons.
 
         F5 Cancel is shown only when a SelfBuild is in progress (started from
@@ -1415,8 +1501,9 @@ class ToolchainsScreen(Screen):
                     else:
                         item._label = t("build")
                         item._active = False
-                        item._disabled = not tpl_selected
-                        if tpl_selected:
+                        f5_enabled = tpl_selected and self._is_template_buildable()
+                        item._disabled = not f5_enabled
+                        if f5_enabled:
                             item.remove_class("disabled")
                         else:
                             item.add_class("disabled")
@@ -1561,7 +1648,7 @@ class ToolchainsScreen(Screen):
             self._update_editor()
         finally:
             self._mounted = True
-        self._update_f9_state()
+        self._update_footer_state()
 
     def _remove_local_toolchain_entry(self, name: str) -> None:
         """Delete a single entry from toolchains.local.yaml by name."""
@@ -1590,6 +1677,13 @@ class ToolchainsScreen(Screen):
             self._cancel_requested = True
             self._log_sync("[yellow]Cancelling build...[/yellow]")
             return
+
+        # Clear output before starting
+        try:
+            self.query_one("#tc-output", RichLog).clear()
+            ToolchainsScreen._log_history.clear()
+        except Exception:
+            pass
 
         if not self._is_libs_tab_active():
             return
@@ -1628,7 +1722,7 @@ class ToolchainsScreen(Screen):
         self._build_kind = "libs"
         self._cancel_requested = False
         self.app.build_timer_start("toolchains")
-        self._update_f9_state()
+        self._update_footer_state()
         order = ", ".join(name for name, _ in actions)
         has_remove = any(a.startswith("remove:") for _, a in actions)
         has_build = any(not a.startswith("remove:") for _, a in actions)
@@ -1771,7 +1865,7 @@ class ToolchainsScreen(Screen):
             finally:
                 self._building = False
                 self._cancel_requested = False
-                self.app.call_from_thread(self._update_f9_state)
+                self.app.call_from_thread(self._update_footer_state)
                 # Refresh library info (stay on Libraries tab)
                 # Pass built_libs so unrelated picks the user made
                 # before pressing F9 are preserved.
@@ -1862,7 +1956,7 @@ class ToolchainsScreen(Screen):
 
         ToolchainsScreen._active_right_tab = tab
         # Update F10 button state in footer
-        self._update_f9_state()
+        self._update_footer_state()
         # Focus the first interactive widget on the new tab.
         first_focus = {
             "details": "#tc-detail",
@@ -2624,6 +2718,12 @@ class ToolchainsScreen(Screen):
             return True
 
     def _handle_install(self) -> None:
+        # Clear output before starting
+        try:
+            self.query_one("#tc-output", RichLog).clear()
+            ToolchainsScreen._log_history.clear()
+        except Exception:
+            pass
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify(t("no_toolchain_selected"), severity="warning")
@@ -2748,6 +2848,12 @@ class ToolchainsScreen(Screen):
 
     def _handle_selfbuild(self) -> None:
         """Build the selected SelfBuild template via its toolchain builder."""
+        # Clear output before starting a new build
+        try:
+            self.query_one("#tc-output", RichLog).clear()
+            ToolchainsScreen._log_history.clear()
+        except Exception:
+            pass
         name = ToolchainsScreen._selected_tc
         if not name:
             self.notify(t("no_template_selected"), severity="warning")
@@ -2759,13 +2865,28 @@ class ToolchainsScreen(Screen):
             self.notify(t("template_not_found", name=name), severity="error")
             return
 
-        # Currently supported builders
-        if tpl.builder != "crosstool-ng":
+        # Supported builders
+        if tpl.builder not in ("crosstool-ng", "oe-sdk"):
             self.notify(t("builder_not_supported", builder=tpl.builder), severity="warning")
             return
 
-        # Determine ctng dir from settings or default
-        ctng_path = self._resolve_ctng_dir()
+        # OE-SDK: validate config before build
+        if tpl.builder == "oe-sdk":
+            from core.template import load_oesdk_config
+            cfg_path = tpl.config_path
+            if not cfg_path or not cfg_path.exists():
+                self.notify("OE-SDK config missing — run F6 Customize first", severity="error")
+                return
+            cfg = load_oesdk_config(cfg_path)
+            if not cfg.repo_branch:
+                self.notify("Branch not set — run F6 Customize first", severity="error")
+                return
+            if not cfg.machine:
+                self.notify("Machine not set — run F6 Customize first", severity="error")
+                return
+            if not cfg.repo_url:
+                self.notify("Repository URL not set — run F6 Customize first", severity="error")
+                return
 
         # Compute relative paths to project root for nicer logging
         def _rel(p):
@@ -2782,7 +2903,9 @@ class ToolchainsScreen(Screen):
             self._log_sync(f"  template:    [dim]{_rel(tpl.yaml_path)}[/dim]")
         if tpl.config_path:
             self._log_sync(f"  config:      [dim]{_rel(tpl.config_path)}[/dim]")
-        self._log_sync(f"  ctng dir:    [dim]{_rel(ctng_path)}[/dim]")
+        if tpl.builder == "crosstool-ng":
+            ctng_path = self._resolve_ctng_dir()
+            self._log_sync(f"  ctng dir:    [dim]{_rel(ctng_path)}[/dim]")
         install_dir_log = self.app.paths.toolchains_dir / tpl.name
         self._log_sync(f"  install to:  [dim]{_rel(install_dir_log)}[/dim]")
 
@@ -2790,7 +2913,7 @@ class ToolchainsScreen(Screen):
         self._build_kind = "selfbuild"
         self._cancel_requested = False
         self.app.build_timer_start("toolchains")
-        self._update_f9_state()
+        self._update_footer_state()
 
         from datetime import datetime
         from core.log_cleanup import resolve_log_dir
@@ -2833,7 +2956,7 @@ class ToolchainsScreen(Screen):
                 except Exception:
                     pass
                 self._building = False
-                self.app.call_from_thread(self._update_f9_state)
+                self.app.call_from_thread(self._update_footer_state)
                 self.app.call_from_thread(self._refresh)
 
         self._run_in_thread(do_build)
@@ -3961,16 +4084,10 @@ class ToolchainsScreen(Screen):
         self._handle_selfbuild()
 
     def action_customize(self) -> None:
-        """F6 Customize — launch the builder's interactive configurator (menuconfig).
+        """F6 Customize — launch the builder's interactive configurator.
 
-        Logic:
-        1. Copy the current template .config into ctng's working dir
-        2. Hash it, run menuconfig via app.suspend()
-        3. Hash again — if unchanged the user quit without saving → nothing to do
-        4. If changed and the template was still a default (shipped): fork it to
-           data/templates/ NOW (not earlier — we don't pollute local with
-           unchanged copies).
-        5. Write the updated .config back into the (local) template.
+        For crosstool-ng/freetz-ng: menuconfig via app.suspend().
+        For oe-sdk: OE-SDK Customize modal (form-based).
         """
         if self._building:
             self.notify(t("build_in_progress"), severity="warning")
@@ -3980,6 +4097,11 @@ class ToolchainsScreen(Screen):
         tpl = self._get_selected_template()
         if not tpl:
             self.notify(t("no_template_selected"), severity="warning")
+            return
+
+        # OE-SDK: open the form-based modal instead of menuconfig
+        if tpl.builder == "oe-sdk":
+            self._customize_oesdk(tpl)
             return
 
         # Load recipe for the builder
@@ -4130,6 +4252,89 @@ class ToolchainsScreen(Screen):
         if new_tpl:
             new_tpl.is_local = True
         return new_tpl
+
+    def _customize_oesdk(self, tpl: "Template") -> None:
+        """F6 for OE-SDK templates: open the form-based customize modal."""
+        from core.template import load_oesdk_config, save_oesdk_config
+        cfg_path = tpl.config_path
+        if not cfg_path or not cfg_path.exists():
+            self.notify(t("template_config_missing", name=tpl.name), severity="error")
+            return
+        cfg = load_oesdk_config(cfg_path)
+        from ui.screens.oesdk_customize_modal import OeSdkCustomizeModal
+        self.app.push_screen(
+            OeSdkCustomizeModal(tpl, cfg),
+            callback=lambda result: self._on_oesdk_customized(tpl, result),
+        )
+
+    def _on_oesdk_customized(self, tpl: "Template", result) -> None:
+        """Callback from OeSdkCustomizeModal — save the config."""
+        if result is None:
+            return  # Cancelled
+        from core.template import save_oesdk_config, load_template, OeSdkConfig
+        import shutil as _shutil
+        import yaml as _yaml
+
+        cfg: OeSdkConfig = result
+        tc_name = getattr(cfg, "_tc_name", "") or tpl.name
+
+        # If the template is a default: fork to local with the new name
+        local_dir = self.app.paths.templates_local
+        local_dir.mkdir(parents=True, exist_ok=True)
+
+        if not tpl.is_local:
+            # Fork: create new local yaml + config with the chosen name
+            local_yaml = local_dir / f"{tc_name}.yaml"
+            local_config = local_dir / f"{tc_name}.config"
+            if local_yaml.exists():
+                self.notify(f"Template '{tc_name}' already exists locally", severity="error")
+                return
+            # Read original yaml, update name + config ref
+            try:
+                orig_data = _yaml.safe_load(tpl.yaml_path.read_text(encoding="utf-8"))
+            except Exception as e:
+                self.notify(f"Cannot read template: {e}", severity="error")
+                return
+            orig_data["name"] = tc_name
+            orig_data["exclude_from_automation"] = False
+            orig_data["config"] = f"{tc_name}.config"
+            local_yaml.write_text(
+                _yaml.dump(orig_data, default_flow_style=False, sort_keys=False),
+                encoding="utf-8",
+            )
+            save_oesdk_config(local_config, cfg, description=f"{tc_name}")
+            self._log_sync(f"[green]Created local template: {tc_name}[/green]")
+        else:
+            # Already local — update in place
+            save_oesdk_config(tpl.config_path, cfg, description=tpl.description)
+            # Update name in yaml if changed
+            if tc_name != tpl.name:
+                try:
+                    data = _yaml.safe_load(tpl.yaml_path.read_text(encoding="utf-8"))
+                    data["name"] = tc_name
+                    data["config"] = f"{tc_name}.config"
+                    tpl.yaml_path.write_text(
+                        _yaml.dump(data, default_flow_style=False, sort_keys=False),
+                        encoding="utf-8",
+                    )
+                    # Rename files
+                    new_yaml = tpl.yaml_path.parent / f"{tc_name}.yaml"
+                    new_config = tpl.yaml_path.parent / f"{tc_name}.config"
+                    if tpl.yaml_path != new_yaml:
+                        tpl.yaml_path.rename(new_yaml)
+                    if tpl.config_path and tpl.config_path != new_config:
+                        tpl.config_path.rename(new_config)
+                except Exception:
+                    pass
+            self._log_sync(f"[green]Updated OE-SDK config for {tc_name}[/green]")
+
+        self.notify(f"OE-SDK template '{tc_name}' saved")
+        ToolchainsScreen._selected_tc = tc_name
+        ToolchainsScreen._selected_tpl_source = "local"
+        ToolchainsScreen._active_left_tab = "selfbuild"
+        # Full screen refresh so the new local template appears selected
+        # and all footer buttons (F5/F6) are correct.
+        self._refresh()
 
     def action_go_back(self) -> None:
         if self._building:

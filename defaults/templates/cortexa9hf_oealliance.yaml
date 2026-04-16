@@ -1,0 +1,16 @@
+name: cortexa9hf_oealliance
+description: "oealliance cortexa9hf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/cortexa9hf-neon-oe-linux-gnueabi"
+cflags: "-mfpu=neon -mfloat-abi=hard -mcpu=cortex-a9"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "u41 u42 u43 u45"
+
+# OE-SDK builder config (next to this file)
+config: cortexa9hf_oealliance.config

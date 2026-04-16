@@ -1,0 +1,16 @@
+name: mips32el-nf_openpli
+description: "openpli mips32el-nf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: mips32el
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "mipsel-oe-linux-"
+sysroot: "sysroots/mips32el-nf-oe-linux"
+cflags: "-mel -mabi=32 -msoft-float -march=mips32"
+ldflags: ""
+machines: "hd1100 hd500c"
+
+# OE-SDK builder config (next to this file)
+config: mips32el-nf_openpli.config

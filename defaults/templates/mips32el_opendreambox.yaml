@@ -1,0 +1,16 @@
+name: mips32el_opendreambox
+description: "opendreambox mips32el"
+exclude_from_automation: true
+builder: oe-sdk
+arch: mips32el
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "mipsel-oe-linux-"
+sysroot: "sysroots/mips32el-oe-linux"
+cflags: "-mel -mabi=32 -mhard-float -march=mips32"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-2.23.so"
+machines: "dm520 dm7080 dm820"
+
+# OE-SDK builder config (next to this file)
+config: mips32el_opendreambox.config

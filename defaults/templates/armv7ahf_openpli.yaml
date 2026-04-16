@@ -1,0 +1,16 @@
+name: armv7ahf_openpli
+description: "openpli armv7ahf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/armv7ahf-neon-oe-linux-gnueabi"
+cflags: "-march=armv7-a -mfpu=neon -mfloat-abi=hard"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "et1x000 galaxy4k lunix3-4k lunix4k revo4k vuduo4k vuduo4kse vusolo4k vuultimo4k vuuno4k vuuno4kse vuzero4k"
+
+# OE-SDK builder config (next to this file)
+config: armv7ahf_openpli.config

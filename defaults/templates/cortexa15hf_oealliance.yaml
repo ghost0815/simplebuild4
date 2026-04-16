@@ -1,0 +1,16 @@
+name: cortexa15hf_oealliance
+description: "oealliance cortexa15hf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi"
+cflags: "-mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "8100s beyonwizv2 dags7252 dags72604 dagsmv200 dm900 dm920 et13000 et1x000 gb7252 gb72604 gbmv200 h10 h11 h17 h7 h9 h9combo h9combose h9se hd51 hd60 hd61 hd66se i55plus i55se ip8 multibox multiboxpro multiboxse og2ott4k og2s4k osmini4k osmio4k osmio4kplus pulse4k pulse4kmini sf4008 sf8008m sx88v2 sx988 u5 u51 u52 u53 u532 u533 u54 u55 u56 u57 u571 u5pvr ustym4kottpremium ustym4kpro ustym4ks2ottx viper4k vs1500 vuduo4k vuduo4kse vusolo4k vuultimo4k vuuno4k vuuno4kse vuzero4k"
+
+# OE-SDK builder config (next to this file)
+config: cortexa15hf_oealliance.config

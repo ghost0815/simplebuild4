@@ -44,6 +44,7 @@ INPUT_MAP = {
     "set-web-auth-user": "web_auth_user",
     "set-web-auth-pass": "web_auth_password",
     "set-ctng-dir": "ctng_dir",
+    "set-oesdk-dir": "oesdk_dir",
     "set-log-max-age": "log_max_age_days",
     "set-log-max-count": "log_max_count",
     "set-log-max-size": "log_max_size_mb",
@@ -266,6 +267,18 @@ class SettingsScreen(Screen):
                     ctng_browse,
                     classes="s-row",
                 )
+                try:
+                    oesdk_default = str((self.app.paths.builders_dir / "oe-sdk").relative_to(self.app.paths.root))
+                except Exception:
+                    oesdk_default = str(self.app.paths.builders_dir / "oe-sdk")
+                oesdk_browse = _Btn(icon("browse"), id="btn-oesdk-browse", classes="tc-reset-btn")
+                oesdk_browse.tooltip = t("ph_browse_dir")
+                yield Horizontal(
+                    Static(f" {t('oesdk_dir')}", classes="s-label"),
+                    Input(value=s.oesdk_dir, placeholder=oesdk_default, id="set-oesdk-dir"),
+                    oesdk_browse,
+                    classes="s-row",
+                )
 
         yield S4Footer(active_screen="settings")
 
@@ -440,6 +453,8 @@ class SettingsScreen(Screen):
             self._open_file_picker("set-sign-key", t("private_key"))
         elif event.button.id == "btn-ctng-browse":
             self._open_dir_picker("set-ctng-dir", t("ctng_dir"))
+        elif event.button.id == "btn-oesdk-browse":
+            self._open_dir_picker("set-oesdk-dir", t("oesdk_dir"))
         elif event.button.id == "btn-web-cert-browse":
             self._open_file_picker("set-web-ssl-cert", t("web_ssl_cert"))
         elif event.button.id == "btn-web-key-browse":

@@ -1,0 +1,16 @@
+name: cortexa15hf_openpli
+description: "openpli cortexa15hf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi"
+cflags: "-mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "bre2ze4k dual e4hd gbquad4k gbquad4kpro gbtrio4k gbue4k h10 h11 h17 h17twin h7 h9 h9combo h9combose h9se hd51 hd60 hd61 hd66se i55plus i55se multibox multiboxpro multiboxse pulse4k pulse4kmini sf8008 sf8008m sx88v2 ustym4kpro ustym4ks2ottx vs1500"
+
+# OE-SDK builder config (next to this file)
+config: cortexa15hf_openpli.config

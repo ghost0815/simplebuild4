@@ -1,0 +1,16 @@
+name: aarch64_oealliance
+description: "oealliance aarch64"
+exclude_from_automation: true
+builder: oe-sdk
+arch: aarch64
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "aarch64-oe-linux-"
+sysroot: "sysroots/aarch64-oe-linux"
+cflags: "-mbranch-protection=standard"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1"
+machines: "dreamone dreamtwo"
+
+# OE-SDK builder config (next to this file)
+config: aarch64_oealliance.config

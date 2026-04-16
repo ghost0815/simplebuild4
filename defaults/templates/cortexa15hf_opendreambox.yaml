@@ -1,0 +1,16 @@
+name: cortexa15hf_opendreambox
+description: "opendreambox cortexa15hf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/cortexa15hf-neon-vfpv4-oe-linux-gnueabi"
+cflags: "-march=armv7ve -mfpu=neon-vfpv4 -mfloat-abi=hard -mcpu=cortex-a15"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "dm900 dm920"
+
+# OE-SDK builder config (next to this file)
+config: cortexa15hf_opendreambox.config

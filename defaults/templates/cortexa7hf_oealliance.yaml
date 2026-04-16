@@ -1,0 +1,16 @@
+name: cortexa7hf_oealliance
+description: "oealliance cortexa7hf"
+exclude_from_automation: true
+builder: oe-sdk
+arch: armv7
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "arm-oe-linux-gnueabi-"
+sysroot: "sysroots/cortexa7hf-vfp-oe-linux-gnueabi"
+cflags: "-mfpu=vfp -mfloat-abi=hard -mcpu=cortex-a7"
+ldflags: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+machines: "h8 h8se hzero sfx6008"
+
+# OE-SDK builder config (next to this file)
+config: cortexa7hf_oealliance.config

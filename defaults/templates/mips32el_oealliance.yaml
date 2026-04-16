@@ -1,0 +1,16 @@
+name: mips32el_oealliance
+description: "oealliance mips32el"
+exclude_from_automation: true
+builder: oe-sdk
+arch: mips32el
+category: stb
+
+# Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
+prefix: "mipsel-oe-linux-"
+sysroot: "sysroots/mips32el-oe-linux"
+cflags: "-EL -mabi=32 -mhard-float -march=mips32"
+ldflags: ""
+machines: "7000s 7005s 7100s 7105s 7210s 7215s 7220s 7225s 7300s 7400s 9900lx blackbox7405 ch625dt ch62lc dags7335 dags7356 dags7362 dags73625 dm500hd dm500hdv2 dm520 dm7020hd dm7020hdv2 dm7080 dm8000 dm800se dm800sev2 dm820 e3hd et10000 et4x00 et5x00 et6x00 et7x00 et8000 et8500 et9x00 ew7356 ew7358 ew7362 formuler1 formuler1tc formuler3 formuler3ip formuler4 formuler4ip formuler4turbo g100 g101 g300 gb7325 gb7356 gb7358 gb7362 gb73625 gb800solo h3 h4 h5 h6 hd11 hd1100 hd1200 hd1265 hd1500 hd2400 hd500c hd530c i55 inihde inihde2 inihdp inihdx jj7362 lc odinm7 odinm9 osnino osninoplus osninopro sh1 tiviaraplus tiviarmin triplex ultrabox ultramini vg1000 vg2000 vg5000 vs1000 vuduo vuduo2 vusolo vusolo2 vusolose vuultimo vuuno vuzero xc7346 xc7362 xp1000 yh625dt yh625tc yh62tc yh7362 yh73625"
+
+# OE-SDK builder config (next to this file)
+config: mips32el_oealliance.config
