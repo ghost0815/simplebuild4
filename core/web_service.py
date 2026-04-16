@@ -9,6 +9,36 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+def _ensure_web_packages(python: str, log: Callable[[str], None]) -> bool:
+    """Install textual-serve if not already present.
+
+    Returns True on success (or already installed), False on failure.
+    """
+    pkgs = []
+    for mod, pkg in [("textual_serve", "textual-serve")]:
+        try:
+            __import__(mod)
+        except ImportError:
+            pkgs.append(pkg)
+    if not pkgs:
+        return True
+    log(f"  Installing: {', '.join(pkgs)} …")
+    pip = [python, "-m", "pip", "install", "--user"] + pkgs
+    try:
+        subprocess.check_call(pip, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except Exception:
+        try:
+            subprocess.check_call(
+                pip[:5] + ["--break-system-packages"] + pkgs,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            )
+            return True
+        except Exception as e:
+            log(f"[red]  Failed to install {pkgs}: {e}[/red]")
+            return False
+
+
 _BLOCKED_PORTS = frozenset({
     3306, 5432, 6379, 27017,      # databases
     8088, 8880, 9090,             # common admin interfaces
@@ -379,6 +409,10 @@ class WebServiceManager:
         # On WSL, ensure systemd is enabled in /etc/wsl.conf
         if self._is_wsl():
             self._ensure_wsl_systemd(password, _log)
+
+        # Ensure required Python packages are installed before the service starts
+        _log("Checking Python dependencies …")
+        _ensure_web_packages(sys.executable, _log)
 
         _log("[green]Service installed[/green]")
         return True

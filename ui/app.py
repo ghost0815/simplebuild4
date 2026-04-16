@@ -139,33 +139,11 @@ class S4App(App):
             return  # already running
         import subprocess, sys
         # Auto-install textual-serve if missing
-        try:
-            import textual_serve  # noqa: F401
-        except ImportError:
-            self.notify("Installing textual-serve …", timeout=5)
-            pip_cmd = [sys.executable, "-m", "pip", "install", "--user"]
-            try:
-                subprocess.check_call(
-                    pip_cmd + ["textual-serve"],
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                )
-            except Exception:
-                try:
-                    subprocess.check_call(
-                        pip_cmd + ["--break-system-packages", "textual-serve"],
-                        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                    )
-                except subprocess.CalledProcessError as e:
-                    err = (e.stderr or b"").decode(errors="replace").strip()
-                    self.notify(
-                        f"Failed to install textual-serve:\n{err[:200]}",
-                        severity="error", timeout=15,
-                    )
-                    return
-                except Exception as e:
-                    self.notify(f"Failed to install textual-serve: {e}",
-                                severity="error", timeout=15)
-                    return
+        from core.web_service import _ensure_web_packages
+        if not _ensure_web_packages(sys.executable, lambda m: None):
+            self.notify("Failed to install textual-serve",
+                        severity="error", timeout=15)
+            return
         host = self.settings.web_host or "0.0.0.0"
         port = self.settings.web_port or 8080
         from core.web_service import validate_port
