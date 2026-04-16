@@ -886,6 +886,9 @@ class S4App(App):
             self._switch_to(RepositoryScreen())
 
     def action_open_automation(self) -> None:
+        if self._is_building():
+            self.notify(t("build_in_progress"), severity="warning")
+            return
         from ui.screens.automation import AutomationScreen
         if not isinstance(self.screen, AutomationScreen):
             self._switch_to(AutomationScreen())
