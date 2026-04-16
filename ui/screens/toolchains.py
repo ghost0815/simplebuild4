@@ -1894,10 +1894,7 @@ class ToolchainsScreen(Screen):
             pass
 
     def _run_in_thread(self, func) -> None:
-        def wrapper():
-            func()
-            self.app.call_from_thread(self._refresh)
-        thread = threading.Thread(target=wrapper, daemon=True)
+        thread = threading.Thread(target=func, daemon=True)
         thread.start()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
@@ -3248,6 +3245,7 @@ class ToolchainsScreen(Screen):
             self._log(f"  Archive:  {local_archive.name}")
             self._log(f"  Checksum: {checksum}")
             self._log(f"[green]{name} restored successfully[/green]")
+            self.app.call_from_thread(self._set_installed_status, tc, "done")
 
         self._run_in_thread(do_restore)
 
