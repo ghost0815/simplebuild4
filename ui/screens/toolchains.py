@@ -1095,7 +1095,8 @@ class ToolchainsScreen(Screen):
                 lines = [
                     f"  [bold]{tpl.name}[/bold] — {tpl.description}",
                     f"  Source:    {source_label}    File: [dim]{rel_yaml}[/dim]",
-                    f"  Builder:   {tpl.builder}     Arch: {tpl.arch}",
+                    f"  Builder:   {tpl.builder}",
+                    f"  Arch:      {tpl.arch}",
                 ]
                 if tpl.machines:
                     lines.append(f"  Machines:  {tpl.machines}")
@@ -1104,9 +1105,9 @@ class ToolchainsScreen(Screen):
                 if tpl.sysroot:
                     lines.append(f"  Sysroot:   {tpl.sysroot}")
                 if tpl.cflags:
-                    lines.append(f"  C flags:   {tpl.cflags}")
+                    lines.append(f"  Cflags:    {tpl.cflags}")
                 if tpl.ldflags:
-                    lines.append(f"  LD flags:  {tpl.ldflags}")
+                    lines.append(f"  Ldflags:   {tpl.ldflags}")
                 if tpl.config:
                     lines.append(f"  Config:    [dim]{tpl.config}[/dim]")
                 self.query_one("#tc-detail", Static).update("\n".join(lines))
@@ -1116,19 +1117,27 @@ class ToolchainsScreen(Screen):
             tc = reg.get(name)
             if not tc:
                 return
-            status = "[green]installed[/green]" if tc.installed else "[red]not installed[/red]"
-            # Compute relative location path
+            # Status with automation hint
+            if tc.installed:
+                if tc.exclude_from_automation:
+                    status = "[green]installed[/green] [dim](excluded from automation)[/dim]"
+                else:
+                    status = "[green]installed[/green] [dim](available for automation)[/dim]"
+            else:
+                status = "[red]not installed[/red]"
+            # Location
             install_dir = self.app.paths.toolchains_dir / tc.name
             try:
-                rel_loc = install_dir.relative_to(self.app.paths.root)
-                location = str(rel_loc)
+                location = str(install_dir.relative_to(self.app.paths.root))
             except Exception:
                 location = str(install_dir)
             lines = [
                 f"  [bold]{tc.name}[/bold] — {tc.description}",
                 f"  Location:  {location}",
                 f"  Status:    {status}",
-                f"  Category:  {tc.category}     Arch: {tc.arch}",
+                f"  Category:  {tc.category}",
+                f"  Arch:      {tc.arch}",
+                f"  Selfbuild: {'yes' if tc.selfbuild else 'no'}",
             ]
             if tc.machines:
                 lines.append(f"  Machines:  {tc.machines}")
@@ -1136,13 +1145,17 @@ class ToolchainsScreen(Screen):
             if tc.sysroot:
                 lines.append(f"  Sysroot:   {tc.sysroot}")
             if tc.cflags:
-                lines.append(f"  C flags:   {tc.cflags}")
+                lines.append(f"  Cflags:    {tc.cflags}")
             if tc.ldflags:
-                lines.append(f"  LD flags:  {tc.ldflags}")
+                lines.append(f"  Ldflags:   {tc.ldflags}")
             if tc.make_vars:
                 lines.append(f"  Make vars: {tc.make_vars}")
             if tc.stapi_lib:
                 lines.append(f"  STAPI:     {tc.stapi_lib}")
+            # Libraries (comma-separated on one line)
+            if tc.libraries:
+                lib_list = ", ".join(f"{k} {v}" for k, v in tc.libraries.items())
+                lines.append(f"  Libraries: {lib_list}")
             if tc.url:
                 lines.append(f"  URL:       [dim]{tc.url}[/dim]")
             self.query_one("#tc-detail", Static).update("\n".join(lines))
