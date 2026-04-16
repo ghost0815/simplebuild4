@@ -491,19 +491,6 @@ def _get_version_branch(version: str) -> str:
     return version
 
 
-def _version_tuple(version: str) -> tuple:
-    """Convert version string to comparable tuple."""
-    import re
-    parts = re.split(r'[.\-]', version)
-    result = []
-    for p in parts:
-        m = re.match(r'^(\d+)(.*)', p)
-        if m:
-            result.append((int(m.group(1)), m.group(2)))
-        else:
-            result.append((0, p))
-    return tuple(result)
-
 
 def load_library_recipes(libraries_path: Path, local_path: Path | None = None) -> list[dict]:
     """Load library recipes from libraries.yaml, with optional local overrides.

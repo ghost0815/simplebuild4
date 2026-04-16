@@ -42,16 +42,49 @@ def is_prerelease(version: str) -> bool:
     return any(tag in v_lower for tag in PRERELEASE_TAGS)
 
 
+# Pre-release rank — lower = less stable. Used by parse_version().
+_PRERELEASE_RANK = {
+    "dev": 1, "alpha": 2, "a": 2,
+    "beta": 3, "b": 3,
+    "pre": 4, "preview": 4,
+    "rc": 5, "c": 5,
+}
+
+
 def parse_version(version: str) -> tuple:
-    """Parse version string into comparable tuple."""
-    # Strip leading 'v' or 'openssl-' etc
+    """Parse version string into comparable tuple.
+
+    SemVer-aware: pre-release segments (beta, rc, alpha …) sort *before*
+    the corresponding release — e.g. 4.0.0-beta1 < 4.0.0.
+    Letter-suffix patches like '1.1.1w' still sort *after* '1.1.1'
+    (OpenSSL LTS convention).
+
+    Implementation: every tuple ends with a release sentinel so that
+    Python's shorter-tuple-is-less rule can never make a release look
+    older than a pre-release of the same version.
+      release   → last element (0, 9999, 0)
+      pre-rel   → last element (-1, rank, patch_num)
+    """
     v = re.sub(r'^[a-zA-Z_-]+', '', version)
     parts = []
+    release_sentinel = (0, 9999, 0)   # overridden when a pre-release tag is found
     for p in re.split(r'[.\-]', v):
+        if not p:
+            continue
         try:
             parts.append((0, int(p)))
         except ValueError:
-            parts.append((1, p))  # strings sort after numbers
+            # Pure letters + optional digits → pre-release tag (beta1, rc2, alpha)
+            tag_match = re.match(r'^([a-zA-Z]+)(\d*)$', p)
+            if tag_match:
+                tag = tag_match.group(1).lower()
+                num = int(tag_match.group(2)) if tag_match.group(2) else 0
+                rank = _PRERELEASE_RANK.get(tag, 5)
+                release_sentinel = (-1, rank, num)   # pre-release < release
+            else:
+                # digit+letter like "1w" (OpenSSL 1.1.1w patch suffix)
+                parts.append((1, p))   # sorts after pure-numeric parts ✓
+    parts.append(release_sentinel)
     return tuple(parts)
 
 
@@ -260,27 +293,50 @@ def apply_updates(content: str, updates: list[tuple[str, str]], lib_name: str) -
     """
     changes = []
     for old_ver, new_ver in updates:
-        # Replace version: "old" → version: "new" (with quotes)
-        old_pattern = f'version: "{old_ver}"'
-        new_pattern = f'version: "{new_ver}"'
-        if old_pattern in content:
-            content = content.replace(old_pattern, new_pattern, 1)
-        else:
-            # Try without quotes
-            old_pattern = f"version: {old_ver}"
-            new_pattern = f"version: {new_ver}"
-            if old_pattern in content:
-                content = content.replace(old_pattern, new_pattern, 1)
+        # 1. Replace version: field
+        for old_p, new_p in [
+            (f'version: "{old_ver}"', f'version: "{new_ver}"'),
+            (f'version: {old_ver}',   f'version: {new_ver}'),
+        ]:
+            if old_p in content:
+                content = content.replace(old_p, new_p, 1)
+                break
 
-        # Also update label if it contains the old version
-        old_label = f"{old_ver}"
-        new_label = f"{new_ver}"
-        # Only replace in labels, not in URLs etc — look for label: "...old_ver..."
-        content = re.sub(
-            rf'(label:\s*["\']?)([^"\'\n]*){re.escape(old_ver)}([^"\'\n]*["\']?)',
-            rf'\g<1>\g<2>{new_ver}\g<3>',
-            content, count=1,
-        )
+        # 2. Update label field — search for both the exact version string and the
+        #    space-normalised form (labels may use "4.0.0 beta1" for "4.0.0-beta1").
+        old_forms = [re.escape(old_ver)]
+        old_space = old_ver.replace("-", " ")
+        if old_space != old_ver:
+            old_forms.append(re.escape(old_space))
+
+        if is_prerelease(old_ver) and not is_prerelease(new_ver):
+            # Pre-release → release: replace the whole label with "X.Y.x"
+            # (strips "(experimental)" and the old pre-release tag)
+            branch = get_branch(new_ver)
+            new_label = f"{branch}.x"
+            for old_form in old_forms:
+                replaced = re.sub(
+                    r'(label:\s*["\']?)[^"\'\n]*' + old_form + r'[^"\'\n]*(["\']?)',
+                    r'\g<1>' + new_label + r'\g<2>',
+                    content, count=1,
+                )
+                if replaced != content:
+                    content = replaced
+                    break
+        else:
+            # Same release type (pre→pre or release→release): update version in label.
+            # Write the new version in space-normalised form for readability.
+            new_in_label = new_ver.replace("-", " ")
+            for old_form in old_forms:
+                replaced = re.sub(
+                    r'(label:\s*["\']?)([^"\'\n]*)' + old_form + r'([^"\'\n]*["\']?)',
+                    r'\g<1>\g<2>' + new_in_label + r'\g<3>',
+                    content, count=1,
+                )
+                if replaced != content:
+                    content = replaced
+                    break
+
         changes.append(f"{lib_name}: {old_ver} → {new_ver}")
 
     return content, changes
@@ -314,7 +370,7 @@ def apply_new_versions(content: str, new_versions: list[str], lib_name: str) -> 
 
         new_entry = (
             f'{indent}- version: "{ver}"\n'
-            f'{indent}  label: "{ver} (experimental)"\n'
+            f'{indent}  label: "{ver.replace("-", " ")} (experimental)"\n'
             f'{indent}  requires: "c11"\n'
         )
         first_variant_pos = line_start  # insert before the whole line
