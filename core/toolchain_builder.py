@@ -585,12 +585,22 @@ def _generate_sdk_extras(bb_dir: Path, sdk_extras: str, repo_dir: Path) -> Path:
 
 
 def _find_sdk_installer(bb_dir: Path, machine: str) -> Path | None:
-    """Find the SDK installer .sh in the deploy/sdk/ directory."""
-    # Try machine-specific first, then any .sh
+    """Find the SDK installer .sh in the deploy/sdk/ directory.
+
+    Checks known tmp*/deploy/sdk/ locations directly first (fast), and
+    only falls back to rglob if nothing is found there (slow, last resort).
+    """
+    # OE uses tmp-<libc>/deploy/sdk/ or tmp/deploy/sdk/ — check directly
+    sdk_dirs = sorted(bb_dir.glob("tmp*/deploy/sdk/")) + [bb_dir / "tmp" / "deploy" / "sdk"]
+    for pattern in (f"*-{machine}-*.sh", "*.sh"):
+        for sdk_dir in sdk_dirs:
+            candidates = list(sdk_dir.glob(pattern))
+            if candidates:
+                return max(candidates, key=lambda p: p.stat().st_mtime)
+    # Fallback: full recursive search (slow, for non-standard layouts)
     for pattern in (f"*-{machine}-*.sh", "*.sh"):
         candidates = list(bb_dir.rglob(f"deploy/sdk/{pattern}"))
         if candidates:
-            # Prefer the newest
             return max(candidates, key=lambda p: p.stat().st_mtime)
     return None
 
