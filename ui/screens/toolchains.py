@@ -318,6 +318,7 @@ class FilePickerScreen(ModalScreen[tuple]):
             with Horizontal(id="fp-title-row"):
                 yield Static(self._title, id="fp-title")
                 yield Static("", classes="spacer")
+                yield Button("▲ Up", id="fp-up", classes="fp-nav-btn")
                 yield Button("⌂ Home", id="fp-home", classes="fp-nav-btn")
                 yield Button("/ Root", id="fp-root", classes="fp-nav-btn")
             yield DirectoryTree(self._start_path, id="fp-tree")
@@ -379,6 +380,11 @@ class FilePickerScreen(ModalScreen[tuple]):
                 self.dismiss((path, name))
             elif path:
                 self.notify("Enter a toolchain name", severity="warning")
+        elif event.button.id == "fp-up":
+            tree = self.query_one("#fp-tree", DirectoryTree)
+            parent = tree.path.parent
+            if parent != tree.path:
+                self._change_root(parent)
         elif event.button.id == "fp-home":
             self._change_root(Path.home())
         elif event.button.id == "fp-root":
