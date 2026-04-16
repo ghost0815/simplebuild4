@@ -105,8 +105,8 @@ class RemoteFilePickerScreen(ModalScreen[str]):
             yield OptionList(id="rfp-list")
             yield Input(value=self._current_value or self._start_path, id="rfp-path")
             with Horizontal(id="rfp-buttons"):
-                yield Button(t("cancel"), id="rfp-cancel")
                 yield Button(t("rfp_select"), id="rfp-select", variant="primary")
+                yield Button(t("cancel"), id="rfp-cancel")
 
     def on_mount(self) -> None:
         self._list_widget = self.query_one("#rfp-list", OptionList)

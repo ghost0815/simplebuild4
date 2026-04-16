@@ -327,8 +327,8 @@ class FilePickerScreen(ModalScreen[tuple]):
                     yield Static(" Name: ", id="fp-name-label")
                     yield Input(placeholder=t("ph_tc_name"), id="fp-name")
             with Horizontal(id="fp-buttons"):
-                yield Button("Cancel", id="fp-cancel")
                 yield Button(self._select_label, id="fp-select", variant="primary")
+                yield Button("Cancel", id="fp-cancel")
 
     @staticmethod
     def _name_from_filename(filename: str) -> str:
