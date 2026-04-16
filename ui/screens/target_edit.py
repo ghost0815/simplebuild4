@@ -132,7 +132,7 @@ class TargetEditScreen(Screen):
 
     # Hardware flags — everything else goes into Library section
     _HARDWARE_FLAGS = frozenset({
-        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA",
+        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA", "WI",
     })
 
     def _load_makefile_flags(self) -> dict:
@@ -540,6 +540,7 @@ class TargetEditScreen(Screen):
                     if v and f not in mk_use_set
                     and f in self._HARDWARE_FLAGS
                 )
+                stale_hw_set = set(stale_hw)
                 stale_static = sorted(
                     f for f, v in b.static_flags.items()
                     if v and f not in mk_use_set
@@ -557,7 +558,7 @@ class TargetEditScreen(Screen):
                 stale_static_set = set(stale_static)
                 all_lib_flags = sorted((set(lib_flags) | stale_lib_set) - {"MBEDTLS", "OPENSSL"})
 
-                _lib_active = sum(1 for f in (set(lib_flags) | {"MBEDTLS", "OPENSSL"}) if b.use_flags.get(f, False))
+                _lib_active = sum(1 for f in (set(lib_flags) | stale_lib_set | {"MBEDTLS", "OPENSSL"}) if b.use_flags.get(f, False))
                 with Collapsible(title=f"{t('section_library_flags')} ({_lib_active} {t('te_selected')})", collapsed=True, id="col-lib-flags"):
                     # MBEDTLS / OPENSSL pair — always at top, normal or stale.
                     # They always appear together as a pair.
@@ -586,7 +587,7 @@ class TargetEditScreen(Screen):
                             ]
                         yield Horizontal(*widgets, classes="flag-row")
 
-                _hw_active = sum(1 for f in hw_flags if b.use_flags.get(f, False))
+                _hw_active = sum(1 for f in (set(hw_flags) | stale_hw_set) if b.use_flags.get(f, False))
                 with Collapsible(title=f"{t('section_hardware_flags')} ({_hw_active} {t('te_selected')})", collapsed=True, id="col-hw-flags"):
                     if "STAPI" in hw_flags or "STAPI5" in hw_flags:
                         _stapi_widgets = []
@@ -734,8 +735,8 @@ class TargetEditScreen(Screen):
             protos_sorted = sorted(oscam.protocols)
             removed_protos = sorted(self._removed_opts.get("protocols", []))
             all_protos = protos_sorted + removed_protos
-            proto_count = sum(1 for m in protos_sorted if merged_protos.get(m))
-            with Collapsible(title=f"Protocols ({proto_count}/{len(protos_sorted)})", collapsed=False, id="col-protocols"):
+            proto_count = sum(1 for m in all_protos if merged_protos.get(m) or m in removed_protos)
+            with Collapsible(title=f"Protocols ({proto_count}/{len(all_protos)})", collapsed=False, id="col-protocols"):
                 if all_protos:
                     yield _section_toggle("protocols", all_protos, merged_protos, "Protocols")
                 with Grid(classes="mod-grid"):
@@ -745,8 +746,8 @@ class TargetEditScreen(Screen):
             readers_sorted = sorted(oscam.readers)
             removed_readers = sorted(self._removed_opts.get("readers", []))
             all_readers = readers_sorted + removed_readers
-            reader_count = sum(1 for m in readers_sorted if merged_readers.get(m))
-            with Collapsible(title=f"Readers ({reader_count}/{len(readers_sorted)})", collapsed=False, id="col-readers"):
+            reader_count = sum(1 for m in all_readers if merged_readers.get(m) or m in removed_readers)
+            with Collapsible(title=f"Readers ({reader_count}/{len(all_readers)})", collapsed=False, id="col-readers"):
                 if all_readers:
                     yield _section_toggle("readers", all_readers, merged_readers, "Readers")
                 with Grid(classes="mod-grid"):
@@ -756,8 +757,8 @@ class TargetEditScreen(Screen):
             crs_sorted = sorted(oscam.card_readers)
             removed_crs = sorted(self._removed_opts.get("card_readers", []))
             all_crs = crs_sorted + removed_crs
-            cr_count = sum(1 for m in crs_sorted if merged_crs.get(m))
-            with Collapsible(title=f"Card Readers ({cr_count}/{len(crs_sorted)})", collapsed=False, id="col-card-readers"):
+            cr_count = sum(1 for m in all_crs if merged_crs.get(m) or m in removed_crs)
+            with Collapsible(title=f"Card Readers ({cr_count}/{len(all_crs)})", collapsed=False, id="col-card-readers"):
                 if all_crs:
                     yield _section_toggle("card_readers", all_crs, merged_crs, "Card Readers")
                 with Grid(classes="mod-grid"):
