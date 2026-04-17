@@ -188,6 +188,9 @@ class AutomationScreen(Screen):
             _pending_jobs = None
         else:
             self._schedules = load_jobs(self.app.paths.automation_yaml)
+        # Keep at least one visible entry so the user always has input
+        # fields to work with. F12 filters empty entries out of the
+        # saved YAML, so an all-blank placeholder never reaches disk.
         if not self._schedules:
             self._schedules.append(JobConfig(name="", enabled=True, cron="0 3 * * *"))
 
@@ -1052,9 +1055,21 @@ class AutomationScreen(Screen):
 
         Returns True on successful save, False if blocked by errors.
         """
-        schedules = self._collect_from_ui()
-        # Filter out completely empty entries on save
-        schedules = [s for s in schedules if s.name or s.cron]
+        ui_schedules = self._collect_from_ui()
+        # Filter out completely empty entries on save — an empty
+        # placeholder (from F11 on the last job or a fresh F10 add)
+        # must not reach disk, but keeping it in ``self._schedules``
+        # mirrors what the UI is showing, which keeps F9/F11/edit
+        # logic consistent.
+        def _has_user_input(s: JobConfig) -> bool:
+            # A default cron alone does NOT count — the F11 placeholder
+            # has one. Any other signal (name, chosen action/target/…)
+            # means the user filled the row in.
+            return bool(
+                s.name or s.actions or s.targets
+                or s.repos or s.toolchains or s.templates
+            )
+        schedules = [s for s in ui_schedules if _has_user_input(s)]
 
         # Validate all entries — errors block save, warnings inform only
         all_errors = []
@@ -1074,6 +1089,10 @@ class AutomationScreen(Screen):
             self.notify("\n".join(all_warnings), severity="warning", timeout=8)
 
         save_jobs(schedules, self.app.paths.automation_yaml)
+        # Keep the in-memory state in sync with the UI (incl. any empty
+        # placeholder row) — otherwise F9 / F11 see stale schedules
+        # after the first save and report the wrong thing.
+        self._schedules = list(ui_schedules)
         # Update crontab if the master toggle is on (user intent),
         # not based on current crontab content — the crontab can be
         # empty if all jobs are disabled while the toggle is still on.
@@ -1248,8 +1267,12 @@ class AutomationScreen(Screen):
     def do_remove(self) -> None:
         """F11 Remove — remove the currently active job (focus-driven).
 
-        Keep at least one entry — clear it instead of deleting (like deployments).
-        Running jobs cannot be removed.
+        Running jobs cannot be removed. Removing the last job resets it
+        to an empty placeholder (name/cron/actions/targets/... all
+        blank) so the user still has input fields to work with. The
+        subsequent F12 save filters the blank placeholder out of the
+        YAML, so 'delete all jobs' actually persists an empty job list
+        on disk.
         """
         self._detect_active_from_focus()
         idx = getattr(self, "_active_job_idx", -1)
