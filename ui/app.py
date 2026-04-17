@@ -54,6 +54,8 @@ class S4App(App):
         self._timer_stopped_at: float | None = None
         # Web service (textual-serve) subprocess
         self._web_proc: "subprocess.Popen | None" = None
+        self._mcp_proc: "subprocess.Popen | None" = None
+        self._mcp_log_file = None
 
     _UPDATE_NOTIFY_TIMEOUT = 10
 
@@ -266,6 +268,118 @@ class S4App(App):
         """Restart the web service (e.g. after settings change)."""
         self._web_stop()
         self._web_start()
+
+    # ------------------------------------------------------------------
+    # MCP (Model Context Protocol) embedded mode
+    # Mirrors _web_* above but launches `./s4 mcp --http` as subprocess.
+    # ------------------------------------------------------------------
+
+    def _mcp_start(self) -> None:
+        """Start the s4 MCP server as a subprocess for testing."""
+        import os
+        if self._mcp_proc is not None and self._mcp_proc.poll() is None:
+            return  # already running
+        import subprocess, sys
+        from core.mcp_service import _ensure_mcp_packages, validate_port
+        if not _ensure_mcp_packages(sys.executable, lambda m: None):
+            self.notify("Failed to install mcp package",
+                        severity="error", timeout=15)
+            return
+        host = self.settings.mcp_host or "0.0.0.0"
+        port = self.settings.mcp_port or 8181
+        err = validate_port(port)
+        if err:
+            self.notify(err, severity="error", timeout=5)
+            return
+        token = self.settings.mcp_token or ""
+
+        # SSL: auto-generate cert if enabled but no cert/key provided
+        use_ssl = self.settings.mcp_ssl
+        ssl_cert = self.settings.mcp_ssl_cert
+        ssl_key = self.settings.mcp_ssl_key
+        if use_ssl and (not ssl_cert or not ssl_key):
+            from core.web_service import generate_self_signed_cert
+            mcp_dir = self.paths.root / "data" / "mcp"
+            ssl_cert, ssl_key = generate_self_signed_cert(
+                mcp_dir, self.settings.mcp_dns_name, host,
+            )
+
+        from datetime import datetime
+        from core.log_cleanup import resolve_log_dir
+        _log_dir = resolve_log_dir(
+            self.paths.logs_dir, "mcpservice", self.settings.organize_logs,
+        )
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = _log_dir / f"{timestamp}.mcpservice.log"
+        self._mcp_log_file = open(log_path, "w", encoding="utf-8")
+
+        s4 = str(self.paths.root / "s4")
+        cmd = [s4, "mcp", "--http", "--host", host, "--port", str(port)]
+        if self.settings.mcp_allow_actions:
+            cmd.append("--allow-actions")
+        if use_ssl and ssl_cert and ssl_key:
+            cmd += ["--ssl-cert", ssl_cert, "--ssl-key", ssl_key]
+
+        env = os.environ.copy()
+        if token:
+            env["S4_MCP_TOKEN"] = token
+
+        self._mcp_proc = subprocess.Popen(
+            cmd, cwd=str(self.paths.root),
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env,
+            preexec_fn=os.setsid,
+        )
+        import threading
+        threading.Thread(target=self._mcp_log_reader, daemon=True).start()
+        proto = "https" if (use_ssl and ssl_cert and ssl_key) else "http"
+        auth_info = "token auth" if token else "[red]no auth[/red]"
+        self.notify(
+            f"MCP server started on {proto}://{host}:{port} ({auth_info})",
+            timeout=8,
+        )
+
+    def _mcp_log_reader(self) -> None:
+        proc = self._mcp_proc
+        if proc is None or proc.stdout is None:
+            return
+        import re
+        for line in proc.stdout:
+            stripped = line.rstrip()
+            if not stripped:
+                continue
+            plain = re.sub(r"\[/?[a-z_ #0-9]+\]", "", stripped)
+            if self._mcp_log_file:
+                try:
+                    self._mcp_log_file.write(plain + "\n")
+                    self._mcp_log_file.flush()
+                except Exception:
+                    pass
+
+    def _mcp_stop(self) -> None:
+        """Stop the embedded MCP subprocess."""
+        import os, signal
+        if self._mcp_proc is not None and self._mcp_proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(self._mcp_proc.pid), signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                self._mcp_proc.kill()
+            try:
+                self._mcp_proc.wait(timeout=1)
+            except Exception:
+                pass
+            self.notify("MCP server stopped")
+        self._mcp_proc = None
+        if self._mcp_log_file:
+            try:
+                self._mcp_log_file.close()
+            except Exception:
+                pass
+            self._mcp_log_file = None
+
+    def _mcp_restart(self) -> None:
+        self._mcp_stop()
+        self._mcp_start()
 
     def watch_theme(self, theme: str) -> None:
         """Save theme to settings when changed via command palette."""
@@ -1149,6 +1263,14 @@ class S4App(App):
                 mgr.restart()
         except Exception:
             pass
+        # Same for the MCP service
+        try:
+            from core.mcp_service import McpServiceManager
+            mcp_mgr = McpServiceManager(self.paths.root)
+            if mcp_mgr.systemd_available() and mcp_mgr.is_installed() and mcp_mgr.is_running():
+                mcp_mgr.restart()
+        except Exception:
+            pass
         # In a web session, just exit — the outer s4 or systemd handles restart
         if self._is_web_session:
             try:
@@ -1159,6 +1281,11 @@ class S4App(App):
         # Stop embedded web service
         try:
             self._web_stop()
+        except Exception:
+            pass
+        # Stop embedded MCP service
+        try:
+            self._mcp_stop()
         except Exception:
             pass
         try:

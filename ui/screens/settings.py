@@ -26,6 +26,9 @@ SWITCH_MAP = {
     "set-qemu-test": "qemu_test",
     "set-web-enabled": "web_enabled",
     "set-web-ssl": "web_ssl",
+    "set-mcp-enabled": "mcp_enabled",
+    "set-mcp-ssl": "mcp_ssl",
+    "set-mcp-allow-actions": "mcp_allow_actions",
 }
 
 INPUT_MAP = {
@@ -43,6 +46,12 @@ INPUT_MAP = {
     "set-web-ssl-key": "web_ssl_key",
     "set-web-auth-user": "web_auth_user",
     "set-web-auth-pass": "web_auth_password",
+    "set-mcp-host": "mcp_host",
+    "set-mcp-port": "mcp_port",
+    "set-mcp-dns": "mcp_dns_name",
+    "set-mcp-token": "mcp_token",
+    "set-mcp-ssl-cert": "mcp_ssl_cert",
+    "set-mcp-ssl-key": "mcp_ssl_key",
     "set-ctng-dir": "ctng_dir",
     "set-oesdk-dir": "oesdk_dir",
     "set-andk-dir": "andk_dir",
@@ -251,8 +260,114 @@ class SettingsScreen(Screen):
                         yield Button(t("web_start"), id="btn-web-start", variant="success", disabled=True)
                         yield Button(t("web_stop"), id="btn-web-stop", variant="warning", disabled=True)
                     with Horizontal(classes="web-btn-row"):
+                        yield Static("", id="web-svc-url", classes="web-svc-url-label")
                         yield Static("", id="web-btn-gap")
                         yield Button(t("web_setup"), id="btn-web-setup", variant="primary")
+
+            # MCP Service
+            with Collapsible(title=t('section_mcpservice'), collapsed=True, id="col-mcpservice"):
+                _mcp_port_inp = Input(
+                    value=str(s.mcp_port), id="set-mcp-port",
+                    type="integer", max_length=5,
+                )
+                _mcp_port_inp.styles.width = 12
+                _mcp_port_inp.styles.min_width = 12
+                _mcp_port_inp.styles.max_width = 12
+                _mcp_token_show = Button(icon("eye"), id="btn-mcp-token-toggle", classes="tc-reset-btn")
+                _mcp_token_show.tooltip = t("tt_mcp_token_show")
+                _mcp_token_gen = Button(icon("refresh"), id="btn-mcp-token-gen", classes="tc-reset-btn")
+                _mcp_token_gen.tooltip = t("tt_mcp_token_generate")
+                _mcp_cert_browse = Button(icon("browse"), id="btn-mcp-cert-browse", classes="tc-reset-btn")
+                _mcp_cert_browse.tooltip = t("ph_browse_file")
+                _mcp_key_browse = Button(icon("browse"), id="btn-mcp-key-browse", classes="tc-reset-btn")
+                _mcp_key_browse.tooltip = t("ph_browse_file")
+
+                # Row 1: Embedded toggle | HTTPS (SSL) toggle
+                with Grid(classes="web-grid"):
+                    _mcp_toggle = Switch(value=s.mcp_enabled, id="set-mcp-enabled")
+                    _mcp_toggle.tooltip = t("tt_mcp_embedded")
+                    yield Horizontal(
+                        Static(f" {t('enable_mcpservice')}", classes="s-label"),
+                        _mcp_toggle,
+                        Static("", id="mcp-embedded-status"),
+                        classes="s-toggle",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('mcp_ssl')}", classes="s-label"),
+                        Switch(value=s.mcp_ssl, id="set-mcp-ssl"),
+                        classes="s-toggle",
+                    )
+
+                # Row 2: Host/Port | DNS name
+                with Grid(classes="web-grid"):
+                    yield Horizontal(
+                        Static(f" {t('mcp_host')} / {t('mcp_port')}", classes="s-label"),
+                        Input(value=s.mcp_host, placeholder="0.0.0.0", id="set-mcp-host"),
+                        _mcp_port_inp,
+                        classes="s-row",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('mcp_dns_name')}", classes="s-label"),
+                        Input(value=s.mcp_dns_name, placeholder=t("mcp_dns_placeholder"), id="set-mcp-dns"),
+                        classes="s-row",
+                    )
+
+                # Row 3: Bearer token | Allow actions
+                with Grid(classes="web-grid"):
+                    yield Horizontal(
+                        Static(f" {t('mcp_token')}", classes="s-label"),
+                        Input(
+                            value=s.mcp_token,
+                            placeholder=t("mcp_token_placeholder"),
+                            id="set-mcp-token",
+                            password=True,
+                        ),
+                        _mcp_token_show,
+                        _mcp_token_gen,
+                        _sp(),
+                        classes="s-row",
+                    )
+                    _mcp_allow_sw = Switch(value=s.mcp_allow_actions, id="set-mcp-allow-actions")
+                    _mcp_allow_sw.tooltip = t("tt_mcp_allow_actions")
+                    yield Horizontal(
+                        Static(f" {t('mcp_allow_actions')}", classes="s-label"),
+                        _mcp_allow_sw,
+                        classes="s-toggle",
+                    )
+
+                # Row 4: SSL Certificate | Private Key
+                with Grid(classes="web-grid"):
+                    yield Horizontal(
+                        Static(f" {t('mcp_ssl_cert')}", classes="s-label"),
+                        Input(value=s.mcp_ssl_cert, placeholder=t("mcp_ssl_auto"), id="set-mcp-ssl-cert"),
+                        _mcp_cert_browse, _sp(),
+                        classes="s-row",
+                    )
+                    yield Horizontal(
+                        Static(f" {t('mcp_ssl_key')}", classes="s-label"),
+                        Input(value=s.mcp_ssl_key, placeholder=t("mcp_ssl_auto"), id="set-mcp-ssl-key"),
+                        _mcp_key_browse, _sp(),
+                        classes="s-row",
+                    )
+
+                # Status + service buttons
+                # Explicit gap so the status text never butts against the
+                # Start/Restart button even when it reads
+                # "s4-mcp: installed & running".
+                _mcp_btn_gap = Static("")
+                _mcp_btn_gap.styles.width = 2
+                _mcp_btn_gap.styles.min_width = 2
+                _mcp_btn_gap.styles.max_width = 2
+                with Grid(classes="web-grid", id="mcp-svc-buttons"):
+                    with Horizontal(classes="web-btn-row"):
+                        yield Static("", id="mcp-svc-status", classes="web-svc-status-label")
+                        yield _mcp_btn_gap
+                        yield Button(t("mcp_start"), id="btn-mcp-start", variant="success", disabled=True)
+                        yield Button(t("mcp_stop"), id="btn-mcp-stop", variant="warning", disabled=True)
+                    with Horizontal(classes="web-btn-row"):
+                        yield Static("", id="mcp-svc-url", classes="web-svc-url-label")
+                        yield Static("", id="mcp-btn-gap")
+                        yield Button(t("mcp_setup"), id="btn-mcp-setup", variant="primary")
 
             # Toolchain Builders
             with Collapsible(title=t('section_builders'), collapsed=True, id="col-builders"):
@@ -298,6 +413,7 @@ class SettingsScreen(Screen):
     def on_mount(self) -> None:
         self.query_one("#set-language", Select).focus()
         self._refresh_web_svc_status()
+        self._refresh_mcp_svc_status()
 
     def on_switch_changed(self, event) -> None:
         sid = event.switch.id or ""
@@ -328,6 +444,33 @@ class SettingsScreen(Screen):
                 else:
                     self.app._web_stop()
             self._refresh_web_svc_status()
+        if sid == "set-mcp-enabled":
+            mgr = self._get_mcp_svc_mgr()
+            svc_running = mgr.systemd_available() and mgr.is_installed() and mgr.is_running()
+            if not svc_running:
+                s = self.app.settings
+                s.mcp_enabled = event.value
+                try:
+                    s.mcp_host = self.query_one("#set-mcp-host", Input).value
+                    s.mcp_port = int(self.query_one("#set-mcp-port", Input).value)
+                    s.mcp_token = self.query_one("#set-mcp-token", Input).value
+                    s.mcp_allow_actions = self.query_one("#set-mcp-allow-actions", Switch).value
+                except (ValueError, Exception):
+                    pass
+                if event.value:
+                    from core.mcp_service import validate_port
+                    err = validate_port(s.mcp_port)
+                    if err:
+                        self.notify(err, severity="error", timeout=5)
+                        event.switch.value = False
+                        self._refresh_mcp_svc_status()
+                        return
+                s.save(self.app.settings_path)
+                if event.value:
+                    self.app._mcp_start()
+                else:
+                    self.app._mcp_stop()
+            self._refresh_mcp_svc_status()
         if sid == "set-qemu-test" and event.value:
             # Check if any qemu binary is installed
             import shutil
@@ -372,6 +515,26 @@ class SettingsScreen(Screen):
     def _get_web_svc_mgr(self):
         from core.web_service import WebServiceManager
         return WebServiceManager(self.app.paths.root)
+
+    @staticmethod
+    def _compose_service_url(
+        host: str, port: int, ssl: bool, dns_name: str = "",
+        path_suffix: str = "",
+    ) -> str:
+        """Build the URL clients use to talk to a service.
+
+        0.0.0.0 / :: are displayed as localhost (you can't connect to a
+        wildcard). An explicit dns_name wins over the bind host.
+        """
+        _wildcards = {"0.0.0.0", "::", "::/0", ""}
+        public = dns_name.strip() if dns_name else ""
+        if not public:
+            public = "localhost" if host in _wildcards else host
+        # IPv6 literal → bracketed
+        if ":" in public and not public.startswith("["):
+            public = f"[{public}]"
+        scheme = "https" if ssl else "http"
+        return f"{scheme}://{public}:{int(port)}{path_suffix}"
 
     def _refresh_web_svc_status(self) -> None:
         """Update service status label and button states."""
@@ -419,6 +582,18 @@ class SettingsScreen(Screen):
             start_btn.disabled = (not installed or toggle_on)
             self.query_one("#btn-web-stop", Button).disabled = (
                 not installed or not running)
+            # URL preview (next to the Setup button)
+            try:
+                s = self.app.settings
+                url = self._compose_service_url(
+                    host=s.web_host, port=s.web_port, ssl=s.web_ssl,
+                    dns_name=s.web_dns_name,
+                )
+                self.query_one("#web-svc-url", Static).update(
+                    f"[dim]{url}[/dim]"
+                )
+            except Exception:
+                pass
         except Exception:
             pass
 
@@ -459,6 +634,109 @@ class SettingsScreen(Screen):
 
         self.app.call_from_thread(self._refresh_web_svc_status)
 
+    # ------------------------------------------------------------------
+    # MCP Service (mirrors _web_svc_* above)
+    # ------------------------------------------------------------------
+
+    def _get_mcp_svc_mgr(self):
+        from core.mcp_service import McpServiceManager
+        return McpServiceManager(self.app.paths.root)
+
+    def _refresh_mcp_svc_status(self) -> None:
+        mgr = self._get_mcp_svc_mgr()
+        available = mgr.systemd_available()
+        installed = mgr.is_installed() if available else False
+        running = mgr.is_running() if installed else False
+
+        try:
+            toggle = self.query_one("#set-mcp-enabled", Switch)
+            toggle_on = toggle.value
+            if running and toggle_on:
+                toggle.value = False
+                toggle_on = False
+            toggle.disabled = running
+
+            embedded_running = (
+                self.app._mcp_proc is not None
+                and self.app._mcp_proc.poll() is None
+            )
+            try:
+                embed_label = self.query_one("#mcp-embedded-status", Static)
+                if embedded_running:
+                    embed_label.update(f" [green]{t('mcp_embedded_running')}[/green]")
+                else:
+                    embed_label.update("")
+            except Exception:
+                pass
+
+            if running:
+                svc_status = f"[green]{mgr.service}: {t(mgr.status_text())}[/green]"
+            elif installed:
+                svc_status = f"{mgr.service}: {t(mgr.status_text())}"
+            else:
+                svc_status = t(mgr.status_text())
+            self.query_one("#mcp-svc-status", Static).update(f" {svc_status}")
+
+            start_btn = self.query_one("#btn-mcp-start", Button)
+            start_btn.label = t("mcp_restart") if running else t("mcp_start")
+            start_btn.disabled = (not installed or toggle_on)
+            self.query_one("#btn-mcp-stop", Button).disabled = (
+                not installed or not running)
+            # URL preview — include the /sse suffix so users can paste
+            # it straight into a Claude Desktop / Claude.ai MCP config.
+            try:
+                s = self.app.settings
+                url = self._compose_service_url(
+                    host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
+                    dns_name=s.mcp_dns_name, path_suffix="/sse",
+                )
+                self.query_one("#mcp-svc-url", Static).update(
+                    f"[dim]{url}[/dim]"
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+    def _mcp_svc_action(self, action: str) -> None:
+        import threading
+        threading.Thread(
+            target=self._do_mcp_svc_action, args=(action,), daemon=True,
+        ).start()
+
+    def _do_mcp_svc_action(self, action: str) -> None:
+        mgr = self._get_mcp_svc_mgr()
+        s = self.app.settings
+
+        def _log(msg):
+            self.app.call_from_thread(self.notify, msg, timeout=5)
+
+        if action in ("start", "restart") and mgr.is_installed():
+            if not mgr.update_unit(
+                host=s.mcp_host, port=s.mcp_port,
+                dns_name=s.mcp_dns_name,
+                token=s.mcp_token,
+                allow_actions=s.mcp_allow_actions,
+                ssl=s.mcp_ssl,
+                ssl_cert=s.mcp_ssl_cert,
+                ssl_key=s.mcp_ssl_key,
+                logs_dir=self.app.paths.logs_dir,
+                organize_logs=s.organize_logs,
+                log=_log,
+            ):
+                def _warn(msg):
+                    self.app.call_from_thread(self.notify, msg, severity="warning", timeout=8)
+                _warn("Could not update MCP service config — run Setup to refresh permissions")
+
+        if action == "start":
+            mgr.start(log=_log)
+        elif action == "stop":
+            mgr.stop(log=_log)
+        elif action == "restart":
+            mgr.restart(log=_log)
+
+        self.app.call_from_thread(self._refresh_mcp_svc_status)
+
     def on_button_pressed(self, event) -> None:
         if event.button.id == "btn-cert-browse":
             self._open_file_picker("set-sign-cert", t("signing_certificate"))
@@ -491,6 +769,59 @@ class SettingsScreen(Screen):
             self._web_svc_action("restart" if mgr.is_running() else "start")
         elif event.button.id == "btn-web-stop":
             self._web_svc_action("stop")
+        elif event.button.id == "btn-mcp-token-toggle":
+            # Toggle show/hide + also stash the token in the clipboard so
+            # the user can paste it into the Claude Desktop config.
+            try:
+                tk = self.query_one("#set-mcp-token", Input)
+                tk.password = not tk.password
+                value = tk.value
+                if value:
+                    try:
+                        self.app.copy_to_clipboard(value)
+                        self.notify(
+                            f"Bearer token copied to clipboard ({len(value)} chars)",
+                            timeout=3,
+                        )
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+        elif event.button.id == "btn-mcp-token-gen":
+            from core.mcp_service import generate_token
+            try:
+                tk = self.query_one("#set-mcp-token", Input)
+                new_token = generate_token()
+                tk.value = new_token
+                tk.password = False      # reveal so user sees the new token
+                # Copy to clipboard straight away — no need to click the
+                # copy button afterwards.
+                try:
+                    self.app.copy_to_clipboard(new_token)
+                    self.notify(
+                        f"New MCP bearer token generated and copied ({len(new_token)} chars)",
+                        timeout=4,
+                    )
+                except Exception:
+                    self.notify("New MCP bearer token generated (copy failed)",
+                                severity="warning", timeout=4)
+            except Exception:
+                pass
+        elif event.button.id == "btn-mcp-cert-browse":
+            self._open_file_picker("set-mcp-ssl-cert", t("mcp_ssl_cert"))
+        elif event.button.id == "btn-mcp-key-browse":
+            self._open_file_picker("set-mcp-ssl-key", t("mcp_ssl_key"))
+        elif event.button.id == "btn-mcp-setup":
+            from ui.screens.mcp_service_modal import McpServiceSetupModal
+            self.app.push_screen(
+                McpServiceSetupModal(),
+                callback=lambda _: self._refresh_mcp_svc_status(),
+            )
+        elif event.button.id == "btn-mcp-start":
+            mgr = self._get_mcp_svc_mgr()
+            self._mcp_svc_action("restart" if mgr.is_running() else "start")
+        elif event.button.id == "btn-mcp-stop":
+            self._mcp_svc_action("stop")
 
     def _open_file_picker(self, target_input_id: str, label: str) -> None:
         """Open file picker dialog and write the result into the given input."""

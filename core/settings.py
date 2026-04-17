@@ -58,6 +58,17 @@ class Settings:
     web_auth_user: str = ""        # Basic Auth username (empty = no auth)
     web_auth_password: str = ""    # Basic Auth password (empty = no auth)
 
+    # MCP Service (Model Context Protocol — LLM-driven automation)
+    mcp_enabled: bool = False      # embedded test mode: spawn server as subprocess
+    mcp_host: str = "0.0.0.0"     # bind address
+    mcp_port: int = 8181
+    mcp_dns_name: str = ""         # DNS name (empty = localhost or bind address)
+    mcp_token: str = ""            # bearer token (empty = no auth, local only!)
+    mcp_allow_actions: bool = False  # enable build/install/run-job tools
+    mcp_ssl: bool = False          # enable HTTPS
+    mcp_ssl_cert: str = ""         # path to SSL certificate (empty = auto-generate)
+    mcp_ssl_key: str = ""          # path to SSL private key (empty = auto-generate)
+
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
     oesdk_dir: str = ""            # OE-SDK build dir (empty = data/builders/oe-sdk)
@@ -111,6 +122,15 @@ class Settings:
             "web_ssl_key": self.web_ssl_key,
             "web_auth_user": self.web_auth_user,
             "web_auth_password": _encrypt(self.web_auth_password),
+            "mcp_enabled": self.mcp_enabled,
+            "mcp_host": self.mcp_host,
+            "mcp_port": self.mcp_port,
+            "mcp_dns_name": self.mcp_dns_name,
+            "mcp_token": _encrypt(self.mcp_token),
+            "mcp_allow_actions": self.mcp_allow_actions,
+            "mcp_ssl": self.mcp_ssl,
+            "mcp_ssl_cert": self.mcp_ssl_cert,
+            "mcp_ssl_key": self.mcp_ssl_key,
             "default_compress_level": self.default_compress_level,
             "default_confdir": self.default_confdir,
             "default_build_system": self.default_build_system,
@@ -172,6 +192,15 @@ class Settings:
             web_ssl_key=data.get("web_ssl_key", ""),
             web_auth_user=data.get("web_auth_user", ""),
             web_auth_password=_decrypt(data.get("web_auth_password", ""), label=lambda: f"{t('web_auth_pass_ph')} ({t('settings_title')})", persistent=True),
+            mcp_enabled=data.get("mcp_enabled", False),
+            mcp_host=data.get("mcp_host", cls.mcp_host),
+            mcp_port=data.get("mcp_port", cls.mcp_port),
+            mcp_dns_name=data.get("mcp_dns_name", ""),
+            mcp_token=_decrypt(data.get("mcp_token", ""), label=lambda: f"MCP token ({t('settings_title')})", persistent=True),
+            mcp_allow_actions=data.get("mcp_allow_actions", False),
+            mcp_ssl=data.get("mcp_ssl", False),
+            mcp_ssl_cert=data.get("mcp_ssl_cert", ""),
+            mcp_ssl_key=data.get("mcp_ssl_key", ""),
             default_compress_level=data.get("default_compress_level", cls.default_compress_level),
             default_confdir=data.get("default_confdir", cls.default_confdir),
             default_build_system=data.get("default_build_system", cls.default_build_system),

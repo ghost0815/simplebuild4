@@ -107,6 +107,26 @@ if [ "$1" == "update" ]; then
         online_rev=$(cd /tmp && git ls-remote "$S4_URL" HEAD | cut -c1-8)
         echo -e "\n  \033[1;32mUpdated to $online_rev\033[0m"
     fi
+
+    # --- Restart background services so they pick up the new code ---
+    # We only restart services whose WorkingDirectory points to this s4 root,
+    # so multiple parallel s4 installs don't trample on each other.
+    if command -v systemctl >/dev/null 2>&1; then
+        here="$(pwd)"
+        for svc_glob in "/etc/systemd/system/s4-web*.service" "/etc/systemd/system/s4-mcp*.service"; do
+            for unit in $svc_glob; do
+                [ -f "$unit" ] || continue
+                grep -q "WorkingDirectory=$here" "$unit" 2>/dev/null || continue
+                svc="$(basename "$unit" .service)"
+                if systemctl is-active --quiet "$svc"; then
+                    echo "  Restarting $svc..."
+                    sudo -n systemctl restart "$svc" 2>/dev/null \
+                        && echo "    done" \
+                        || echo "    [warn] restart failed (sudo required?)"
+                fi
+            done
+        done
+    fi
     echo ""
     exit 0
 fi
@@ -128,6 +148,33 @@ if [ -z "$PYTHON" ]; then
     echo "  Found: $(python3 --version 2>/dev/null || echo 'none')"
     echo "  Install Python 3.10+ or compile from source."
     exit 1
+fi
+
+# --- MCP subcommand: install mcp (+ starlette/uvicorn for --http) and run ---
+# No textual dependency needed — kept lightweight for headless hosts.
+if [ "$1" == "mcp" ]; then
+    shift
+    MCP_OK=$($PYTHON -c "import mcp; print('ok')" 2>/dev/null)
+    if [ "$MCP_OK" != "ok" ]; then
+        echo "  Installing MCP Python SDK..."
+        $PYTHON -m pip install --user --upgrade mcp 2>/dev/null \
+            || $PYTHON -m pip install --user --upgrade --break-system-packages mcp 2>/dev/null \
+            || { echo "  pip install mcp failed"; exit 1; }
+    fi
+    # HTTP extras only installed when --http is requested
+    for arg in "$@"; do
+        if [ "$arg" == "--http" ]; then
+            HTTP_OK=$($PYTHON -c "import starlette, uvicorn; print('ok')" 2>/dev/null)
+            if [ "$HTTP_OK" != "ok" ]; then
+                echo "  Installing starlette + uvicorn for HTTP transport..."
+                $PYTHON -m pip install --user --upgrade starlette uvicorn 2>/dev/null \
+                    || $PYTHON -m pip install --user --upgrade --break-system-packages starlette uvicorn 2>/dev/null \
+                    || { echo "  pip install starlette uvicorn failed"; exit 1; }
+            fi
+            break
+        fi
+    done
+    exec $PYTHON -m mcp_server "$@"
 fi
 
 # --- Check Python modules (import + version) ---

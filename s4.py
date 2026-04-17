@@ -211,6 +211,9 @@ if __name__ == "__main__":
             sys.exit(cli_targets())
         elif cmd == "run-job":
             sys.exit(cli_run_job(sys.argv[2:]))
+        elif cmd == "mcp":
+            from mcp_server.server import main as mcp_main
+            sys.exit(mcp_main(sys.argv[2:]))
         elif cmd == "update":
             # Handled by shell wrapper
             print("Use ./s4 update (handled by shell wrapper)")

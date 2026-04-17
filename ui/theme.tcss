@@ -339,7 +339,7 @@ Collapsible:focus-within > CollapsibleTitle {
     margin: 0 0 0 2;
 }
 
-#web-btn-gap {
+#web-btn-gap, #mcp-btn-gap {
     width: 1fr;
 }
 
@@ -373,6 +373,13 @@ Collapsible:focus-within > CollapsibleTitle {
     width: 31;
     height: 3;
     padding: 1 0 0 0;
+    color: $text-muted;
+}
+
+.web-svc-url-label {
+    width: auto;
+    height: 3;
+    padding: 1 1 0 1;
     color: $text-muted;
 }
 

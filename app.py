@@ -23,6 +23,11 @@ def main():
         app._web_stop()
     except Exception:
         pass
+    # Stop MCP service subprocess if it was running
+    try:
+        app._mcp_stop()
+    except Exception:
+        pass
 
     # Restore terminal state after Textual exits — prevents invisible
     # input if the app crashed or exited uncleanly from raw mode.

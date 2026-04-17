@@ -16,6 +16,7 @@ _ICONS = {
     "gear":     ("⚙", "cfg"),
     "reset":    ("↺", "def"),
     "marker":   ("▶", "►"),
+    "copy":     ("📋", "cp"),
 }
 
 _ascii_mode: bool = False
