@@ -376,13 +376,6 @@ Collapsible:focus-within > CollapsibleTitle {
     color: $text-muted;
 }
 
-.web-svc-url-label {
-    width: auto;
-    height: 3;
-    padding: 1 1 0 1;
-    color: $text-muted;
-}
-
 
 .flag-row {
     height: 3;

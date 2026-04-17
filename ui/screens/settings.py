@@ -260,7 +260,6 @@ class SettingsScreen(Screen):
                         yield Button(t("web_start"), id="btn-web-start", variant="success", disabled=True)
                         yield Button(t("web_stop"), id="btn-web-stop", variant="warning", disabled=True)
                     with Horizontal(classes="web-btn-row"):
-                        yield Static("", id="web-svc-url", classes="web-svc-url-label")
                         yield Static("", id="web-btn-gap")
                         yield Button(t("web_setup"), id="btn-web-setup", variant="primary")
 
@@ -365,7 +364,6 @@ class SettingsScreen(Screen):
                         yield Button(t("mcp_start"), id="btn-mcp-start", variant="success", disabled=True)
                         yield Button(t("mcp_stop"), id="btn-mcp-stop", variant="warning", disabled=True)
                     with Horizontal(classes="web-btn-row"):
-                        yield Static("", id="mcp-svc-url", classes="web-svc-url-label")
                         yield Static("", id="mcp-btn-gap")
                         yield Button(t("mcp_setup"), id="btn-mcp-setup", variant="primary")
 
@@ -582,15 +580,17 @@ class SettingsScreen(Screen):
             start_btn.disabled = (not installed or toggle_on)
             self.query_one("#btn-web-stop", Button).disabled = (
                 not installed or not running)
-            # URL preview (next to the Setup button)
+            # URL preview in the collapsible title — visible even when
+            # the section is collapsed, and shows the exact URL a client
+            # should connect to.
             try:
                 s = self.app.settings
                 url = self._compose_service_url(
                     host=s.web_host, port=s.web_port, ssl=s.web_ssl,
                     dns_name=s.web_dns_name,
                 )
-                self.query_one("#web-svc-url", Static).update(
-                    f"[dim]{url}[/dim]"
+                self.query_one("#col-webservice", Collapsible).title = (
+                    f"{t('section_webservice')}  ({url})"
                 )
             except Exception:
                 pass
@@ -682,16 +682,17 @@ class SettingsScreen(Screen):
             start_btn.disabled = (not installed or toggle_on)
             self.query_one("#btn-mcp-stop", Button).disabled = (
                 not installed or not running)
-            # URL preview — include the /sse suffix so users can paste
-            # it straight into a Claude Desktop / Claude.ai MCP config.
+            # URL preview in the collapsible title — the /sse suffix is
+            # the exact endpoint clients use, so they can paste it
+            # straight into a Claude Desktop / Claude.ai MCP config.
             try:
                 s = self.app.settings
                 url = self._compose_service_url(
                     host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
                     dns_name=s.mcp_dns_name, path_suffix="/sse",
                 )
-                self.query_one("#mcp-svc-url", Static).update(
-                    f"[dim]{url}[/dim]"
+                self.query_one("#col-mcpservice", Collapsible).title = (
+                    f"{t('section_mcpservice')}  ({url})"
                 )
             except Exception:
                 pass
