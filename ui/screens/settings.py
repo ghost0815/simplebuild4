@@ -52,6 +52,7 @@ INPUT_MAP = {
     "set-mcp-token": "mcp_token",
     "set-mcp-ssl-cert": "mcp_ssl_cert",
     "set-mcp-ssl-key": "mcp_ssl_key",
+    "set-mcp-root-path": "mcp_root_path",
     "set-ctng-dir": "ctng_dir",
     "set-oesdk-dir": "oesdk_dir",
     "set-andk-dir": "andk_dir",
@@ -328,10 +329,18 @@ class SettingsScreen(Screen):
                     )
                     _mcp_allow_sw = Switch(value=s.mcp_allow_actions, id="set-mcp-allow-actions")
                     _mcp_allow_sw.tooltip = t("tt_mcp_allow_actions")
+                    _mcp_rp_input = Input(
+                        value=s.mcp_root_path,
+                        placeholder=t("mcp_root_path_placeholder"),
+                        id="set-mcp-root-path",
+                    )
+                    _mcp_rp_input.tooltip = t("tt_mcp_root_path")
                     yield Horizontal(
                         Static(f" {t('mcp_allow_actions')}", classes="s-label"),
                         _mcp_allow_sw,
-                        classes="s-toggle",
+                        Static(f" {t('mcp_root_path')}", classes="s-label-rp"),
+                        _mcp_rp_input,
+                        classes="s-row",
                     )
 
                 # Row 4: SSL Certificate | Private Key
@@ -687,9 +696,17 @@ class SettingsScreen(Screen):
             # straight into a Claude Desktop / Claude.ai MCP config.
             try:
                 s = self.app.settings
+                # When running behind a reverse proxy, the root_path
+                # prefix belongs in the public URL too.
+                rp = (s.mcp_root_path or "").strip()
+                if rp:
+                    if not rp.startswith("/"):
+                        rp = "/" + rp
+                    rp = rp.rstrip("/")
                 url = self._compose_service_url(
                     host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
-                    dns_name=s.mcp_dns_name, path_suffix="/sse",
+                    dns_name=s.mcp_dns_name,
+                    path_suffix=f"{rp}/sse",
                 )
                 self.query_one("#col-mcpservice", Collapsible).title = (
                     f"{t('section_mcpservice')}  ({url})"
@@ -721,6 +738,7 @@ class SettingsScreen(Screen):
                 ssl=s.mcp_ssl,
                 ssl_cert=s.mcp_ssl_cert,
                 ssl_key=s.mcp_ssl_key,
+                root_path=s.mcp_root_path,
                 logs_dir=self.app.paths.logs_dir,
                 organize_logs=s.organize_logs,
                 log=_log,

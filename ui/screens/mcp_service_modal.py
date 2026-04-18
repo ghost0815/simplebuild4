@@ -202,6 +202,7 @@ class McpServiceSetupModal(ModalScreen[None]):
                     ssl=s.mcp_ssl,
                     ssl_cert=s.mcp_ssl_cert,
                     ssl_key=s.mcp_ssl_key,
+                    root_path=s.mcp_root_path,
                     logs_dir=self.app.paths.logs_dir,
                     organize_logs=s.organize_logs,
                     password=password,

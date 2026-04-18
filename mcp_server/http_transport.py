@@ -33,8 +33,16 @@ from typing import Optional
 from mcp_server.context import McpContext
 
 
-def serve(ctx: McpContext, host: str, port: int) -> int:
-    """Block serving HTTP+SSE until interrupted. Returns exit code."""
+def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
+    """Block serving HTTP+SSE until interrupted. Returns exit code.
+
+    ``root_path`` is the ASGI root-path prefix. When the server runs
+    behind a reverse proxy that terminates at a sub-path (e.g. Apache
+    with ``<Location /s4-mcp/>``), setting ``root_path='/s4-mcp'`` makes
+    the SSE transport announce the correct absolute path to the client
+    for the POST-endpoint — the MCP SDK reads this from
+    ``scope['root_path']`` and prefixes its ``/messages/`` endpoint.
+    """
     try:
         import uvicorn
         from starlette.applications import Starlette
@@ -114,24 +122,56 @@ def serve(ctx: McpContext, host: str, port: int) -> int:
             return
         await sse.handle_post_message(scope, receive, send)
 
-    app = Starlette(routes=[
+    # --- ASGI middleware: honor X-Forwarded-Prefix -----------------------
+    # When behind a reverse proxy that strips a prefix before sending the
+    # request upstream (typical Apache ``ProxyPass /s4-mcp/ http://.../``),
+    # the proxy should set ``X-Forwarded-Prefix: /s4-mcp``. We read that
+    # header and write it into the ASGI scope's ``root_path`` so the MCP
+    # SDK's SSE transport announces the correct POST endpoint to the
+    # client. An explicit ``--root-path`` / settings value on the server
+    # always wins — this middleware only fills the gap when no root_path
+    # was configured.
+    explicit_root_path = (root_path or "").strip()
+
+    class ForwardedPrefixMiddleware:
+        def __init__(self, inner):
+            self._inner = inner
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] == "http" and not explicit_root_path:
+                for name, value in scope.get("headers", ()):
+                    if name == b"x-forwarded-prefix":
+                        prefix = value.decode("latin-1", errors="ignore").strip()
+                        if prefix and prefix != "/":
+                            prefix = "/" + prefix.strip("/")
+                            scope = dict(scope)
+                            scope["root_path"] = prefix
+                        break
+            return await self._inner(scope, receive, send)
+
+    routes = [
         Route("/health", endpoint=handle_health, methods=["GET"]),
         Route("/sse", endpoint=handle_sse, methods=["GET"]),
         Mount("/messages/", app=guarded_messages),
-    ])
+    ]
+    starlette_app = Starlette(routes=routes)
+    app = ForwardedPrefixMiddleware(starlette_app)
 
     use_tls = bool(ctx.ssl_certfile and ctx.ssl_keyfile)
     proto = "https" if use_tls else "http"
+    root_info = f", root_path: {root_path}" if root_path else ""
     sys.stderr.write(
         f"s4-mcp {proto.upper()} server listening on {host}:{port} "
         f"(auth: {'on' if ctx.http_token else 'OFF \u2014 LOCALHOST ONLY!'}, "
-        f"tls: {'on' if use_tls else 'off'})\n"
+        f"tls: {'on' if use_tls else 'off'}{root_info})\n"
     )
 
     kwargs = dict(host=host, port=port, log_level="warning", access_log=False)
     if use_tls:
         kwargs["ssl_certfile"] = ctx.ssl_certfile
         kwargs["ssl_keyfile"] = ctx.ssl_keyfile
+    if root_path:
+        kwargs["root_path"] = root_path
 
     uvicorn.run(app, **kwargs)
     return 0

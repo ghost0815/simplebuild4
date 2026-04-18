@@ -68,7 +68,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory={root}
-ExecStart={s4} mcp --http --host {host} --port {port}{action_flags}{ssl_flags}
+ExecStart={s4} mcp --http --host {host} --port {port}{action_flags}{ssl_flags}{root_path_flag}
 Environment=PATH={path}
 EnvironmentFile={env_file}
 Restart=on-failure
@@ -295,6 +295,7 @@ class McpServiceManager:
         ssl: bool = False,
         ssl_cert: str = "",
         ssl_key: str = "",
+        root_path: str = "",
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
         password: str = "",
@@ -337,12 +338,14 @@ class McpServiceManager:
         # SSL file paths go directly into the unit — not secrets, and
         # baking them in avoids systemd env-var expansion quirks.
         ssl_flags = f" --ssl-cert {ssl_cert} --ssl-key {ssl_key}" if ssl else ""
+        root_path_flag = f" --root-path {root_path}" if root_path else ""
 
         unit = _UNIT_TEMPLATE.format(
             root=self.root, s4=s4,
             host=host, port=port,
             action_flags=action_flags,
             ssl_flags=ssl_flags,
+            root_path_flag=root_path_flag,
             path=path, log_path=log_file, user=user,
             env_file=self._env_file,
             output_mode=_systemd_output_mode(),
@@ -403,6 +406,7 @@ class McpServiceManager:
         ssl: bool = False,
         ssl_cert: str = "",
         ssl_key: str = "",
+        root_path: str = "",
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
         password: str = "",
@@ -441,12 +445,14 @@ class McpServiceManager:
         log_file = _log_dir / f"{self.service}.log"
         action_flags = " --allow-actions" if allow_actions else ""
         ssl_flags = f" --ssl-cert {ssl_cert} --ssl-key {ssl_key}" if ssl else ""
+        root_path_flag = f" --root-path {root_path}" if root_path else ""
 
         unit = _UNIT_TEMPLATE.format(
             root=self.root, s4=s4,
             host=host, port=port,
             action_flags=action_flags,
             ssl_flags=ssl_flags,
+            root_path_flag=root_path_flag,
             path=path, log_path=log_file, user=user,
             env_file=self._env_file,
             output_mode=_systemd_output_mode(),

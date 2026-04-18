@@ -68,6 +68,8 @@ class Settings:
     mcp_ssl: bool = False          # enable HTTPS
     mcp_ssl_cert: str = ""         # path to SSL certificate (empty = auto-generate)
     mcp_ssl_key: str = ""          # path to SSL private key (empty = auto-generate)
+    mcp_root_path: str = ""        # ASGI root_path prefix when behind a
+                                   # reverse proxy (e.g. '/s4-mcp')
 
     # Toolchain Builders
     ctng_dir: str = ""             # crosstool-ng install dir (empty = data/builders/crosstool-ng)
@@ -131,6 +133,7 @@ class Settings:
             "mcp_ssl": self.mcp_ssl,
             "mcp_ssl_cert": self.mcp_ssl_cert,
             "mcp_ssl_key": self.mcp_ssl_key,
+            "mcp_root_path": self.mcp_root_path,
             "default_compress_level": self.default_compress_level,
             "default_confdir": self.default_confdir,
             "default_build_system": self.default_build_system,
@@ -201,6 +204,7 @@ class Settings:
             mcp_ssl=data.get("mcp_ssl", False),
             mcp_ssl_cert=data.get("mcp_ssl_cert", ""),
             mcp_ssl_key=data.get("mcp_ssl_key", ""),
+            mcp_root_path=data.get("mcp_root_path", ""),
             default_compress_level=data.get("default_compress_level", cls.default_compress_level),
             default_confdir=data.get("default_confdir", cls.default_confdir),
             default_build_system=data.get("default_build_system", cls.default_build_system),

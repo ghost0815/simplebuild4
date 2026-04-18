@@ -59,10 +59,10 @@ _WRITABLE_FIELDS = {
     "log_max_count",
     "log_max_size_mb",
 
-    # MCP policy knobs — allow_actions is intentionally writable so
-    # an LLM with temporary elevated trust can loosen/tighten its own
-    # permissions; host/port/token remain TUI-only.
-    "mcp_allow_actions",
+    # MCP service knobs (host, port, token, allow_actions, root_path,
+    # web_* counterparts) are intentionally NOT writable via MCP — an LLM
+    # must not be able to self-escalate its own permissions or rebind the
+    # service. All MCP/Web policy lives in the TUI only.
 }
 
 

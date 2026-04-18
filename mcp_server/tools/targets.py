@@ -225,24 +225,43 @@ def _apply_patch_to_target(target: Target, patch: dict[str, Any]) -> None:
             for tc in (patch["toolchains"] or [])
         ]
 
-    # deployment — full list replace
+    # deployment — full list replace, but preserve secrets (password,
+    # su_password) from matching existing entries. MCP callers cannot
+    # set/read those fields, so a naive replace would silently wipe
+    # working credentials on any update_target(deployment=...) call.
+    # Match by ``name`` first, then fall back to ``host:user``.
     if "deployment" in patch:
-        target.deployment = [
-            DeploymentConfig(
-                name=str(d.get("name", "")),
+        def _dkey(name: str, host: str, user: str) -> str:
+            return name if name else f"{host}:{user}"
+
+        old_by_key: dict[str, DeploymentConfig] = {}
+        for old in (target.deployment or []):
+            old_by_key[_dkey(old.name, old.host, old.user)] = old
+
+        new_list: list[DeploymentConfig] = []
+        for d in (patch["deployment"] or []):
+            if not isinstance(d, dict):
+                continue
+            name = str(d.get("name", ""))
+            host = str(d.get("host", ""))
+            user = str(d.get("user", "root"))
+            preserved = old_by_key.get(_dkey(name, host, user))
+            new_list.append(DeploymentConfig(
+                name=name,
                 enabled=bool(d.get("enabled", True)),
                 source=str(d.get("source", "")),
                 toolchain=str(d.get("toolchain", "")),
-                host=str(d.get("host", "")),
-                user=str(d.get("user", "root")),
+                host=host,
+                user=user,
                 port=int(d.get("port", 22) or 22),
                 key=str(d.get("key", "")),
                 target_path=str(d.get("target_path", "/usr/bin/oscam")),
                 pre_cmd=str(d.get("pre_cmd", "")),
                 post_cmd=str(d.get("post_cmd", "")),
-            )
-            for d in (patch["deployment"] or []) if isinstance(d, dict)
-        ]
+                password=preserved.password if preserved else "",
+                su_password=preserved.su_password if preserved else "",
+            ))
+        target.deployment = new_list
 
 
 # ------------------------------------------------------------------ write impls

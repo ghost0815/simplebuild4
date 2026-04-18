@@ -94,10 +94,15 @@ def _get_repository_impl(ctx: McpContext, name: str) -> dict[str, Any]:
 
 
 def _apply_repo_patch(cfg: RepoConfig, patch: dict[str, Any]) -> None:
-    """Write allowed fields from ``patch`` onto ``cfg`` in place."""
+    """Write allowed fields from ``patch`` onto ``cfg`` in place.
+
+    Security: ``auth_pass`` is intentionally NOT in the allowlist. Credentials
+    must be set via the TUI (Settings → Repositories) only — an LLM must not
+    be able to inject or rotate repo passwords via ``update_repository``.
+    """
     _allowed = {
         "url", "branch", "clone_depth", "vcs",
-        "auth_method", "ssh_key", "auth_user", "auth_pass",
+        "auth_method", "ssh_key", "auth_user",
         "exclude_from_automation",
     }
     for key in _allowed:
@@ -318,7 +323,8 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                     "Add a new named repository (oscam source identity) to "
                     "data/repos.yaml. 'spec' accepts optional extra fields: "
                     "branch, clone_depth, vcs, auth_method, ssh_key, "
-                    "auth_user, auth_pass, exclude_from_automation."
+                    "auth_user, exclude_from_automation. "
+                    "(auth_pass is TUI-only and cannot be set via MCP.)"
                 ),
                 inputSchema={
                     "type": "object",
@@ -336,8 +342,9 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                 description=(
                     "Patch fields of an existing repository config. "
                     "Allowed keys: url, branch, clone_depth, vcs, "
-                    "auth_method, ssh_key, auth_user, auth_pass, "
-                    "exclude_from_automation."
+                    "auth_method, ssh_key, auth_user, "
+                    "exclude_from_automation. "
+                    "(auth_pass is TUI-only and cannot be set via MCP.)"
                 ),
                 inputSchema={
                     "type": "object",

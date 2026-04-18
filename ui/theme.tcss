@@ -376,6 +376,11 @@ Collapsible:focus-within > CollapsibleTitle {
     color: $text-muted;
 }
 
+.s-label-rp {
+    width: 14;
+    padding: 1 1 0 2;
+}
+
 
 .flag-row {
     height: 3;

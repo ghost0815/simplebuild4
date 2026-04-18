@@ -131,10 +131,10 @@ async def _serve_stdio(ctx: McpContext) -> None:
         await server.run(read_stream, write_stream, init_options)
 
 
-def _serve_http(ctx: McpContext, host: str, port: int) -> int:
+def _serve_http(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
     """HTTP+SSE transport (delegated to mcp_server.http_transport)."""
     from mcp_server.http_transport import serve as serve_http
-    return serve_http(ctx, host, port)
+    return serve_http(ctx, host, port, root_path=root_path)
 
 
 # ------------------------------------------------------------------ CLI
@@ -161,6 +161,13 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                    help="Path to SSL certificate (HTTPS)")
     p.add_argument("--ssl-key", default="",
                    help="Path to SSL private key (HTTPS)")
+    p.add_argument("--root-path", default="",
+                   help=(
+                       "ASGI root_path prefix when behind a reverse proxy "
+                       "(e.g. '/s4-mcp' if Apache terminates at "
+                       "https://host/s4-mcp/). The SSE transport uses this "
+                       "to tell the client the correct POST endpoint."
+                   ))
     return p.parse_args(argv)
 
 
@@ -169,6 +176,12 @@ def main(argv: list[str]) -> int:
     token = (args.token or os.environ.get("S4_MCP_TOKEN", "")).strip() or None
     ssl_cert = (args.ssl_cert or os.environ.get("S4_MCP_SSL_CERT", "")).strip() or None
     ssl_key = (args.ssl_key or os.environ.get("S4_MCP_SSL_KEY", "")).strip() or None
+    root_path = (args.root_path or os.environ.get("S4_MCP_ROOT_PATH", "")).strip()
+    # Normalise: must start with '/', must not end with '/'
+    if root_path and not root_path.startswith("/"):
+        root_path = "/" + root_path
+    if root_path.endswith("/"):
+        root_path = root_path.rstrip("/")
     # Both must be set to enable TLS; a half-config is rejected early
     if bool(ssl_cert) != bool(ssl_key):
         sys.stderr.write(
@@ -186,7 +199,7 @@ def main(argv: list[str]) -> int:
 
     try:
         if args.http:
-            return _serve_http(ctx, args.host, args.port)
+            return _serve_http(ctx, args.host, args.port, root_path=root_path)
         asyncio.run(_serve_stdio(ctx))
     except KeyboardInterrupt:
         return 0

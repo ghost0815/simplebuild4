@@ -319,6 +319,9 @@ class S4App(App):
             cmd.append("--allow-actions")
         if use_ssl and ssl_cert and ssl_key:
             cmd += ["--ssl-cert", ssl_cert, "--ssl-key", ssl_key]
+        root_path = (self.settings.mcp_root_path or "").strip()
+        if root_path:
+            cmd += ["--root-path", root_path]
 
         env = os.environ.copy()
         if token:
