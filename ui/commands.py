@@ -78,7 +78,10 @@ class S4Commands(Provider):
         if "Theme" in system_by_name:
             cmd = system_by_name["Theme"]
             commands.append((t("cmd_theme"), t("cmd_theme_help"), cmd.callback))
-        # 6. Quit (system)
+        # 6. Wiki (opens project wiki in the user's browser)
+        commands.append((t("cmd_wiki"), t("cmd_wiki_help"),
+                         self._make_app_callback("action_open_wiki")))
+        # 7. Quit (system)
         if "Quit" in system_by_name:
             cmd = system_by_name["Quit"]
             commands.append((t("cmd_quit"), t("cmd_quit_help"), cmd.callback))

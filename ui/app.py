@@ -618,6 +618,61 @@ class S4App(App):
         """Override Textual's default Keys to show our keyboard reference."""
         self.action_show_keys()
 
+    def action_open_wiki(self) -> None:
+        """Open the project wiki in the user's default browser.
+
+        Tries a chain of openers so it works on Linux desktops, WSL
+        (falls back to ``cmd.exe /c start``) and macOS. Notifies the
+        URL for copy/paste if nothing can launch a browser (typical
+        for headless build hosts — user opens the URL on their laptop
+        instead).
+        """
+        import shutil
+        import subprocess
+        url = "https://git.streamboard.tv/common/simplebuild4/wikis/home"
+        candidates: list[list[str]] = []
+        for opener in ("wslview", "xdg-open", "open"):
+            if shutil.which(opener):
+                candidates.append([opener, url])
+        # WSL without wslu: reach out to Windows via cmd.exe
+        if shutil.which("cmd.exe"):
+            candidates.append(["cmd.exe", "/c", "start", "", url])
+        for cmd in candidates:
+            try:
+                subprocess.Popen(
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+                self.notify(t("cmd_wiki_opened"), timeout=2)
+                return
+            except Exception:
+                continue
+        # Last resort — Python's webbrowser module
+        try:
+            import webbrowser
+            if webbrowser.open(url):
+                self.notify(t("cmd_wiki_opened"), timeout=2)
+                return
+        except Exception:
+            pass
+        # Nothing worked — copy to clipboard via OSC-52 so the user
+        # can paste it into their own browser.
+        try:
+            self.copy_to_clipboard(url)
+            self.notify(
+                t("cmd_wiki_copied", url=url),
+                severity="warning",
+                timeout=6,
+            )
+        except Exception:
+            self.notify(
+                t("cmd_wiki_manual", url=url),
+                severity="warning",
+                timeout=10,
+            )
+
     def action_show_license(self) -> None:
         """Show COPYING license file in a modal."""
         from textual.screen import ModalScreen
