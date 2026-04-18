@@ -82,7 +82,7 @@ class WebServiceSetupModal(ModalScreen[None]):
             with Horizontal(id="ws-buttons"):
                 yield Button(t("web_svc_install_btn"), id="ws-install", variant="primary")
                 yield Button(t("web_svc_remove_btn"), id="ws-remove", variant="error", disabled=True)
-                yield Button(t("cancel"), id="ws-close")
+                yield Button(t("close"), id="ws-close")
 
     def on_mount(self) -> None:
         self._log_widget = self.query_one("#ws-log", RichLog)

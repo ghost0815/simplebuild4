@@ -87,7 +87,7 @@ class McpServiceSetupModal(ModalScreen[None]):
             with Horizontal(id="mcp-buttons"):
                 yield Button(t("mcp_svc_install_btn"), id="mcp-install", variant="primary")
                 yield Button(t("mcp_svc_remove_btn"), id="mcp-remove", variant="error", disabled=True)
-                yield Button(t("cancel"), id="mcp-close")
+                yield Button(t("close"), id="mcp-close")
 
     def on_mount(self) -> None:
         self._log_widget = self.query_one("#mcp-log", RichLog)

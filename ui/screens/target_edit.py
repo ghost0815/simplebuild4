@@ -1463,26 +1463,10 @@ class TargetEditScreen(Screen):
             else:
                 event.input.add_class("tc-default")
 
-        # UPX binary path validation
-        if iid == "t-upx-binary":
-            from pathlib import Path as _P
-            import subprocess as _sp
-            upx_path = event.value.strip()
-            try:
-                switch = self.query_one("#f-use-compress", Switch)
-                if upx_path and _P(upx_path).exists():
-                    try:
-                        upx_ver = _sp.check_output([upx_path, "--version"], text=True, stderr=_sp.DEVNULL, timeout=5).splitlines()[0]
-                    except Exception:
-                        upx_ver = "OK"
-                    switch.tooltip = f"{upx_path} — {upx_ver}"
-                elif upx_path:
-                    switch.tooltip = f"{upx_path} — not found!"
-                    self.notify(t("upx_not_found", path=upx_path), severity="warning", timeout=3)
-                else:
-                    switch.tooltip = "upx not configured"
-            except Exception:
-                pass
+        # NOTE: UPX binary path validation used to run here on every
+        # keystroke, which spammed "not found" warnings while the user
+        # was still typing the path. It now runs on Submitted (Enter /
+        # focus leaves the field) — see ``on_input_submitted``.
 
         # STAPI_LIB field style tracking
         if iid == "f-stapi-lib":
@@ -1498,6 +1482,35 @@ class TargetEditScreen(Screen):
             iid = event.input.id or ""
         except Exception:
             return
+        # Common UPX binary path validation — runs when focus leaves
+        # the field (or on Enter), not on every keystroke, so typing
+        # an absolute path doesn't spam "not found" warnings char by
+        # char.
+        if iid == "t-upx-binary":
+            from pathlib import Path as _P
+            import subprocess as _sp
+            upx_path = event.input.value.strip()
+            try:
+                switch = self.query_one("#f-use-compress", Switch)
+                if upx_path and _P(upx_path).exists():
+                    try:
+                        upx_ver = _sp.check_output(
+                            [upx_path, "--version"],
+                            text=True, stderr=_sp.DEVNULL, timeout=5,
+                        ).splitlines()[0]
+                    except Exception:
+                        upx_ver = "OK"
+                    switch.tooltip = f"{upx_path} — {upx_ver}"
+                elif upx_path:
+                    switch.tooltip = f"{upx_path} — not found!"
+                    self.notify(
+                        t("upx_not_found", path=upx_path),
+                        severity="warning", timeout=3,
+                    )
+                else:
+                    switch.tooltip = "upx not configured"
+            except Exception:
+                pass
         # Update UPX switch tooltip when UPX binary path changes
         if iid.startswith("tc-upx-"):
             sid = iid.split("-", 2)[2]

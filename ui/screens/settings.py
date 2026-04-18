@@ -374,6 +374,10 @@ class SettingsScreen(Screen):
                         yield Button(t("mcp_stop"), id="btn-mcp-stop", variant="warning", disabled=True)
                     with Horizontal(classes="web-btn-row"):
                         yield Static("", id="mcp-btn-gap")
+                        _btn_test = Button(t("mcp_test"), id="btn-mcp-test",
+                                           variant="default", disabled=True)
+                        _btn_test.tooltip = t("tt_mcp_test")
+                        yield _btn_test
                         yield Button(t("mcp_setup"), id="btn-mcp-setup", variant="primary")
 
             # Toolchain Builders
@@ -691,6 +695,12 @@ class SettingsScreen(Screen):
             start_btn.disabled = (not installed or toggle_on)
             self.query_one("#btn-mcp-stop", Button).disabled = (
                 not installed or not running)
+            # Test button: only useful when the service is actually up.
+            try:
+                self.query_one("#btn-mcp-test", Button).disabled = (
+                    not installed or not running)
+            except Exception:
+                pass
             # URL preview in the collapsible title — the /sse suffix is
             # the exact endpoint clients use, so they can paste it
             # straight into a Claude Desktop / Claude.ai MCP config.
@@ -841,6 +851,28 @@ class SettingsScreen(Screen):
             self._mcp_svc_action("restart" if mgr.is_running() else "start")
         elif event.button.id == "btn-mcp-stop":
             self._mcp_svc_action("stop")
+        elif event.button.id == "btn-mcp-test":
+            # Spawn the @modelcontextprotocol/inspector against the
+            # configured local service. URL includes the reverse-proxy
+            # root_path so the inspector talks to whatever clients see.
+            try:
+                s = self.app.settings
+                rp = (s.mcp_root_path or "").strip()
+                if rp:
+                    if not rp.startswith("/"):
+                        rp = "/" + rp
+                    rp = rp.rstrip("/")
+                url = self._compose_service_url(
+                    host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
+                    dns_name=s.mcp_dns_name,
+                    path_suffix=f"{rp}/sse",
+                )
+                from ui.screens.mcp_inspector_modal import McpInspectorModal
+                self.app.push_screen(
+                    McpInspectorModal(server_url=url, token=s.mcp_token or ""),
+                )
+            except Exception:
+                import traceback; traceback.print_exc()
 
     def _open_file_picker(self, target_input_id: str, label: str) -> None:
         """Open file picker dialog and write the result into the given input."""
