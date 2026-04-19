@@ -273,7 +273,9 @@ CLI:
 
 ```bash
 ./s4 mcp                       # stdio transport — spawn from an MCP client
-./s4 mcp --http                # HTTP / SSE server
+./s4 mcp --transport http      # Streamable HTTP (spec 2025-03-26, POST /mcp)
+./s4 mcp --transport sse       # legacy HTTP+SSE (spec 2024-11-05, /sse + /messages/)
+./s4 mcp --http                # legacy alias for --transport sse
     [--host 0.0.0.0]
     [--port 8181]
     [--token SECRET]           # Bearer auth (empty = anonymous, localhost-only)
@@ -281,6 +283,12 @@ CLI:
     [--root-path /s4-mcp]      # reverse-proxy URL prefix
     [--ssl-cert … --ssl-key …]
 ```
+
+Default transport for new installs is **Streamable HTTP** (`--transport http`).
+Pick the endpoint based on your client:
+
+* Streamable HTTP → `https://host/s4-mcp/mcp`
+* Legacy SSE    → `https://host/s4-mcp/sse`
 
 Env var `S4_MCP_ROOT_PATH` overrides `--root-path`. Behind an Apache /
 nginx reverse proxy, setting `X-Forwarded-Prefix` in the proxy config is

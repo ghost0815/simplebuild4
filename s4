@@ -150,7 +150,7 @@ if [ -z "$PYTHON" ]; then
     exit 1
 fi
 
-# --- MCP subcommand: install mcp (+ starlette/uvicorn for --http) and run ---
+# --- MCP subcommand: install mcp (+ starlette/uvicorn for HTTP modes) + run ---
 # No textual dependency needed — kept lightweight for headless hosts.
 if [ "$1" == "mcp" ]; then
     shift
@@ -161,19 +161,28 @@ if [ "$1" == "mcp" ]; then
             || $PYTHON -m pip install --user --upgrade --break-system-packages mcp 2>/dev/null \
             || { echo "  pip install mcp failed"; exit 1; }
     fi
-    # HTTP extras only installed when --http is requested
+    # HTTP extras (starlette + uvicorn) only needed for SSE / Streamable HTTP
+    NEEDS_HTTP=0
+    PREV=""
     for arg in "$@"; do
-        if [ "$arg" == "--http" ]; then
-            HTTP_OK=$($PYTHON -c "import starlette, uvicorn; print('ok')" 2>/dev/null)
-            if [ "$HTTP_OK" != "ok" ]; then
-                echo "  Installing starlette + uvicorn for HTTP transport..."
-                $PYTHON -m pip install --user --upgrade starlette uvicorn 2>/dev/null \
-                    || $PYTHON -m pip install --user --upgrade --break-system-packages starlette uvicorn 2>/dev/null \
-                    || { echo "  pip install starlette uvicorn failed"; exit 1; }
-            fi
-            break
+        case "$arg" in
+            --http) NEEDS_HTTP=1 ;;
+            --transport=sse|--transport=http) NEEDS_HTTP=1 ;;
+        esac
+        if [ "$PREV" == "--transport" ] && { [ "$arg" == "sse" ] || [ "$arg" == "http" ]; }; then
+            NEEDS_HTTP=1
         fi
+        PREV="$arg"
     done
+    if [ "$NEEDS_HTTP" == "1" ]; then
+        HTTP_OK=$($PYTHON -c "import starlette, uvicorn; print('ok')" 2>/dev/null)
+        if [ "$HTTP_OK" != "ok" ]; then
+            echo "  Installing starlette + uvicorn for HTTP transport..."
+            $PYTHON -m pip install --user --upgrade starlette uvicorn 2>/dev/null \
+                || $PYTHON -m pip install --user --upgrade --break-system-packages starlette uvicorn 2>/dev/null \
+                || { echo "  pip install starlette uvicorn failed"; exit 1; }
+        fi
+    fi
     exec $PYTHON -m mcp_server "$@"
 fi
 

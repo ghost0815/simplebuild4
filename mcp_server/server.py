@@ -11,8 +11,13 @@ Flags
     Enable tools that start background jobs (build_target, run_automation_job).
 ``--allow-dangerous``
     Reserved for future destructive tools (update s4, write settings).
+``--transport {stdio,sse,http}``
+    Select the transport protocol:
+      * ``stdio`` — default, for local LLM clients.
+      * ``sse``  — legacy HTTP+SSE (two endpoints /sse + /messages).
+      * ``http`` — Streamable HTTP (single /mcp endpoint, spec 2025-03-26).
 ``--http``
-    Switch transport from stdio to HTTP+SSE.
+    Legacy alias for ``--transport sse``. Kept for backward compat.
 ``--host`` / ``--port``
     Bind address for HTTP. Defaults to 127.0.0.1:8765 (bind local only,
     use a reverse proxy for external exposure).
@@ -139,6 +144,14 @@ def _serve_http(ctx: McpContext, host: str, port: int, root_path: str = "") -> i
     return serve_http(ctx, host, port, root_path=root_path)
 
 
+def _serve_streamable_http(
+    ctx: McpContext, host: str, port: int, root_path: str = "",
+) -> int:
+    """Streamable HTTP transport (delegated to streamable_http_transport)."""
+    from mcp_server.streamable_http_transport import serve as serve_streamable
+    return serve_streamable(ctx, host, port, root_path=root_path)
+
+
 # ------------------------------------------------------------------ CLI
 
 
@@ -151,8 +164,11 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
                    help="Enable tools that start background jobs (build_target, ...)")
     p.add_argument("--allow-dangerous", action="store_true",
                    help="Reserved for future destructive tools (writes settings, updates s4)")
+    p.add_argument("--transport", choices=("stdio", "sse", "http"), default=None,
+                   help="Transport protocol: stdio (default), sse (legacy "
+                        "HTTP+SSE), or http (Streamable HTTP, spec 2025-03-26)")
     p.add_argument("--http", action="store_true",
-                   help="Serve HTTP+SSE instead of stdio")
+                   help="Legacy alias for --transport sse")
     p.add_argument("--host", default="127.0.0.1",
                    help="HTTP bind address (default: 127.0.0.1)")
     p.add_argument("--port", type=int, default=8181,
@@ -199,9 +215,27 @@ def main(argv: list[str]) -> int:
         ssl_keyfile=ssl_key,
     )
 
+    # Resolve transport selection. --transport wins; --http is a legacy
+    # alias for --transport sse. If both are set and disagree, error out.
+    transport = args.transport
+    if args.http:
+        if transport and transport != "sse":
+            sys.stderr.write(
+                "ERROR: --http is an alias for '--transport sse' and conflicts "
+                f"with --transport {transport}\n"
+            )
+            return 2
+        transport = "sse"
+    if not transport:
+        transport = "stdio"
+
     try:
-        if args.http:
+        if transport == "sse":
             return _serve_http(ctx, args.host, args.port, root_path=root_path)
+        if transport == "http":
+            return _serve_streamable_http(
+                ctx, args.host, args.port, root_path=root_path,
+            )
         asyncio.run(_serve_stdio(ctx))
     except KeyboardInterrupt:
         return 0

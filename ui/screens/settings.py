@@ -713,10 +713,11 @@ class SettingsScreen(Screen):
                     if not rp.startswith("/"):
                         rp = "/" + rp
                     rp = rp.rstrip("/")
+                _ep = "/mcp" if s.mcp_transport == "http" else "/sse"
                 url = self._compose_service_url(
                     host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
                     dns_name=s.mcp_dns_name,
-                    path_suffix=f"{rp}/sse",
+                    path_suffix=f"{rp}{_ep}",
                 )
                 self.query_one("#col-mcpservice", Collapsible).title = (
                     f"{t('section_mcpservice')}  ({url})"
@@ -748,6 +749,7 @@ class SettingsScreen(Screen):
                 ssl=s.mcp_ssl,
                 ssl_cert=s.mcp_ssl_cert,
                 ssl_key=s.mcp_ssl_key,
+                transport=s.mcp_transport,
                 root_path=s.mcp_root_path,
                 logs_dir=self.app.paths.logs_dir,
                 organize_logs=s.organize_logs,
@@ -862,14 +864,19 @@ class SettingsScreen(Screen):
                     if not rp.startswith("/"):
                         rp = "/" + rp
                     rp = rp.rstrip("/")
+                _ep = "/mcp" if s.mcp_transport == "http" else "/sse"
                 url = self._compose_service_url(
                     host=s.mcp_host, port=s.mcp_port, ssl=s.mcp_ssl,
                     dns_name=s.mcp_dns_name,
-                    path_suffix=f"{rp}/sse",
+                    path_suffix=f"{rp}{_ep}",
                 )
                 from ui.screens.mcp_inspector_modal import McpInspectorModal
                 self.app.push_screen(
-                    McpInspectorModal(server_url=url, token=s.mcp_token or ""),
+                    McpInspectorModal(
+                        server_url=url,
+                        token=s.mcp_token or "",
+                        transport=s.mcp_transport,
+                    ),
                 )
             except Exception:
                 import traceback; traceback.print_exc()

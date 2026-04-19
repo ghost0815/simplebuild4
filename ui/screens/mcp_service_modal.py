@@ -13,7 +13,7 @@ import time
 from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
-from textual.widgets import Static, RichLog, Button, Input
+from textual.widgets import Static, RichLog, Button, Input, Select
 
 from translation import t
 from ui.icons import icon
@@ -30,10 +30,20 @@ class McpServiceSetupModal(ModalScreen[None]):
     }
     #mcp-box {
         width: 110;
-        height: 34;
+        height: 38;
         border: solid $primary;
         background: $surface;
         padding: 1;
+    }
+    #mcp-transport-row {
+        height: 3;
+        margin-top: 1;
+    }
+    #mcp-transport-row Static.s-label-tall {
+        width: 26;
+    }
+    #mcp-transport-row Select {
+        width: 1fr;
     }
     #mcp-title {
         text-style: bold;
@@ -78,6 +88,21 @@ class McpServiceSetupModal(ModalScreen[None]):
             log = RichLog(id="mcp-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
+            # Transport selector: SSE (legacy) vs. Streamable HTTP (current)
+            s = self.app.settings
+            _tsel = Select(
+                options=[
+                    (t("mcp_transport_sse"),  "sse"),
+                    (t("mcp_transport_http"), "http"),
+                ],
+                value=(s.mcp_transport if s.mcp_transport in ("sse", "http") else "sse"),
+                id="mcp-transport",
+                allow_blank=False,
+            )
+            _tsel.tooltip = t("tt_mcp_transport")
+            with Horizontal(id="mcp-transport-row"):
+                yield Static(f" {t('mcp_transport')}", classes="s-label-tall")
+                yield _tsel
             _eye_btn = Button(icon("eye"), id="mcp-eye", classes="tc-reset-btn")
             _eye_btn.tooltip = t("tt_show_password")
             with Horizontal(id="mcp-pwd-row"):
@@ -133,6 +158,11 @@ class McpServiceSetupModal(ModalScreen[None]):
         self._log_widget.write(
             f"  allow actions: {'yes' if s.mcp_allow_actions else 'no (read-only)'}"
         )
+        _t_label = {
+            "sse":  "sse — HTTP+SSE (legacy, /sse + /messages/)",
+            "http": "http — Streamable HTTP (/mcp, spec 2025-03-26)",
+        }.get(s.mcp_transport, "sse (default)")
+        self._log_widget.write(f"  transport:     {_t_label}")
 
         try:
             self.query_one("#mcp-install", Button).disabled = not available
@@ -192,6 +222,26 @@ class McpServiceSetupModal(ModalScreen[None]):
                 if err:
                     self._log(f"[red]{err}[/red]")
                     return
+                # Persist the transport choice selected in the modal so
+                # the main settings panel + future Restarts pick it up.
+                # We also mark it as explicit so load() stops treating a
+                # stored "sse" as a stale implicit default.
+                try:
+                    _tval = self.app.call_from_thread(
+                        lambda: self.query_one("#mcp-transport", Select).value
+                    )
+                    if _tval in ("sse", "http"):
+                        _changed = (
+                            _tval != s.mcp_transport
+                            or not s.mcp_transport_explicit
+                        )
+                        if _changed:
+                            s.mcp_transport = _tval
+                            s.mcp_transport_explicit = True
+                            s.save(self.app.settings_path)
+                            self._log(f"  transport: set to [b]{_tval}[/b]")
+                except Exception:
+                    pass
                 self._log("[bold]Installing MCP service...[/bold]")
                 success = mgr.install(
                     host=s.mcp_host or "0.0.0.0",
@@ -202,6 +252,7 @@ class McpServiceSetupModal(ModalScreen[None]):
                     ssl=s.mcp_ssl,
                     ssl_cert=s.mcp_ssl_cert,
                     ssl_key=s.mcp_ssl_key,
+                    transport=s.mcp_transport,
                     root_path=s.mcp_root_path,
                     logs_dir=self.app.paths.logs_dir,
                     organize_logs=s.organize_logs,

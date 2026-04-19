@@ -314,7 +314,10 @@ class S4App(App):
         self._mcp_log_file = open(log_path, "w", encoding="utf-8")
 
         s4 = str(self.paths.root / "s4")
-        cmd = [s4, "mcp", "--http", "--host", host, "--port", str(port)]
+        transport = (self.settings.mcp_transport or "sse").strip().lower()
+        if transport not in ("sse", "http"):
+            transport = "sse"
+        cmd = [s4, "mcp", "--transport", transport, "--host", host, "--port", str(port)]
         if self.settings.mcp_allow_actions:
             cmd.append("--allow-actions")
         if use_ssl and ssl_cert and ssl_key:

@@ -68,6 +68,16 @@ class Settings:
     mcp_ssl: bool = False          # enable HTTPS
     mcp_ssl_cert: str = ""         # path to SSL certificate (empty = auto-generate)
     mcp_ssl_key: str = ""          # path to SSL private key (empty = auto-generate)
+    # Transport protocol: "sse" (legacy HTTP+SSE, endpoints /sse + /messages/,
+    # spec rev 2024-11-05) or "http" (Streamable HTTP, single /mcp endpoint,
+    # spec rev 2025-03-26). Default is "http" — current MCP spec.
+    mcp_transport: str = "http"
+    # True once the user has picked a transport in the Setup modal. Needed
+    # to distinguish an intentional choice from a value that got persisted
+    # implicitly by a generic Settings.save() call — any stored mcp_transport
+    # without this flag set is treated as unset and falls back to the class
+    # default. Set to True by McpServiceSetupModal on Install.
+    mcp_transport_explicit: bool = False
     mcp_root_path: str = ""        # ASGI root_path prefix when behind a
                                    # reverse proxy (e.g. '/s4-mcp')
 
@@ -133,6 +143,8 @@ class Settings:
             "mcp_ssl": self.mcp_ssl,
             "mcp_ssl_cert": self.mcp_ssl_cert,
             "mcp_ssl_key": self.mcp_ssl_key,
+            "mcp_transport": self.mcp_transport,
+            "mcp_transport_explicit": self.mcp_transport_explicit,
             "mcp_root_path": self.mcp_root_path,
             "default_compress_level": self.default_compress_level,
             "default_confdir": self.default_confdir,
@@ -204,6 +216,20 @@ class Settings:
             mcp_ssl=data.get("mcp_ssl", False),
             mcp_ssl_cert=data.get("mcp_ssl_cert", ""),
             mcp_ssl_key=data.get("mcp_ssl_key", ""),
+            # Only honor a stored transport when the user explicitly picked
+            # it in the Setup modal. Anything else (including values
+            # persisted by a generic Settings.save() that dumped the
+            # in-memory default) falls back to the class default — which
+            # is "http", the current MCP spec.
+            mcp_transport=(
+                data["mcp_transport"]
+                if (
+                    data.get("mcp_transport_explicit")
+                    and data.get("mcp_transport") in ("sse", "http")
+                )
+                else cls.mcp_transport
+            ),
+            mcp_transport_explicit=bool(data.get("mcp_transport_explicit", False)),
             mcp_root_path=data.get("mcp_root_path", ""),
             default_compress_level=data.get("default_compress_level", cls.default_compress_level),
             default_confdir=data.get("default_confdir", cls.default_confdir),

@@ -112,10 +112,14 @@ class McpInspectorModal(ModalScreen[None]):
     }
     """
 
-    def __init__(self, server_url: str, token: str) -> None:
+    def __init__(self, server_url: str, token: str, transport: str = "sse") -> None:
         super().__init__()
         self._server_url = server_url
         self._token = token or ""
+        # Inspector CLI transport values: "sse" or "streamable-http".
+        # We accept s4's "http" shorthand and translate it here.
+        _t = (transport or "sse").lower()
+        self._transport = "streamable-http" if _t == "http" else "sse"
         self._proc: Optional[subprocess.Popen] = None
         self._reader_thread: Optional[threading.Thread] = None
         self._url_found: str = ""
@@ -237,12 +241,12 @@ class McpInspectorModal(ModalScreen[None]):
         cmd = [str(npx), "-y", "@modelcontextprotocol/inspector"]
         if mode == "cli":
             cmd += ["--cli", self._server_url,
-                    "--transport", "sse"]
+                    "--transport", self._transport]
             if self._token:
                 cmd += ["--header", f"Authorization: Bearer {self._token}"]
             cmd += ["--method", "tools/list"]
         else:
-            cmd += ["--transport", "sse",
+            cmd += ["--transport", self._transport,
                     "--server-url", self._server_url]
             if self._token:
                 cmd += ["--header", f"Authorization: Bearer {self._token}"]

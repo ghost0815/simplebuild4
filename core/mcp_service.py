@@ -57,8 +57,9 @@ def validate_port(port: int) -> Optional[str]:
 
 
 # The service body. We keep it tiny by delegating to the existing
-# ``./s4 mcp --http`` entry point. ``--token`` and the SSL file paths
-# are read from the env variable so they don't show up in ``ps`` output.
+# ``./s4 mcp --transport <sse|http>`` entry point. ``--token`` and the
+# SSL file paths are read from the env variable so they don't show up
+# in ``ps`` output.
 _UNIT_TEMPLATE = """\
 [Unit]
 Description=SimpleBuild4 MCP Server ({root})
@@ -68,7 +69,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory={root}
-ExecStart={s4} mcp --http --host {host} --port {port}{action_flags}{ssl_flags}{root_path_flag}
+ExecStart={s4} mcp --transport {transport} --host {host} --port {port}{action_flags}{ssl_flags}{root_path_flag}
 Environment=PATH={path}
 EnvironmentFile={env_file}
 Restart=on-failure
@@ -79,6 +80,11 @@ StandardError={output_mode}:{log_path}
 [Install]
 WantedBy=multi-user.target
 """
+
+
+def _normalize_transport(transport: str) -> str:
+    """Accept only 'sse' / 'http'; fall back to 'sse' (backward-compat)."""
+    return transport if transport in ("sse", "http") else "sse"
 
 
 def _systemd_output_mode() -> str:
@@ -295,6 +301,7 @@ class McpServiceManager:
         ssl: bool = False,
         ssl_cert: str = "",
         ssl_key: str = "",
+        transport: str = "sse",
         root_path: str = "",
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
@@ -343,6 +350,7 @@ class McpServiceManager:
         unit = _UNIT_TEMPLATE.format(
             root=self.root, s4=s4,
             host=host, port=port,
+            transport=_normalize_transport(transport),
             action_flags=action_flags,
             ssl_flags=ssl_flags,
             root_path_flag=root_path_flag,
@@ -406,6 +414,7 @@ class McpServiceManager:
         ssl: bool = False,
         ssl_cert: str = "",
         ssl_key: str = "",
+        transport: str = "sse",
         root_path: str = "",
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
@@ -450,6 +459,7 @@ class McpServiceManager:
         unit = _UNIT_TEMPLATE.format(
             root=self.root, s4=s4,
             host=host, port=port,
+            transport=_normalize_transport(transport),
             action_flags=action_flags,
             ssl_flags=ssl_flags,
             root_path_flag=root_path_flag,
