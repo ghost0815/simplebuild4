@@ -232,6 +232,9 @@ def get_version(repo_dir: Path) -> str:
 # Internal Makefile flags that are NOT user-settable
 _INTERNAL_FLAGS = frozenset({
     "CFLAGS", "FLAGS", "LDFLAGS", "LIBS", "COMPRESS",
+    # Doc placeholder in oscam Makefile's prepare_use_flags macro
+    # template comment: "Usage: $(eval $(call prepare_use_flags,FLAG_NAME,…))"
+    "FLAG_NAME",
 })
 
 
@@ -248,6 +251,12 @@ def parse_makefile_flags(repo_dirs: list[Path]) -> dict:
     use_set: set[str] = set()
     static_set: set[str] = set()
     pattern = re.compile(r'\bUSE_([A-Z0-9_]+)\b|\bSTATIC_([A-Z0-9_]+)\b')
+    # ``prepare_use_flags`` is oscam's Makefile macro that programmatically
+    # defines ``USE_<NAME>`` — the generated USE_NAME may not appear as a
+    # literal anywhere else in the Makefile (true e.g. for USE_GXAPI /
+    # USE_WI that come in via optional patches). Pick the flag name out of
+    # the macro invocation so those count too.
+    prep_pattern = re.compile(r'\bprepare_use_flags,([A-Z0-9_]+)\b')
 
     for repo_dir in repo_dirs:
         makefile = repo_dir / "Makefile"
@@ -264,6 +273,10 @@ def parse_makefile_flags(repo_dirs: list[Path]) -> dict:
                 use_set.add(use_name)
             if static_name and static_name not in _INTERNAL_FLAGS:
                 static_set.add(static_name)
+        for m in prep_pattern.finditer(content):
+            name = m.group(1)
+            if name and name not in _INTERNAL_FLAGS:
+                use_set.add(name)
 
     return {
         "use": sorted(use_set),

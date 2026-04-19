@@ -1141,6 +1141,24 @@ class BuildEngine:
                 else:
                     self._log(f"  [yellow]Static {lib_file} not found[/yellow]")
 
+        # --- STAPI / SU980 support-lib dir as -L ---
+        # Any of these flags tells oscam's Makefile to auto-inject sibling
+        # libs (``-lentropic`` for SU980, ``-lwi`` / ``-lwi2`` for the
+        # Wi-interface patches, plus the oscam_stapi[_5] wrappers). Those
+        # need a search path to resolve — add ``support/stapi`` if the
+        # build pulls in any of the relevant Makefile subsystems.
+        _stapi_support = self.repos_dir.parent.parent / "support" / "stapi"
+        _needs_stapi_L = (
+            b.use_flags.get("STAPI")
+            or b.use_flags.get("STAPI5")
+            or b.use_flags.get("SU980")
+        )
+        if _needs_stapi_L and _stapi_support.is_dir():
+            _stapi_L = f"-L{_stapi_support}"
+            if _stapi_L not in ldflags:
+                ldflags = f"{_stapi_L} {ldflags}".strip()
+                self._log(f"  Auto-added to ldflags: {_stapi_L}")
+
         # --- STAPI library ---
         stapi_lib = ""
         if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):

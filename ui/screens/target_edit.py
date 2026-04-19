@@ -132,7 +132,8 @@ class TargetEditScreen(Screen):
 
     # Hardware flags — everything else goes into Library section
     _HARDWARE_FLAGS = frozenset({
-        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA", "WI",
+        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA",
+        "WI", "GXAPI",
     })
 
     def _load_makefile_flags(self) -> dict:
@@ -612,15 +613,17 @@ class TargetEditScreen(Screen):
                             _stapi_is_default = (_stapi_val == _stapi_default)
                             from textual.widgets import Button as _Btn
                             _stapi_inp = Input(value=_stapi_val, placeholder=t("ph_stapi_lib"), id="f-stapi-lib")
-                            _stapi_inp.styles.max_width = 25
+                            _stapi_inp.styles.max_width = 45
                             if _stapi_is_default:
                                 _stapi_inp.add_class("tc-default")
                             _stapi_lbl = Static(" STAPI_LIB", classes="tc-field-label")
-                            _stapi_lbl.tooltip = "Path to precompiled STAPI library"
+                            _stapi_lbl.tooltip = t("tt_stapi_lib")
+                            _stapi_brw = _Btn(icon("browse"), id="brw-stapi-lib", classes="tc-reset-btn")
+                            _stapi_brw.tooltip = t("tt_stapi_lib_browse")
                             _stapi_rst = _Btn(icon("reset"), id="rst-stapi-lib", classes="tc-reset-btn")
                             _stapi_rst.tooltip = t("te_load_default")
                             self._stapi_default = _stapi_default
-                            _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_rst]
+                            _stapi_widgets += [_stapi_lbl, _stapi_inp, _stapi_brw, _stapi_rst]
                         yield Horizontal(*_stapi_widgets, classes="flag-row")
 
                     # Merge normal + stale hw flags (excl. STAPI/STAPI5), sorted
@@ -1082,6 +1085,8 @@ class TargetEditScreen(Screen):
             self._open_binary_dir_picker(target_input_id=f"tc-oscampath-{_tc_sid}")
         elif event.button.id == "btn-binary-browse":
             self._open_binary_dir_picker()
+        elif event.button.id == "brw-stapi-lib":
+            self._open_stapi_picker()
         elif event.button.id == "rst-stapi-lib":
             try:
                 inp = self.query_one("#f-stapi-lib", Input)
@@ -1377,6 +1382,51 @@ class TargetEditScreen(Screen):
         target_id = getattr(self, '_upx_target_input', 't-upx-binary')
         try:
             self.query_one(f"#{target_id}", Input).value = path
+        except Exception:
+            pass
+
+    def _open_stapi_picker(self) -> None:
+        """Open file picker for STAPI_LIB — starts in support/stapi/."""
+        from ui.screens.toolchains import FilePickerScreen
+        stapi_dir = self.app.paths.root / "support" / "stapi"
+        start = str(stapi_dir) if stapi_dir.is_dir() else str(self.app.paths.root)
+        self.app.push_screen(
+            FilePickerScreen(
+                start_path=start,
+                title=f"{t('select_file_label')}: STAPI_LIB",
+                simple=True,
+                select_label=t("select_btn"),
+            ),
+            callback=self._on_stapi_selected,
+        )
+
+    def _on_stapi_selected(self, result) -> None:
+        """Callback: set STAPI_LIB input value.
+
+        If the selected file is under ``support/stapi/``, store only
+        the bare filename — builder.py auto-resolves bare names to
+        ``support/stapi/<name>`` at build time, so the target YAML
+        stays portable across machines. Otherwise store the full path.
+        """
+        if not result:
+            return
+        path, _ = result if isinstance(result, tuple) else (result, "")
+        if not path:
+            return
+        try:
+            sel = Path(path)
+            stapi_dir = self.app.paths.root / "support" / "stapi"
+            if sel.is_file() and sel.parent.resolve() == stapi_dir.resolve():
+                value = sel.name
+            else:
+                value = str(sel)
+        except Exception:
+            value = path
+        try:
+            inp = self.query_one("#f-stapi-lib", Input)
+            inp.value = value
+            # Field is no longer at default after an explicit pick
+            inp.remove_class("tc-default")
         except Exception:
             pass
 
