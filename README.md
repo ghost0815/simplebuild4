@@ -27,7 +27,7 @@ Core:
 Extensions (optional):
 
   Automation (F7) ──── cron-style / triggered target builds
-  Web Service   ────── read-only status page + log tail over HTTP(S)
+  Web Service   ────── full Textual TUI in the browser over HTTP(S)
   MCP Server    ────── tool surface for LLM clients
                        (Claude Desktop / Claude.ai / custom agents)
 ```
@@ -250,9 +250,10 @@ invocations only — no free-form shell).
 
 ### Web Service
 
-Serves a read-only status page plus live log tail over HTTP / HTTPS.
-Useful when s4 runs on a headless build host and you want a live view
-from elsewhere on the LAN.
+Serves the complete Textual TUI in the browser over HTTP / HTTPS via
+textual-serve — the same app, the same screens, the same keyboard
+shortcuts. Useful when s4 runs on a headless build host and you want
+the full interface from your laptop or phone on the LAN.
 
 - Config: `web_host`, `web_port`, `web_dns_name`, `web_ssl`,
   `web_ssl_cert`, `web_ssl_key`, optional basic-auth via
