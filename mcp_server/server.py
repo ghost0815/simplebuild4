@@ -59,6 +59,7 @@ from mcp_server.tools import (
     settings as tools_settings,
     automation as tools_automation,
     repositories as tools_repositories,
+    wiki as tools_wiki,
 )
 
 
@@ -73,6 +74,7 @@ _MODULES = (
     tools_logs,
     tools_settings,
     tools_automation,
+    tools_wiki,
 )
 
 

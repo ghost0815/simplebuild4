@@ -288,7 +288,7 @@ enough — s4 picks the prefix up automatically via the ASGI
 
 **Security policy** (`mcp_server/tools/`):
 
-- Read-only tools always available
+- Read-only tools always available — repository/target/toolchain/log inspection; wiki documentation browsing (`list_wiki_pages`, `get_wiki_page`)
 - Write tools require `--allow-actions` / `mcp_allow_actions: true`
 - Credential fields (repo `auth_pass`, deployment `password` /
   `su_password`, bearer tokens, signing key) are **TUI-only** — cannot
