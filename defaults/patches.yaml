@@ -20,7 +20,26 @@
 # URL on demand.
 
 patches:
-  # - name: 0001-my-fix.patch
-  #   url: https://example.com/patches/0001-my-fix.patch
-  # - name: 0002-feature.patch
-  #   url: https://example.com/patches/0002-feature.patch
+  # GX-API (C-SKY / Goceed Chinese STB boxes) — adds USE_GXAPI,
+  # CARDREADER_GXAPI, bundles liboscam_gxapi.a (MCORE/C-SKY binary
+  # inside the patch itself)
+  - name: oscam-gxapi.patch
+    url: https://simplebuild.dedyn.io/patches/gxapi/oscam-gxapi.patch
+
+  # Android Wi-Interface STAPI wrapper, version 1 — for Android
+  # STB targets with STAPI-style descrambler hardware. Adds a
+  # WI_SMART compile switch that routes STAPI calls through the
+  # WiSmart_* symbols exported by libwi.a (minimal, older).
+  - name: oscam-stapi-libwi-v1.patch
+    url: https://simplebuild.dedyn.io/patches/libwi/oscam-stapi-libwi-v1.patch
+
+  # Android Wi-Interface STAPI wrapper, version 2 — adds USE_WI
+  # flag, WebIF controls, wi.h header, Makefile auto-link. Pairs
+  # with libwi.a (or libwi2.a as a superset with extra
+  # Init/Destroy Status symbols).
+  - name: oscam-stapi-libwi-v2.patch
+    url: https://simplebuild.dedyn.io/patches/libwi/oscam-stapi-libwi-v2.patch
+
+  # oscam-emu — adds key emulation for various CAS systems
+  - name: oscam-emu.patch
+    url: https://raw.githubusercontent.com/oscam-mirror/oscam-emu-patch/refs/heads/master/oscam-emu.patch

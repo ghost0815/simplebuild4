@@ -113,10 +113,29 @@ class Paths:
         # seed data/patches.yaml from defaults/patches.yaml on first
         # run so the Repository screen's Download button has a real
         # (commented-out) config to start from.
+        #
+        # On subsequent runs, if data/patches.yaml still has an empty
+        # patches list (user never added anything), re-seed from
+        # defaults/patches.yaml so updates to the shipped patch catalog
+        # reach existing installs automatically. As soon as the user
+        # has at least one entry, we never touch it again.
         patches_default = self.defaults_dir / "patches.yaml"
         patches_dest = self.repos_config.parent / "patches.yaml"
-        if patches_default.exists() and not patches_dest.exists():
-            shutil.copy2(patches_default, patches_dest)
+        if patches_default.exists():
+            if not patches_dest.exists():
+                shutil.copy2(patches_default, patches_dest)
+            else:
+                try:
+                    import yaml as _yaml
+                    _data = _yaml.safe_load(
+                        patches_dest.read_text(encoding="utf-8")
+                    ) or {}
+                    _list = _data.get("patches") if isinstance(_data, dict) else None
+                    if not _list:
+                        # Empty ``patches:`` list = still vanilla → replace.
+                        shutil.copy2(patches_default, patches_dest)
+                except Exception:
+                    pass
 
     def backup_yaml(self) -> None:
         """Backup all user YAML config files to data/backup/yaml/.
