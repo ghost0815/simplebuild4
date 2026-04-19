@@ -282,6 +282,20 @@ class MainScreen(Screen):
                 sel.value = select_path
             except Exception:
                 pass
+        # After re-scanning all targets, surface any *current* decrypt
+        # failures. If everything decrypted fine (e.g. the user just
+        # fixed a password and returned from target_edit), pop returns
+        # an empty list and we show nothing — replacing any stale toast
+        # that was still hanging around.
+        if getattr(self.app, '_decrypt_check_done', False):
+            from core.credentials import pop_decrypt_warnings
+            _dw = pop_decrypt_warnings()
+            if _dw:
+                detail = "\n".join(f"  \u2022 {w}" for w in _dw)
+                self.notify(
+                    f"{t('decrypt_failed_warning')}\n{detail}",
+                    severity="warning", timeout=10,
+                )
 
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "target-select" and event.value is not None and isinstance(event.value, str):
@@ -311,6 +325,13 @@ class MainScreen(Screen):
 
     def _refresh_targets(self) -> None:
         """Reload the target dropdown after changes."""
+        # A full re-scan re-runs decrypt() for every target, which would
+        # otherwise *accumulate* warnings on top of whatever was already
+        # in the transient list. Reset it first so the post-scan state
+        # reflects reality (and a just-saved target that now decrypts
+        # cleanly actually removes its warning instead of piling up).
+        from core.credentials import clear_transient_warnings
+        clear_transient_warnings()
         sel = self.query_one("#target-select", Select)
         targets = self._load_targets()
         sel.set_options(targets if targets else [("(no targets)", None)])

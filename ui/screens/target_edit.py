@@ -2168,8 +2168,20 @@ class TargetEditScreen(Screen):
             self.save_path.unlink()
         target.save(new_path)
         self.save_path = new_path
-        from core.credentials import clear_persistent_warnings
+        # Password-decryption warnings are stale after a save: the user
+        # just re-entered the passwords and they're now encrypted with
+        # the current machine key. Clear both the persistent list and
+        # the transient per-target list, then dismiss any toast that's
+        # still on screen from an earlier scan.
+        from core.credentials import (
+            clear_persistent_warnings, clear_transient_warnings,
+        )
         clear_persistent_warnings()
+        clear_transient_warnings()
+        try:
+            self.app.clear_notifications()
+        except Exception:
+            pass
         if target.exclude_from_automation:
             from core.automation import remove_from_jobs
             remove_from_jobs(self.app.paths.automation_yaml, target=target.name)

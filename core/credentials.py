@@ -133,6 +133,16 @@ def clear_persistent_warnings() -> None:
     _decrypt_persistent.clear()
 
 
+def clear_transient_warnings() -> None:
+    """Clear transient (per-target) warnings.
+
+    Call before a full re-scan (e.g. ``_refresh_targets``) so the list
+    reflects the *current* state of the world instead of accumulating
+    every Target.load() call ever made.
+    """
+    _decrypt_warnings.clear()
+
+
 def build_git_env(auth_method: str, ssh_key: str = "",
                   auth_user: str = "", auth_pass: str = "") -> dict[str, str]:
     """Build extra environment variables for git subprocess calls.
