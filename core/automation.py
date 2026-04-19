@@ -370,6 +370,14 @@ class JobState:
     pid: int = 0             # PID of the running process (0 if not running)
     started_at: str = ""     # ISO timestamp when the current run started
     duration_sec: int = 0    # Duration of the last completed run in seconds
+    # Snapshot of each rebuilt toolchain's ``libraries`` dict BEFORE the
+    # ``build-toolchains`` action replaced it with the post-rebuild scan
+    # result. Consumed by the subsequent ``update-libraries`` action to
+    # re-install the previously-present libraries into the fresh sysroot.
+    # Cleared after ``update-libraries`` has completed successfully, or
+    # overwritten by the next ``build-toolchains`` run.
+    # Shape: {toolchain_name: {library_name: version}}
+    pre_rebuild_libraries: dict = field(default_factory=dict)
 
 
 def _pid_alive(pid: int) -> bool:
@@ -394,6 +402,15 @@ def load_state(path: Path) -> dict[str, JobState]:
         return {}
     states = {}
     for name, entry in data.items():
+        raw_snap = entry.get("pre_rebuild_libraries") or {}
+        # Coerce to {str: {str: str}} — YAML may hand us anything
+        snap: dict[str, dict[str, str]] = {}
+        if isinstance(raw_snap, dict):
+            for tc_name, libs in raw_snap.items():
+                if isinstance(libs, dict):
+                    snap[str(tc_name)] = {
+                        str(k): str(v or "") for k, v in libs.items()
+                    }
         s = JobState(
             last_run=entry.get("last_run", ""),
             last_result=entry.get("last_result", ""),
@@ -401,6 +418,7 @@ def load_state(path: Path) -> dict[str, JobState]:
             pid=entry.get("pid", 0),
             started_at=entry.get("started_at", ""),
             duration_sec=int(entry.get("duration_sec", 0) or 0),
+            pre_rebuild_libraries=snap,
         )
         # Crash recovery: if marked running but PID is dead, clear it
         if s.running and not _pid_alive(s.pid):
@@ -418,11 +436,16 @@ def _atomic_write(path: Path, content: str) -> None:
     os.replace(tmp, path)
 
 
-def save_state(states: dict[str, JobState], path: Path) -> None:
-    """Save state atomically with file lock to prevent concurrent writes."""
-    import fcntl
-    data = {
-        name: {
+def _state_to_yaml(states: dict[str, JobState]) -> dict:
+    """Serialize ``states`` to a YAML-ready dict.
+
+    Fields with default empty values are omitted to keep the YAML
+    readable — especially ``pre_rebuild_libraries``, which is only
+    present while a rebuild sequence is mid-flight.
+    """
+    out: dict[str, dict] = {}
+    for name, s in states.items():
+        entry: dict = {
             "last_run": s.last_run,
             "last_result": s.last_result,
             "running": s.running,
@@ -430,9 +453,16 @@ def save_state(states: dict[str, JobState], path: Path) -> None:
             "started_at": s.started_at,
             "duration_sec": s.duration_sec,
         }
-        for name, s in states.items()
-    }
-    content = yaml.dump(data, default_flow_style=False, sort_keys=False)
+        if s.pre_rebuild_libraries:
+            entry["pre_rebuild_libraries"] = dict(s.pre_rebuild_libraries)
+        out[name] = entry
+    return out
+
+
+def save_state(states: dict[str, JobState], path: Path) -> None:
+    """Save state atomically with file lock to prevent concurrent writes."""
+    import fcntl
+    content = yaml.dump(_state_to_yaml(states), default_flow_style=False, sort_keys=False)
     lock_path = path.with_suffix(path.suffix + ".lock")
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with open(lock_path, "w") as lock_f:
@@ -461,18 +491,10 @@ def update_state(path: Path, job_name: str, **updates) -> JobState:
         for key, value in updates.items():
             setattr(state, key, value)
         # Write (reusing save_state would double-lock; do inline)
-        data = {
-            name: {
-                "last_run": s.last_run,
-                "last_result": s.last_result,
-                "running": s.running,
-                "pid": s.pid,
-                "started_at": s.started_at,
-                "duration_sec": s.duration_sec,
-            }
-            for name, s in states.items()
-        }
-        _atomic_write(path, yaml.dump(data, default_flow_style=False, sort_keys=False))
+        _atomic_write(
+            path,
+            yaml.dump(_state_to_yaml(states), default_flow_style=False, sort_keys=False),
+        )
         return state
 
 
@@ -1011,6 +1033,17 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
             log("No toolchains or targets specified")
             return False
 
+        # Pre-rebuild library snapshot saved by ``build-toolchains``. When
+        # present it's the authoritative source of "what this toolchain
+        # should have" — ``tc.libraries`` itself now reflects the
+        # post-rebuild scan (often empty for crosstool-ng, populated for
+        # OE-SDK with vendor libs). Without a snapshot (manual
+        # update-libraries run), fall back to the current dict.
+        prior_state = load_state(paths.automation_state_yaml).get(sched.name)
+        pre_snapshot: dict[str, dict[str, str]] = (
+            prior_state.pre_rebuild_libraries if prior_state else {}
+        )
+
         all_ok = True
         installed_count = 0
         updated_count = 0
@@ -1022,29 +1055,43 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 continue
             tc_dir = paths.toolchains_dir / tc.name
 
-            # Scan what is currently in the sysroot + merge with the
-            # persistent 'libraries' record in toolchains.local.yaml.
-            # The record is the source of truth for "what this toolchain
-            # should have" — after a build-toolchains rebuild the sysroot
-            # is empty, but the record still lists the libraries that
-            # were previously integrated; update-libraries restores them.
+            # Per-toolchain snapshot — what was in the sysroot before the
+            # rebuild that just happened (or empty dict for a standalone
+            # update-libraries run where nothing was rebuilt first).
+            snapshot = pre_snapshot.get(tc.name, {})
+
             log(f"Scanning libraries for toolchain '{tc.name}'...")
             scanned = scan_libraries(tc_dir, tc.sysroot, native=tc.native)
             check_library_updates(scanned, recipes, has_c11=True)
             scanned_by_name = {lib.name: lib for lib in scanned}
 
-            # Build the target list: everything in the registry record,
-            # plus anything the scan additionally found (belt & braces,
-            # in case manual installs bypassed record_library).
-            target_names: list[str] = list(tc.libraries.keys())
+            # Source of truth for the target list:
+            #   * snapshot (from the just-completed build-toolchains) if
+            #     available — restores the pre-rebuild lib set
+            #   * otherwise current tc.libraries (scanned sysroot state)
+            # plus anything the scan additionally turned up (belt &
+            # braces in case of manual sysroot installs).
+            want_libs = snapshot if snapshot else dict(tc.libraries)
+            target_names: list[str] = list(want_libs.keys())
             for lib in scanned:
                 if lib.found and lib.name not in target_names:
                     target_names.append(lib.name)
 
+            if snapshot:
+                log(
+                    f"  Using pre-rebuild snapshot ({len(snapshot)} libs) "
+                    f"as source of truth"
+                )
+
             tc_updated = False
             for lib_name in target_names:
                 scanned_lib = scanned_by_name.get(lib_name)
-                recorded_version = tc.libraries.get(lib_name, "")
+                # Prefer the snapshot's recorded version (user's explicit
+                # choice before the rebuild); fall back to what's
+                # currently in the sysroot dict.
+                recorded_version = (
+                    snapshot.get(lib_name) or tc.libraries.get(lib_name, "")
+                )
                 in_sysroot = bool(scanned_lib and scanned_lib.found)
 
                 # Pick the recommended (same-branch-latest) version from
@@ -1124,6 +1171,16 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 ):
                     all_ok = False
 
+        # Clear the snapshot once consumed — it's served its purpose as
+        # the "restore what was there before the rebuild" record.
+        # Preserved on failure so a subsequent retry can pick up where
+        # we left off.
+        if all_ok and pre_snapshot:
+            update_state(
+                paths.automation_state_yaml, sched.name,
+                pre_rebuild_libraries={},
+            )
+
         log(f"Library updates complete: {installed_count} installed, {updated_count} updated")
         return all_ok
 
@@ -1131,6 +1188,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
     def _action_build_toolchains(s: JobConfig) -> bool:
         from core.template import load_templates
         from core.toolchain_builder import build_toolchain
+        from core.toolchain import ToolchainRegistry
 
         all_templates = load_templates(paths.templates_defaults, paths.templates_local)
         # Deduplicate: local overrides default
@@ -1145,6 +1203,31 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
         if not tpl_names:
             log("No templates specified")
             return False
+
+        # Snapshot each toolchain's ``libraries`` dict BEFORE the rebuild
+        # destroys it. The subsequent ``update-libraries`` action consumes
+        # the snapshot to restore the lib set into the fresh sysroot.
+        # Persisted to automation.state.yaml so a crash between rebuild
+        # and update-libraries is recoverable.
+        snapshot_reg = ToolchainRegistry(
+            paths.toolchains_defaults, paths.toolchains_local, paths.toolchains_dir,
+        )
+        snapshot_reg.load()
+        tc_by_name = {tc.name: tc for tc in snapshot_reg.installed_toolchains()}
+        pre_snapshot: dict[str, dict[str, str]] = {}
+        for tpl_name in tpl_names:
+            tc = tc_by_name.get(tpl_name)
+            if tc and tc.libraries:
+                pre_snapshot[tpl_name] = dict(tc.libraries)
+        if pre_snapshot:
+            log(
+                f"Snapshot of pre-rebuild libraries: "
+                + ", ".join(f"{k} ({len(v)} libs)" for k, v in pre_snapshot.items())
+            )
+            update_state(
+                paths.automation_state_yaml, sched.name,
+                pre_rebuild_libraries=pre_snapshot,
+            )
 
         all_ok = True
         for tpl_name in tpl_names:

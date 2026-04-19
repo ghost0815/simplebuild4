@@ -99,8 +99,24 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
 
     Auto-detects prefix/sysroot from the built directory; falls back to
     template values. Merges into an existing local entry if one exists.
+
+    Post-build: re-scans the sysroot and **replaces** ``libraries`` with
+    whatever ``scan_libraries`` finds. The ``libraries`` dict is the
+    authoritative record of what's actually in the sysroot:
+
+    * crosstool-ng → empty dict (compiler + glibc only, no extra libs)
+    * OE-SDK → whatever the BSP recipe bundled (OpenSSL, libusb, …)
+    * Android NDK → typically empty (Bionic has no .pc-carrying libs)
+
+    Callers that need to preserve the pre-rebuild library set for a
+    later re-install step (e.g. the automation update-libraries
+    action) must snapshot ``tc.libraries`` **before** calling
+    ``build_toolchain`` — after this function returns, the dict is
+    overwritten.
     """
-    from core.toolchain import Toolchain, ToolchainRegistry, detect_toolchain_props
+    from core.toolchain import (
+        Toolchain, ToolchainRegistry, detect_toolchain_props, scan_libraries,
+    )
 
     def _log(msg):
         if log:
@@ -122,6 +138,25 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
     if det_prefix or det_sysroot:
         _log(f"  [green]Auto-detected:[/green] prefix=[dim]{prefix or '-'}[/dim] sysroot=[dim]{sysroot or '-'}[/dim]")
 
+    # Post-build library scan — reflects actual contents of the fresh sysroot.
+    scanned_libs: dict[str, str] = {}
+    try:
+        infos = scan_libraries(install_dir, sysroot, native=False)
+        scanned_libs = {
+            info.name: info.version
+            for info in infos
+            if info.found and info.version
+        }
+    except Exception as e:
+        _log(f"  [yellow]library scan failed: {e}[/yellow]")
+    if scanned_libs:
+        _log(
+            f"  [green]Libraries detected:[/green] "
+            + ", ".join(f"{k}={v}" for k, v in sorted(scanned_libs.items()))
+        )
+    else:
+        _log("  [dim]No libraries detected in sysroot[/dim]")
+
     existing = next((tc for tc in local_tcs if tc.name == tpl.name), None)
     if existing is not None:
         existing.description = tpl.description or existing.description or tpl.name
@@ -133,6 +168,7 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
         existing.cflags = tpl.cflags or existing.cflags
         existing.ldflags = tpl.ldflags or existing.ldflags
         existing.selfbuild = True
+        existing.libraries = scanned_libs   # wholesale replace — scan result wins
         _log("  [green]Merged into existing local entry → category=selfbuild[/green]")
     else:
         local_tcs.append(Toolchain(
@@ -146,6 +182,7 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
             cflags=tpl.cflags,
             ldflags=tpl.ldflags,
             selfbuild=True,
+            libraries=scanned_libs,
         ))
     reg.save_local(local_tcs)
 
