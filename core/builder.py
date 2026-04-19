@@ -877,6 +877,9 @@ class BuildEngine:
             if new_content == content:
                 self._log(f"  [yellow]WebIF patch failed: marker '{config_h_marker}' not found in config.h[/yellow]")
                 return
+            # splitlines()+"\n".join() drops any trailing newline — re-append.
+            if not new_content.endswith("\n"):
+                new_content += "\n"
             config_h.write_text(new_content, encoding="utf-8")
 
             # Modify oscam.c: add fprintf for patch info after WebifPort line
@@ -909,6 +912,8 @@ class BuildEngine:
             if new_content == content:
                 self._log(f"  [yellow]WebIF patch failed: WebifPort fprintf not found in oscam.c[/yellow]")
                 return
+            if not new_content.endswith("\n"):
+                new_content += "\n"
             oscam_c.write_text(new_content, encoding="utf-8")
 
             self._log(f"  [green]WebIF patched with build info[/green]")
@@ -994,23 +999,51 @@ class BuildEngine:
         # --- Auto-inject --sysroot if compiler's built-in sysroot is invalid ---
         # Like s3: override CC= so every gcc invocation (including Makefile's
         # internal $(CC) -print-sysroot) sees the correct sysroot.
+        #
+        # Ancient toolchains (gcc < 4.0, introduced ~2005) don't understand
+        # ``--sysroot`` at all — cc1 misparses the flag and bails with
+        # ``unrecognized command line option "-fsysroot=…"``. For those we
+        # skip the auto-injection entirely; the compiler's compiled-in
+        # include/library paths have to be correct (usually are, for custom
+        # legacy cross-compilers). If they aren't, the user can still set
+        # explicit cflags/ldflags on the target's toolchain entry.
         cross_sysroot = ""
         if not is_native and cross:
             import shutil as _shutil
             gcc_path = _shutil.which(f"{tc.prefix}gcc", path=f"{tc_dir}/bin:{os.environ.get('PATH', '')}")
             if gcc_path:
+                # Detect gcc major version before probing for sysroot —
+                # ``-print-sysroot`` is also a gcc 4+ feature, and the
+                # subsequent ``--sysroot=`` injection would break gcc 3.x.
+                gcc_major = 0
                 try:
-                    gcc_sysroot = subprocess.run(
-                        [gcc_path, "-print-sysroot"], capture_output=True, text=True, timeout=5,
+                    dumpver = subprocess.run(
+                        [gcc_path, "-dumpversion"], capture_output=True, text=True, timeout=5,
                     ).stdout.strip()
+                    if dumpver and dumpver[0].isdigit():
+                        gcc_major = int(dumpver.split(".")[0])
                 except Exception:
-                    gcc_sysroot = ""
-                if not gcc_sysroot or not Path(gcc_sysroot).is_dir():
-                    cross_sysroot = f"--sysroot={sysroot}"
-                    self._log(f"  Auto-injected: {cross_sysroot}")
-                elif gcc_sysroot:
-                    # Use compiler's real sysroot (e.g. for QEMU -L)
-                    sysroot = gcc_sysroot
+                    pass
+
+                if gcc_major and gcc_major < 4:
+                    self._log(
+                        f"  [yellow]Skipping --sysroot injection: "
+                        f"{tc.prefix}gcc is version {dumpver} "
+                        f"(gcc < 4.0 doesn't support --sysroot)[/yellow]"
+                    )
+                else:
+                    try:
+                        gcc_sysroot = subprocess.run(
+                            [gcc_path, "-print-sysroot"], capture_output=True, text=True, timeout=5,
+                        ).stdout.strip()
+                    except Exception:
+                        gcc_sysroot = ""
+                    if not gcc_sysroot or not Path(gcc_sysroot).is_dir():
+                        cross_sysroot = f"--sysroot={sysroot}"
+                        self._log(f"  Auto-injected: {cross_sysroot}")
+                    elif gcc_sysroot:
+                        # Use compiler's real sysroot (e.g. for QEMU -L)
+                        sysroot = gcc_sysroot
 
         # --- CC_OPTS, CFLAGS, LDFLAGS ---
         # s4 settings = base, toolchain appends, target overrides toolchain
