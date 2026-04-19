@@ -40,6 +40,7 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         import json as _json
         import uvicorn
         from mcp.server.streamable_http_manager import StreamableHTTPSessionManager
+        from mcp_server import oauth as _oauth
     except ImportError as exc:
         sys.stderr.write(
             "Streamable HTTP transport needs 'starlette', 'uvicorn' and a\n"
@@ -80,15 +81,31 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         # same endpoint — check them all.
         if scope["type"] == "http" and ctx.http_token:
             if not _token_ok_from_headers(scope.get("headers", [])):
+                # Pointed WWW-Authenticate so MCP clients (claude.ai's
+                # custom-connector, mcp-remote, …) can discover our
+                # OAuth metadata (resource + AS).
+                wa = _oauth.www_authenticate_header(scope)
+                import json as __json
+                body_json = __json.dumps({
+                    "error": "invalid_token",
+                    "error_description": "Missing or invalid bearer token.",
+                    "resource_metadata": _oauth.protected_resource_url(scope),
+                }).encode()
                 await send({
                     "type": "http.response.start",
                     "status": 401,
                     "headers": [
-                        (b"content-type", b"text/plain"),
-                        (b"www-authenticate", b"Bearer"),
+                        (b"content-type", b"application/json"),
+                        (b"content-length", str(len(body_json)).encode()),
+                        wa,
+                        # Expose WWW-Authenticate to browser JS so the
+                        # claude.ai custom-connector flow can read the
+                        # resource_metadata hint.
+                        (b"access-control-expose-headers",
+                         b"WWW-Authenticate, Mcp-Session-Id"),
                     ],
                 })
-                await send({"type": "http.response.body", "body": b"unauthorized"})
+                await send({"type": "http.response.body", "body": body_json})
                 return
         await session_manager.handle_request(scope, receive, send)
 
@@ -120,6 +137,83 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         })
         await send({"type": "http.response.body", "body": body})
 
+    # --- ASGI middleware: CORS -------------------------------------------
+    # claude.ai is a browser-side app and its custom-connector flow runs
+    # cross-origin against this server. Without CORS the preflight on
+    # /mcp, /authorize, /register, /token fails before any real request
+    # is made — the UI surfaces this as "Couldn't reach the MCP server".
+    #
+    # We reflect the Origin header back (credentials-compatible) and
+    # allow the MCP-related headers. Requests without Origin (server-
+    # side curl, Claude Desktop via mcp-remote, …) are unaffected.
+    _CORS_ALLOW_HEADERS = (
+        b"authorization, content-type, mcp-session-id, mcp-protocol-version, "
+        b"last-event-id, x-requested-with"
+    )
+    _CORS_EXPOSE_HEADERS = b"mcp-session-id, www-authenticate"
+
+    def _origin_from_scope(scope) -> bytes | None:
+        for name, value in scope.get("headers", ()):
+            if name == b"origin":
+                return value
+        return None
+
+    class CorsMiddleware:
+        def __init__(self, inner):
+            self._inner = inner
+
+        async def __call__(self, scope, receive, send):
+            if scope["type"] != "http":
+                return await self._inner(scope, receive, send)
+            origin = _origin_from_scope(scope)
+            # CORS preflight — answer directly, don't dispatch.
+            if scope.get("method") == "OPTIONS" and origin is not None:
+                req_headers = b""
+                for name, value in scope.get("headers", ()):
+                    if name == b"access-control-request-headers":
+                        req_headers = value
+                        break
+                allow_headers = req_headers or _CORS_ALLOW_HEADERS
+                await send({
+                    "type": "http.response.start",
+                    "status": 204,
+                    "headers": [
+                        (b"access-control-allow-origin", origin),
+                        (b"access-control-allow-methods",
+                         b"GET, POST, DELETE, OPTIONS"),
+                        (b"access-control-allow-headers", allow_headers),
+                        (b"access-control-allow-credentials", b"true"),
+                        (b"access-control-max-age", b"86400"),
+                        (b"vary", b"Origin"),
+                        (b"content-length", b"0"),
+                    ],
+                })
+                await send({"type": "http.response.body", "body": b""})
+                return
+            if origin is None:
+                return await self._inner(scope, receive, send)
+            # Wrap ``send`` so every response gains CORS headers.
+            async def _send(event):
+                if event["type"] == "http.response.start":
+                    headers = list(event.get("headers") or [])
+                    # Avoid duplicating headers the handler already set.
+                    have = {h[0] for h in headers}
+                    if b"access-control-allow-origin" not in have:
+                        headers.append(
+                            (b"access-control-allow-origin", origin))
+                    if b"access-control-allow-credentials" not in have:
+                        headers.append(
+                            (b"access-control-allow-credentials", b"true"))
+                    if b"access-control-expose-headers" not in have:
+                        headers.append(
+                            (b"access-control-expose-headers",
+                             _CORS_EXPOSE_HEADERS))
+                    if b"vary" not in have:
+                        headers.append((b"vary", b"Origin"))
+                    event = {**event, "headers": headers}
+                await send(event)
+            await self._inner(scope, receive, _send)
+
     # --- ASGI middleware: honor X-Forwarded-Prefix -----------------------
     # Mirrors http_transport.py — see there for rationale.
     explicit_root_path = (root_path or "").strip()
@@ -139,6 +233,9 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
                             scope["root_path"] = prefix
                         break
             return await self._inner(scope, receive, send)
+
+    # One-time-use auth-code store shared across OAuth endpoints.
+    _code_store = _oauth.CodeStore()
 
     # Minimal ASGI router. We *intentionally* don't use Starlette's Mount
     # here because Mount always 307-redirects bare "/mcp" to "/mcp/" —
@@ -160,18 +257,47 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         if scope["type"] != "http":
             return
         path = scope.get("path", "")
+        method = scope.get("method", "")
         # Normalize trailing slash so /mcp and /mcp/ both route to the
         # streamable handler; strip one trailing '/' for comparison only.
         norm = path.rstrip("/") or "/"
-        if norm == "/health" and scope.get("method") == "GET":
+        if norm == "/health" and method == "GET":
             await handle_health(scope, receive, send)
             return
         if norm == "/mcp":
             await handle_mcp(scope, receive, send)
             return
+        # --- OAuth 2.1 wrapper over the static bearer token (for
+        # clients that insist on the MCP authorize flow, e.g.
+        # claude.ai's custom connector UI) ---------------------------
+        # RFC 9728 allows the "path-suffixed" form where the resource's
+        # path is appended to the well-known URI (e.g.
+        # /.well-known/oauth-protected-resource/s4-mcp/mcp for resource
+        # /s4-mcp/mcp). Clients also probe the bare form. We accept
+        # any path starting with either well-known prefix so both
+        # reach the same metadata handler.
+        if method == "GET" and norm.startswith("/.well-known/oauth-protected-resource"):
+            await _oauth.handle_protected_resource(scope, receive, send, ctx)
+            return
+        if method == "GET" and norm.startswith("/.well-known/oauth-authorization-server"):
+            await _oauth.handle_authorization_server(scope, receive, send, ctx)
+            return
+        if norm == "/register" and method == "POST":
+            await _oauth.handle_register(scope, receive, send, ctx)
+            return
+        if norm == "/authorize":
+            if method == "GET":
+                await _oauth.handle_authorize_get(scope, receive, send, ctx)
+                return
+            if method == "POST":
+                await _oauth.handle_authorize_post(scope, receive, send, ctx, _code_store)
+                return
+        if norm == "/token" and method == "POST":
+            await _oauth.handle_token(scope, receive, send, ctx, _code_store)
+            return
         await handle_not_found(scope, receive, send)
 
-    app = ForwardedPrefixMiddleware(router)
+    app = ForwardedPrefixMiddleware(CorsMiddleware(router))
 
     use_tls = bool(ctx.ssl_certfile and ctx.ssl_keyfile)
     proto = "https" if use_tls else "http"
