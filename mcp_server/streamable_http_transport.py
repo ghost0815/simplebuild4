@@ -26,8 +26,17 @@ from ``http_transport.py`` works unchanged — just point the client at
 from __future__ import annotations
 
 import sys
+from contextvars import ContextVar
 
 from mcp_server.context import McpContext
+
+
+# Populated per HTTP request by the router below (and read from
+# ``mcp_server.server._make_server``). Holds the public base URL the
+# client reached us at — proto + host + port + root_path derived from
+# X-Forwarded-* headers — so the MCP initialize response can advertise
+# an absolute icon URL that claude.ai / Inspector can actually fetch.
+REQUEST_BASE_URL: ContextVar[str] = ContextVar("REQUEST_BASE_URL", default="")
 
 
 def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
@@ -137,6 +146,30 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         })
         await send({"type": "http.response.body", "body": body})
 
+    # Favicon — same blue rounded-square "s4" glyph the web service uses.
+    # claude.ai's connector UI fetches /favicon.ico at the origin root
+    # to decorate the connector card; without this it falls back to a
+    # generic globe icon.
+    _FAVICON_SVG = (
+        b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>"
+        b"<rect width='32' height='32' rx='4' fill='#015a9c'/>"
+        b"<text x='16' y='22' font-family='monospace' font-size='16' "
+        b"font-weight='bold' fill='#e0e0e0' text-anchor='middle'>s4</text>"
+        b"</svg>"
+    )
+
+    async def handle_favicon(scope, receive, send):
+        await send({
+            "type": "http.response.start",
+            "status": 200,
+            "headers": [
+                (b"content-type", b"image/svg+xml"),
+                (b"content-length", str(len(_FAVICON_SVG)).encode()),
+                (b"cache-control", b"public, max-age=86400"),
+            ],
+        })
+        await send({"type": "http.response.body", "body": _FAVICON_SVG})
+
     # --- ASGI middleware: CORS -------------------------------------------
     # claude.ai is a browser-side app and its custom-connector flow runs
     # cross-origin against this server. Without CORS the preflight on
@@ -243,6 +276,14 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
     # original POST body and breaking MCP's ``initialize``. Writing a
     # 30-line dispatcher is simpler than disabling the redirect.
     async def router(scope, receive, send):
+        # Stash the request-scoped base URL (same logic as oauth
+        # metadata — honor X-Forwarded-Host/Proto/Prefix). This feeds
+        # the icon URL in the MCP initialize response.
+        if scope["type"] == "http":
+            try:
+                REQUEST_BASE_URL.set(_oauth._base_url_from_scope(scope))
+            except Exception:
+                pass
         if scope["type"] == "lifespan":
             # Drive the session manager's task group via lifespan.
             async with session_manager.run():
@@ -263,6 +304,15 @@ def serve(ctx: McpContext, host: str, port: int, root_path: str = "") -> int:
         norm = path.rstrip("/") or "/"
         if norm == "/health" and method == "GET":
             await handle_health(scope, receive, send)
+            return
+        # Connector icon for claude.ai / Claude Desktop / Inspector.
+        # Accept .ico / .svg / .png — all served as the same SVG; most
+        # clients happily render image/svg+xml regardless of extension.
+        # Accept HEAD too: some clients probe with HEAD before a GET.
+        if method in ("GET", "HEAD") and norm in (
+            "/favicon.ico", "/favicon.svg", "/favicon.png", "/icon",
+        ):
+            await handle_favicon(scope, receive, send)
             return
         if norm == "/mcp":
             await handle_mcp(scope, receive, send)

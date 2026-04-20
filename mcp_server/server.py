@@ -47,6 +47,10 @@ try:
     from mcp.server import Server
     from mcp.types import TextContent, Tool
     from mcp.server.stdio import stdio_server
+    try:
+        from mcp.types import Icon as _McpIcon
+    except ImportError:  # older SDKs (< 1.27) don't expose Icon yet
+        _McpIcon = None
 except ImportError as exc:  # pragma: no cover
     sys.stderr.write(
         "The 'mcp' Python package is required.\n"
@@ -98,7 +102,57 @@ def _build_router(ctx: McpContext) -> tuple[list[Tool], dict[str, Any]]:
 def _make_server(ctx: McpContext) -> Server:
     """Create and configure the MCP Server with all s4 tools wired up."""
     tools, dispatch_map = _build_router(ctx)
-    server = Server("simplebuild4")
+    # Icon advertised in the initialize response (MCP spec 2025-06
+    # Implementation.icons). claude.ai's connector card uses this —
+    # it does NOT probe /favicon.ico on its own, and many client UIs
+    # reject ``data:`` URLs for icons (CSP / same-origin rules).
+    #
+    # The icon's absolute URL is patched per-request by
+    # streamable_http_transport's ``REQUEST_BASE_URL`` contextvar so
+    # whatever hostname / scheme / root-path the client reached us at
+    # is echoed back. Without a request context (stdio, initial setup),
+    # ``None`` means the SDK omits the icons field entirely.
+    server = Server(
+        "simplebuild4",
+        website_url="https://git.streamboard.tv/common/simplebuild4",
+        icons=None,
+    )
+
+    # Replace the SDK's create_initialization_options so the icons list
+    # is built fresh every time a session initialises — with the base
+    # URL that applies to *this* request. Stdio runs have no request
+    # context and the contextvar stays empty; in that case the SDK
+    # omits the icons field.
+    _REQUEST_BASE_URL = None
+    if _McpIcon is not None:
+        try:
+            from mcp_server.streamable_http_transport import REQUEST_BASE_URL as _REQUEST_BASE_URL
+        except Exception:
+            _REQUEST_BASE_URL = None
+    if _McpIcon is not None and _REQUEST_BASE_URL is not None:
+        _orig_create = server.create_initialization_options
+
+        def _create_init_options(
+            notification_options=None, experimental_capabilities=None,
+        ):
+            opts = _orig_create(notification_options, experimental_capabilities)
+            base = _REQUEST_BASE_URL.get("") if _REQUEST_BASE_URL else ""
+            if base:
+                try:
+                    opts = opts.model_copy(update={
+                        "icons": [
+                            _McpIcon(
+                                src=f"{base}/favicon.svg",
+                                mimeType="image/svg+xml",
+                                sizes=["any"],
+                            ),
+                        ],
+                    })
+                except Exception:
+                    pass
+            return opts
+
+        server.create_initialization_options = _create_init_options  # type: ignore[method-assign]
 
     @server.list_tools()
     async def _list_tools() -> list[Tool]:
