@@ -122,6 +122,30 @@ def _set_setting_impl(ctx: McpContext, key: str, value: Any) -> dict[str, Any]:
     }
 
 
+def _get_s4_commits_impl(
+    ctx: McpContext, limit: int = 20, path: str | None = None,
+) -> dict[str, Any]:
+    """Return recent commits from the s4 (simplebuild4) repo itself.
+
+    Useful when explaining behavior: the assistant can correlate a
+    reported problem with the last few code changes that shipped.
+    """
+    # Lazy import avoids pulling subprocess machinery on every tool list.
+    from mcp_server.tools.repositories import _git_log
+    root = ctx.paths.root
+    if not (root / ".git").exists():
+        raise ValueError(
+            f"s4 root at {root} is not a git checkout — no commit history available"
+        )
+    commits = _git_log(root, limit, path)
+    return {
+        "root": str(root),
+        "path_filter": path,
+        "count": len(commits),
+        "commits": commits,
+    }
+
+
 def register(server: Server, ctx: McpContext) -> list[Tool]:
     tools: list[Tool] = [
         Tool(
@@ -133,6 +157,34 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                 "keys)."
             ),
             inputSchema={"type": "object", "properties": {}, "additionalProperties": False},
+        ),
+        Tool(
+            name="get_s4_commits",
+            description=(
+                "Return the recent git commit log of the s4 (simplebuild4) "
+                "installation itself. Useful for correlating a reported "
+                "behavior with recent s4 code changes when explaining what "
+                "the tool is doing. Requires the s4 root to be a git "
+                "checkout."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer", "minimum": 1, "maximum": 200,
+                        "default": 20,
+                        "description": "Max commits to return (default 20, cap 200).",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Optional path filter relative to the s4 root "
+                            "(e.g. 'core/builder.py' or 'mcp_server/')."
+                        ),
+                    },
+                },
+                "additionalProperties": False,
+            },
         ),
     ]
     if ctx.allow_actions:
@@ -166,9 +218,13 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
 def dispatch(ctx: McpContext, name: str, args: dict[str, Any]) -> Any:
     if name == "get_settings":
         return _get_settings_impl(ctx)
+    if name == "get_s4_commits":
+        return _get_s4_commits_impl(
+            ctx, limit=args.get("limit", 20), path=args.get("path"),
+        )
     if name == "set_setting":
         return _set_setting_impl(ctx, args["key"], args.get("value"))
     raise KeyError(name)
 
 
-TOOL_NAMES = {"get_settings", "set_setting"}
+TOOL_NAMES = {"get_settings", "get_s4_commits", "set_setting"}

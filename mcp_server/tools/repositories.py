@@ -3,6 +3,7 @@
 Read
   list_repositories      — all configured repos (oscam source identities)
   get_repository         — details of a single repo incl. on-disk state
+  get_repository_commits — recent git log of a cloned repo
 
 Write (need --allow-actions)
   create_repository      — add a new RepoConfig to data/repos.yaml
@@ -88,6 +89,82 @@ def _get_repository_impl(ctx: McpContext, name: str) -> dict[str, Any]:
         if r.name == name:
             return _repo_summary(r, ctx.paths)
     raise ValueError(f"Unknown repository: {name}")
+
+
+# ------------------------------------------------------------- commit log
+
+
+def _git_log(cwd, limit: int, path: str | None) -> list[dict[str, Any]]:
+    """Run ``git log`` in ``cwd`` and parse into a list of commits.
+
+    Uses a unit-separator / record-separator scheme so commit bodies
+    may span newlines without breaking the parser.
+    """
+    import subprocess
+    if not cwd or not cwd.is_dir() or not (cwd / ".git").exists():
+        raise ValueError(f"not a git repository: {cwd}")
+    limit = max(1, min(int(limit or 20), 200))
+    _FMT = "%H%x1f%h%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%b%x1e"
+    cmd = [
+        "git", "-C", str(cwd), "log",
+        f"-n{limit}", f"--pretty=format:{_FMT}",
+    ]
+    if path:
+        cmd += ["--", str(path)]
+    try:
+        out = subprocess.check_output(
+            cmd, text=True, encoding="utf-8", errors="replace", timeout=15,
+        )
+    except subprocess.CalledProcessError as e:
+        raise ValueError(f"git log failed: {e}") from e
+    except subprocess.TimeoutExpired:
+        raise ValueError("git log timed out (15s)")
+    commits: list[dict[str, Any]] = []
+    for record in out.split("\x1e"):
+        record = record.strip("\n")
+        if not record:
+            continue
+        parts = record.split("\x1f")
+        if len(parts) < 7:
+            continue
+        commits.append({
+            "hash": parts[0],
+            "short_hash": parts[1],
+            "author_name": parts[2],
+            "author_email": parts[3],
+            "date": parts[4],
+            "subject": parts[5],
+            "body": parts[6].rstrip("\n"),
+        })
+    return commits
+
+
+def _get_repository_commits_impl(
+    ctx: McpContext, name: str, limit: int = 20, path: str | None = None,
+) -> dict[str, Any]:
+    repos = load_repos(ctx.paths.repos_config)
+    cfg = next((r for r in repos if r.name == name), None)
+    if not cfg:
+        raise ValueError(f"Unknown repository: {name}")
+    clone_path = ctx.paths.repos_dir / f"oscam-{name}"
+    if not clone_path.exists():
+        raise ValueError(
+            f"Repository '{name}' is not cloned yet "
+            f"(expected at {clone_path})"
+        )
+    if (cfg.vcs or "git") != "git":
+        raise ValueError(
+            f"get_repository_commits only supports git repos; "
+            f"'{name}' is '{cfg.vcs}'"
+        )
+    commits = _git_log(clone_path, limit, path)
+    return {
+        "repo": name,
+        "clone_path": str(clone_path),
+        "path_filter": path,
+        "count": len(commits),
+        "commits": commits,
+    }
 
 
 # ------------------------------------------------------------------ write
@@ -314,6 +391,36 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                 "additionalProperties": False,
             },
         ),
+        Tool(
+            name="get_repository_commits",
+            description=(
+                "Return the recent git commit log of a cloned repository "
+                "(data/repos/oscam-<name>/). Useful for correlating build "
+                "changes with upstream oscam history. Git repos only; "
+                "SVN is not supported."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "limit": {
+                        "type": "integer", "minimum": 1, "maximum": 200,
+                        "default": 20,
+                        "description": "Max commits to return (default 20, cap 200).",
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": (
+                            "Optional path filter (relative to the repo "
+                            "root) — return only commits touching that file "
+                            "or directory."
+                        ),
+                    },
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+        ),
     ]
     if ctx.allow_actions:
         tools.extend([
@@ -468,6 +575,12 @@ def dispatch(ctx: McpContext, name: str, args: dict[str, Any]) -> Any:
         return _list_repositories_impl(ctx)
     if name == "get_repository":
         return _get_repository_impl(ctx, args["name"])
+    if name == "get_repository_commits":
+        return _get_repository_commits_impl(
+            ctx, args["name"],
+            limit=args.get("limit", 20),
+            path=args.get("path"),
+        )
     if name == "create_repository":
         return _create_repository_impl(ctx, args["name"], args["url"], args.get("spec") or {})
     if name == "update_repository":
@@ -494,7 +607,7 @@ def dispatch(ctx: McpContext, name: str, args: dict[str, Any]) -> Any:
 
 
 TOOL_NAMES = {
-    "list_repositories", "get_repository",
+    "list_repositories", "get_repository", "get_repository_commits",
     "create_repository", "update_repository", "delete_repository",
     "clone_repository", "update_repository_sources",
     "list_patches", "add_patch_source", "remove_patch_source",
