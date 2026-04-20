@@ -238,6 +238,18 @@ _INTERNAL_FLAGS = frozenset({
 })
 
 
+# USE_* flags that refer to hardware descrambler / vendor-API surfaces
+# rather than ordinary third-party libraries. The target editor groups
+# these under "Hardware" and the main-screen summary lists them under
+# "Hardware flags" (everything else lands under "Libraries"). Keep in
+# sync with any new descrambler-API addition.
+HARDWARE_USE_FLAGS = frozenset({
+    "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980",
+    "AZBOX", "AMSMC", "MCA",
+    "WI", "GXAPI",
+})
+
+
 def parse_makefile_flags(repo_dirs: list[Path]) -> dict:
     """Parse USE_* and STATIC_* flags from oscam Makefile(s).
 

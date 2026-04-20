@@ -13,7 +13,10 @@ from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 from core.target import Target, BuildSettings, DeploymentConfig, SourceConfig, ToolchainConfig
 from core.toolchain import ToolchainRegistry
 from core.repos_config import load_repos
-from core.oscam_config import read_options, merge_options, OscamOptions, parse_makefile_flags
+from core.oscam_config import (
+    HARDWARE_USE_FLAGS, OscamOptions, merge_options,
+    parse_makefile_flags, read_options,
+)
 from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
@@ -130,11 +133,11 @@ class TargetEditScreen(Screen):
         self._oscam_opts = merge_options(repo_dirs) if repo_dirs else OscamOptions()
         return self._oscam_opts
 
-    # Hardware flags — everything else goes into Library section
-    _HARDWARE_FLAGS = frozenset({
-        "STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA",
-        "WI", "GXAPI",
-    })
+    # Hardware flags — everything else goes into Library section.
+    # Defined once in core.oscam_config.HARDWARE_USE_FLAGS so the main
+    # screen's target summary and this editor agree on what counts as
+    # hardware vs. library.
+    _HARDWARE_FLAGS = HARDWARE_USE_FLAGS
 
     def _load_makefile_flags(self) -> dict:
         """Load USE_*/STATIC_* flags from Makefiles of assigned repos."""

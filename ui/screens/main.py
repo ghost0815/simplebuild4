@@ -137,8 +137,9 @@ class MainScreen(Screen):
         # Options: modules + protocols + readers + card_readers
         all_opts = b.modules + b.protocols + b.readers + b.card_readers
 
-        # Categorize flags from dicts
-        _hw_names = {"STAPI", "STAPI5", "COOLAPI", "COOLAPI2", "SU980", "AZBOX", "AMSMC", "MCA"}
+        # Categorize flags from dicts. Single source of truth for
+        # what counts as a hardware-descrambler API: core.oscam_config.
+        from core.oscam_config import HARDWARE_USE_FLAGS as _hw_names
         lib_flags = [f"USE_{f}" for f, v in sorted(b.use_flags.items()) if v and f not in _hw_names]
         hw_flags = [f"USE_{f}" for f, v in sorted(b.use_flags.items()) if v and f in _hw_names]
         static_flags = [f"STATIC_{f}" for f, v in sorted(b.static_flags.items()) if v]

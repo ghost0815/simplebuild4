@@ -99,6 +99,16 @@ def _target_summary(target: Target) -> dict[str, Any]:
         for s in (target.sources or [])
     ]
 
+    # USE_* flags are a flat dict in the stored YAML, but the TUI /
+    # main summary split them into "hardware" (STAPI, SU980, GXAPI, WI,
+    # …) vs. "library" (SSL, LIBDVBCSA, LIBCRYPTO, …). Expose the same
+    # split here so LLM clients can explain a target without guessing
+    # which flag is which.
+    from core.oscam_config import HARDWARE_USE_FLAGS
+    _use = dict(target.build.use_flags or {})
+    _hw_enabled = sorted(f"USE_{f}" for f, v in _use.items() if v and f in HARDWARE_USE_FLAGS)
+    _lib_enabled = sorted(f"USE_{f}" for f, v in _use.items() if v and f not in HARDWARE_USE_FLAGS)
+
     return {
         "name": target.name,
         "description": target.description,
@@ -110,7 +120,9 @@ def _target_summary(target: Target) -> dict[str, Any]:
             "protocols": list(target.build.protocols or []),
             "readers": list(target.build.readers or []),
             "card_readers": list(target.build.card_readers or []),
-            "use_flags": dict(target.build.use_flags or {}),
+            "use_flags": _use,
+            "use_flags_hardware_enabled": _hw_enabled,
+            "use_flags_library_enabled": _lib_enabled,
             "static_flags": dict(target.build.static_flags or {}),
             "use_compress": bool(target.build.use_compress),
             "compress_level": target.build.compress_level,
@@ -496,7 +508,14 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
             description=(
                 "Return full configuration of a single target by name. "
                 "The returned shape mirrors the patch format used by "
-                "update_target / create_target — round-trip friendly."
+                "update_target / create_target — round-trip friendly. "
+                "``build`` additionally carries read-only convenience "
+                "fields ``use_flags_hardware_enabled`` and "
+                "``use_flags_library_enabled`` — pre-split lists of "
+                "enabled USE_* flags (hardware = STAPI, STAPI5, SU980, "
+                "WI, GXAPI, COOLAPI, AZBOX, …; library = everything "
+                "else). Ignore them on write-back; ``use_flags`` is "
+                "the authoritative source."
             ),
             inputSchema={
                 "type": "object",
