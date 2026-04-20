@@ -267,6 +267,60 @@ def _apply_patch_to_target(target: Target, patch: dict[str, Any]) -> None:
 # ------------------------------------------------------------------ write impls
 
 
+def _seed_oscam_defaults(ctx: McpContext, target: Target) -> dict[str, int]:
+    """Populate empty option categories from the assigned repos' config.sh.
+
+    Mirrors the TUI's target-editor behaviour for a fresh target: if the
+    caller didn't provide explicit ``modules``/``protocols``/``readers``/
+    ``card_readers`` lists, seed each empty category with the oscam
+    defaults (from ``config.sh``'s ``$defconfig``). Non-empty categories
+    are left alone — the caller may have supplied a deliberately minimal
+    or curated set.
+
+    Returns a dict of category → count-of-seeded-entries for logging /
+    the tool response. Silently returns {} if none of the assigned
+    source repos is cloned under ``data/repos/`` (nothing to read).
+    """
+    from core.oscam_config import merge_options
+    from core.repos_config import load_repos
+
+    cats = {
+        "modules": "addons",
+        "protocols": "protocols",
+        "readers": "readers",
+        "card_readers": "card_readers",
+    }
+    b = target.build
+    # Short-circuit when the caller already populated everything.
+    if all(getattr(b, tgt_key) for tgt_key in cats):
+        return {}
+
+    repos_by_name = {r.name: r for r in load_repos(ctx.paths.repos_config)}
+    repo_dirs: list = []
+    for src in target.sources:
+        # Consider the clone path the RepoManager uses:
+        # data/repos/oscam-<name>/. Only include repos that are
+        # actually on disk — can't parse config.sh otherwise.
+        if src.name not in repos_by_name:
+            continue
+        clone = ctx.paths.repos_dir / f"oscam-{src.name}"
+        if clone.is_dir() and clone not in repo_dirs:
+            repo_dirs.append(clone)
+    if not repo_dirs:
+        return {}
+
+    oscam = merge_options(repo_dirs)
+    seeded: dict[str, int] = {}
+    for tgt_key, oscam_cat in cats.items():
+        if getattr(b, tgt_key):
+            continue  # already populated, respect caller
+        defaults = oscam.default_enabled.get(oscam_cat, [])
+        if defaults:
+            setattr(b, tgt_key, list(defaults))
+            seeded[tgt_key] = len(defaults)
+    return seeded
+
+
 def _create_target_impl(ctx: McpContext, name: str, spec: dict[str, Any] | None = None) -> dict[str, Any]:
     if not ctx.allow_actions:
         raise PermissionError(
@@ -282,9 +336,18 @@ def _create_target_impl(ctx: McpContext, name: str, spec: dict[str, Any] | None 
     target.name = name
     if not target.sources:
         target.sources = [SourceConfig(name="default")]
+    # Seed oscam options from the assigned repos' config.sh when the
+    # caller didn't specify them. Without this, a "create_target" call
+    # would end up with modules=[]/protocols=[]/... and the build
+    # would fail with "Enabling 0 options". The TUI's target editor
+    # does the same seeding on first compose.
+    seeded = _seed_oscam_defaults(ctx, target)
     path.parent.mkdir(parents=True, exist_ok=True)
     target.save(path)
-    return {"name": name, "yaml_path": str(path), "created": True}
+    result = {"name": name, "yaml_path": str(path), "created": True}
+    if seeded:
+        result["seeded_oscam_defaults"] = seeded
+    return result
 
 
 def _update_target_impl(ctx: McpContext, name: str, patch: dict[str, Any]) -> dict[str, Any]:
@@ -503,7 +566,13 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                 description=(
                     "Create a new target.yaml. 'spec' is optional — its shape "
                     "matches get_target's return value (top-level: description, "
-                    "sources, toolchains, build, deployment, exclude_from_automation)."
+                    "sources, toolchains, build, deployment, exclude_from_automation). "
+                    "If the spec omits build.modules / protocols / readers / "
+                    "card_readers (or leaves them empty), s4 seeds each empty "
+                    "category from the assigned source repo's config.sh "
+                    "defaults — same behaviour as the TUI's target editor. "
+                    "The returned dict includes ``seeded_oscam_defaults`` "
+                    "with the per-category count when that kicks in."
                 ),
                 inputSchema={
                     "type": "object",
