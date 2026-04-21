@@ -481,6 +481,7 @@ def start_build_job(
                 qemu_test=settings.qemu_test,
                 qemu_timeout=settings.qemu_timeout,
                 qemu_expect=settings.qemu_expect,
+                qemu_run_unit_tests=settings.qemu_run_unit_tests,
                 build_overrides=overrides,
                 log_max_age_days=settings.log_max_age_days,
                 log_max_count=settings.log_max_count,

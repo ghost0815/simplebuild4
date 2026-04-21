@@ -24,6 +24,7 @@ SWITCH_MAP = {
     "set-export-libs-zip": "export_libs_zip",
     "set-organize-logs": "organize_logs",
     "set-qemu-test": "qemu_test",
+    "set-qemu-unit-tests": "qemu_run_unit_tests",
     "set-web-enabled": "web_enabled",
     "set-web-ssl": "web_ssl",
     "set-mcp-enabled": "mcp_enabled",
@@ -181,6 +182,13 @@ class SettingsScreen(Screen):
                     Input(value=s.qemu_expect, id="set-qemu-expect"),
                     classes="s-row",
                 )
+                _unit_row = _switch_row(
+                    t("enable_qemu_unit_tests"),
+                    s.qemu_run_unit_tests,
+                    "set-qemu-unit-tests",
+                )
+                _unit_row.tooltip = t("tt_qemu_unit_tests")
+                yield _unit_row
 
             # Web Service
             with Collapsible(title=t('section_webservice'), collapsed=True, id="col-webservice"):

@@ -53,6 +53,7 @@ _WRITABLE_FIELDS = {
     "qemu_test",
     "qemu_timeout",
     "qemu_expect",
+    "qemu_run_unit_tests",
 
     # Log retention
     "log_max_age_days",

@@ -46,6 +46,15 @@ class Settings:
     qemu_test: bool = False
     qemu_timeout: int = 5
     qemu_expect: str = "Server running"
+    # When true, s4 invokes oscam's ``make tests`` target after a
+    # successful make-build and runs the resulting ``tests.bin`` via
+    # qemu-user (or directly on native) — picks up oscam's own config-
+    # parser unit tests. Requires the oscam repo to carry the
+    # build-isolate-test-artifacts + test-runner-exit-status commits
+    # so the test build lands in ``build-tests/`` (no collision with
+    # the next regular build) and ``tests.bin`` returns a non-zero
+    # exit code on failure. cmake builds aren't supported yet.
+    qemu_run_unit_tests: bool = False
 
     # Web Service
     web_enabled: bool = False      # serve TUI in browser via textual-serve
@@ -125,6 +134,7 @@ class Settings:
             "qemu_test": self.qemu_test,
             "qemu_timeout": self.qemu_timeout,
             "qemu_expect": self.qemu_expect,
+            "qemu_run_unit_tests": self.qemu_run_unit_tests,
             "web_enabled": self.web_enabled,
             "web_host": self.web_host,
             "web_port": self.web_port,
@@ -198,6 +208,7 @@ class Settings:
             qemu_test=data.get("qemu_test", False),
             qemu_timeout=data.get("qemu_timeout", 5),
             qemu_expect=data.get("qemu_expect", "Server running"),
+            qemu_run_unit_tests=data.get("qemu_run_unit_tests", False),
             web_enabled=data.get("web_enabled", False),
             web_host=data.get("web_host", "0.0.0.0"),
             web_port=data.get("web_port", 8080),

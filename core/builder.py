@@ -46,6 +46,7 @@ class BuildEngine:
         qemu_test: bool = False,
         qemu_timeout: int = 5,
         qemu_expect: str = "Server running",
+        qemu_run_unit_tests: bool = False,
         build_overrides: str = "",
         log_max_age_days: int = 0,
         log_max_count: int = 0,
@@ -78,6 +79,7 @@ class BuildEngine:
         self.qemu_test = qemu_test
         self.qemu_timeout = qemu_timeout
         self.qemu_expect = qemu_expect
+        self.qemu_run_unit_tests = qemu_run_unit_tests
         self.build_overrides = build_overrides
         self.log_max_age_days = log_max_age_days
         self.log_max_count = log_max_count
@@ -368,6 +370,18 @@ class BuildEngine:
             elif cross:
                 self._qemu_smoke_test(bin_path, cross, sysroot, tc_dir)
 
+        # Unit tests: run oscam's ``make tests`` target and exec the
+        # resulting ``tests.bin`` via qemu-user (or native). Only for
+        # make-built targets and only if the user opted in via F1 →
+        # QEMU Post-Build Test block.
+        if self.qemu_run_unit_tests and (self.target.build.build_system or "make") == "make":
+            if cross and "android" in cross.lower():
+                self._log("[dim]Unit tests skipped (Android cross-compile)[/dim]")
+            else:
+                self._run_unit_tests(repo_dir, cross, sysroot, is_native, tc_dir)
+        elif self.qemu_run_unit_tests:
+            self._log("[dim]Unit tests skipped (only supported on make builds, not cmake)[/dim]")
+
     def _native_smoke_test(self, bin_path: Path, tc_dir: Path | None = None) -> None:
         """Run a smoke test on a native binary (direct execution)."""
         import time
@@ -583,6 +597,150 @@ class BuildEngine:
 
         except Exception as e:
             self._log(f"[red]{label} -------> ERROR: {e}[/red]")
+
+    def _run_unit_tests(self, repo_dir: Path, cross: str, sysroot: str,
+                        is_native: bool, tc_dir: Path | None) -> None:
+        """Build and run oscam's self-tests (``make tests`` → ``tests.bin``).
+
+        Depends on two upstream oscam commits:
+          * "build: isolate test build artifacts into a separate directory"
+            so the test-mode objects land in ``build-tests/`` without
+            invalidating the next regular build.
+          * "tests: return failures and fail test binary" so ``tests.bin``
+            exits non-zero when any test fails.
+
+        On older oscam checkouts the make step still works (obj files
+        just share the regular ``build/`` dir) but the exit code is
+        always 0, so a failure would go unnoticed.
+        """
+        import time
+        import shutil as _shutil
+        import threading
+
+        args = list(getattr(self, "_last_make_args", []) or [])
+        # Target-specific extras for the test build
+        tests_cmd = ["make", "tests", f"-j{self.max_cpus}",
+                     "BUILD_DIR=build-tests", "TESTS_BIN=tests.bin",
+                     *args]
+        self._log("")
+        self._log("[bold]Running unit tests (make tests)[/bold]")
+        self._log(f"[dim]          $ {' '.join(tests_cmd)}[/dim]")
+        ok_build = self._run(tests_cmd, cwd=repo_dir, colorize=True)
+        tests_bin = repo_dir / "tests.bin"
+        if not ok_build or not tests_bin.exists():
+            self._log("[red]TESTS ------> FAIL (compile error)[/red]")
+            return
+
+        # Build the command that runs tests.bin. Mirrors the qemu-
+        # smoke-test path but without the expect-string logic — we
+        # trust the binary's exit code (non-zero = failure).
+        cmd: list[str] = []
+        run_label = "TESTS"
+        if is_native:
+            env = os.environ.copy()
+            if tc_dir:
+                local_lib = tc_dir / "lib"
+                if local_lib.is_dir():
+                    old = env.get("LD_LIBRARY_PATH", "")
+                    env["LD_LIBRARY_PATH"] = (
+                        f"{local_lib}:{old}" if old else str(local_lib)
+                    )
+            cmd = [str(tests_bin)]
+        else:
+            # Cross: qemu-<arch>. Reuse the arch-map from _qemu_smoke_test.
+            _QEMU_ARCH_MAP = {
+                "arm": "arm", "armv7": "arm", "armv7l": "arm", "armv7ve": "arm",
+                "armv7a": "arm", "armv7ahf": "arm", "armv6": "arm", "armv5te": "arm",
+                "armv8": "arm", "armv8l": "arm",
+                "aarch64": "aarch64", "arm64": "aarch64", "armv8a": "aarch64",
+                "armv8_64": "aarch64",
+                "mipsel": "mipsel", "mips32el": "mipsel",
+                "mips": "mips",
+                "i686": "i386", "i386": "i386",
+                "x86_64": "x86_64", "riscv64": "riscv64", "sh4": "sh4",
+            }
+            try:
+                dumpmachine = subprocess.run(
+                    [f"{cross}gcc", "-dumpmachine"],
+                    capture_output=True, text=True, timeout=5,
+                ).stdout.strip()
+                qemu_arch = _QEMU_ARCH_MAP.get(
+                    dumpmachine.split("-")[0], dumpmachine.split("-")[0],
+                )
+            except Exception:
+                self._log("[yellow]TESTS ------> SKIP (cannot determine arch)[/yellow]")
+                return
+            qemu_bin = f"qemu-{qemu_arch}"
+            if not _shutil.which(qemu_bin):
+                self._log(f"[yellow]TESTS ------> SKIP ({qemu_bin} not found)[/yellow]")
+                return
+            qemu_sysroot = sysroot.rstrip("/")
+            if qemu_sysroot.endswith("/usr"):
+                qemu_sysroot = qemu_sysroot[:-4]
+            extra_lib_dirs: list[str] = []
+            if tc_dir:
+                for candidate in [tc_dir / (dumpmachine or "") / "lib", tc_dir / "lib"]:
+                    if candidate.is_dir() and str(candidate) not in qemu_sysroot:
+                        extra_lib_dirs.append(str(candidate))
+            cmd = [qemu_bin, "-L", qemu_sysroot]
+            if extra_lib_dirs:
+                cmd += ["-E", f"LD_LIBRARY_PATH={':'.join(extra_lib_dirs)}"]
+            cmd.append(str(tests_bin))
+            env = None
+            run_label = "QEMU-TESTS"
+
+        self._log(f"[cyan]{run_label} -> [/cyan]executing {tests_bin.name}")
+        self._log(f"[dim]          $ {' '.join(cmd)}[/dim]")
+
+        # Run synchronously but with a hard timeout so a hung test can't
+        # stall the build forever. 120 s is generous — current tests.c
+        # finishes in well under a second.
+        try:
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                text=True, encoding="utf-8", errors="replace",
+                preexec_fn=os.setsid,
+                env=env if is_native else None,
+            )
+            done = False
+
+            def reader():
+                nonlocal done
+                for line in proc.stdout:
+                    stripped = line.rstrip()
+                    if stripped and not stripped.startswith("qemu: Unsupported syscall"):
+                        self._log(f"          {stripped}")
+                done = True
+
+            t = threading.Thread(target=reader, daemon=True)
+            t.start()
+            start = time.time()
+            timeout = 120
+            while not done and time.time() - start < timeout:
+                if self._cancel():
+                    break
+                time.sleep(0.1)
+                if proc.poll() is not None:
+                    break
+            try:
+                proc.wait(timeout=2)
+            except Exception:
+                try:
+                    os.killpg(os.getpgid(proc.pid), 9)
+                except Exception:
+                    pass
+            t.join(timeout=2)
+
+            rc = proc.returncode
+            if self._cancel():
+                self._log(f"[yellow]{run_label} -> CANCELLED[/yellow]")
+            elif rc == 0:
+                self._log(f"[green]{run_label} -> PASS (exit 0)[/green]")
+            else:
+                self._log(f"[red]{run_label} -> FAIL (exit {rc})[/red]")
+        except Exception as e:
+            self._log(f"[red]{run_label} -> ERROR: {e}[/red]")
 
     def _close_log(self, log_path: Optional[Path]) -> None:
         """Show the log path, apply retention, then close the log file.
@@ -1324,6 +1482,16 @@ class BuildEngine:
         # Build
         self._log("  Compiling...")
         ok = self._run(make_cmd, cwd=repo_dir, colorize=True)
+        # Stash the env-carrying args of make_cmd so the post-build
+        # unit-test step can drive ``make tests`` with the SAME
+        # cross-compile setup (CROSS, CC, EXTRA_CFLAGS, USE_*, …) —
+        # without that, a cross toolchain would run the host's gcc.
+        # We drop ``OSCAM_BIN=`` (handled by the tests target via
+        # TESTS_BIN) and the ``-j`` flag (we append our own).
+        self._last_make_args = [
+            a for a in make_cmd[1:]
+            if not a.startswith("OSCAM_BIN=") and not a.startswith("-j")
+        ]
         return ok, bin_path
 
     def _build_cmake(self, repo_dir, bin_path, cross, sysroot, cross_sysroot,

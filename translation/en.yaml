@@ -393,6 +393,8 @@ private_key: "Private key"
 enable_qemu_test: "Enable QEMU smoke test"
 timeout_seconds: "Timeout (seconds)"
 expected_output: "Expected output"
+enable_qemu_unit_tests: "Run oscam unit tests"
+tt_qemu_unit_tests: "Build + run oscam's ``tests.bin`` (make target\n``tests``) after every successful make-build."
 
 # Library dropdown labels
 lib_skip: "skip"

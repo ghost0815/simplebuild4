@@ -450,6 +450,7 @@ class MainScreen(Screen):
                     qemu_test=self.app.settings.qemu_test,
                     qemu_timeout=self.app.settings.qemu_timeout,
                     qemu_expect=self.app.settings.qemu_expect,
+                    qemu_run_unit_tests=self.app.settings.qemu_run_unit_tests,
                     build_overrides=build_overrides,
                     log_max_age_days=self.app.settings.log_max_age_days,
                     log_max_count=self.app.settings.log_max_count,
