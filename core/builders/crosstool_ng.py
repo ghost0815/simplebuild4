@@ -36,6 +36,28 @@ def _expand_tokens(cmd: list, tokens: dict) -> list:
     return result
 
 
+def _dir_size(path: Path) -> int:
+    """Cheap recursive size of a directory in bytes. Returns 0 if missing."""
+    if not path.is_dir():
+        return 0
+    total = 0
+    for root, _dirs, files in os.walk(path, followlinks=False):
+        for name in files:
+            try:
+                total += (Path(root) / name).stat().st_size
+            except OSError:
+                pass
+    return total
+
+
+def _format_bytes(n: int) -> str:
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1024
+    return f"{n} B"
+
+
 class CrosstoolNG:
     """crosstool-ng builder runner."""
 
@@ -247,22 +269,12 @@ class CrosstoolNG:
         self.log("[bold]Running ct-ng build...[/bold]")
         ok = self._run(["bash", "-c", "ulimit -n 4096; ./ct-ng build"], cwd=self.ctng_dir)
 
-        # Cleanup build artifacts (whether success or failure — saves disk)
-        try:
-            build_log = self.ctng_dir / "build.log"
-            if build_log.exists():
-                m = re.search(r'CT_BUILD_TOP_DIR=(\S+)', build_log.read_text(encoding="utf-8", errors="replace"))
-                if m:
-                    btop = Path(m.group(1).strip())
-                    if btop.is_dir():
-                        shutil.rmtree(btop, ignore_errors=True)
-                        self.log(f"  Cleaned build artifacts: {btop}")
-        except Exception:
-            pass
-
         if not ok:
             self.log("[red]ct-ng build failed[/red]")
-            # Remove partial install dir on failure
+            # Remove partial install dir on failure. Leave .build/ and
+            # build.log in place so the user can inspect what went wrong —
+            # they can run ``./ct-ng clean`` manually (or re-run the
+            # build, which overwrites) to free the disk.
             if install_dir.exists():
                 shutil.rmtree(install_dir, ignore_errors=True)
             return False
@@ -270,6 +282,22 @@ class CrosstoolNG:
         if not install_dir.exists():
             self.log(f"[red]Build reported success but {install_dir} missing[/red]")
             return False
+
+        # --- Cleanup: run ct-ng's own ``clean`` target. -----------------
+        # It wipes the whole ``.build/`` scratch tree (sources, object
+        # files, tools, previous-target leftovers) plus ``*.log`` /
+        # ``build.log.*``. On a multi-template checkout this can recover
+        # tens of GB that our previous "delete CT_BUILD_TOP_DIR"
+        # heuristic missed (.build/src/, .build/tools/, old targets).
+        # The .config is also dropped — fine because every build() call
+        # copies a fresh one from the template before configuring.
+        try:
+            size_before = _dir_size(self.ctng_dir / ".build")
+        except Exception:
+            size_before = 0
+        self._run(["./ct-ng", "clean"], cwd=self.ctng_dir, ignore_failure=True)
+        if size_before:
+            self.log(f"  Cleaned ct-ng scratch tree ({_format_bytes(size_before)} freed)")
 
         self.log(f"[green]Toolchain {template.name} installed → {install_dir}[/green]")
         return True
