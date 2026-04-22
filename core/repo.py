@@ -365,10 +365,34 @@ class RepoManager:
                     if log and out:
                         log(out)
             if log:
-                log("$ git pull")
-            output = self._run_git("pull")
-            if log and output:
-                log(output)
+                log("$ git pull --ff-only")
+            try:
+                output = self._run_git("pull", "--ff-only")
+                if log and output:
+                    log(output)
+            except subprocess.CalledProcessError:
+                # Diverged branch (local commits ahead of origin) —
+                # ``git pull`` on modern git refuses to auto-choose
+                # between merge/rebase/ff-only, and ``--ff-only``
+                # then exits non-zero. For source repos s4 wants a
+                # clean upstream checkout, so reset the branch to
+                # origin/<target> verbatim. Any local commits are
+                # preserved as reflog entries on the server side.
+                try:
+                    head = self._run_git("rev-parse", "--abbrev-ref", "HEAD")
+                except subprocess.CalledProcessError:
+                    head = ""
+                if not head or head == "HEAD":
+                    raise
+                if log:
+                    log(
+                        f"  branch diverged from origin — "
+                        f"resetting {head} to origin/{head}"
+                    )
+                self._run_git("fetch", "origin", head)
+                out = self._run_git("reset", "--hard", f"origin/{head}")
+                if log and out:
+                    log(out)
             self._backup(log)
             return True
         except subprocess.CalledProcessError as e:
