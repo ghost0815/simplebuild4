@@ -343,6 +343,12 @@ class BuildEngine:
         Must happen before distclean of the next build, otherwise Distribution/
         artifacts (list_smargo, .debug) would be deleted.
         """
+        # Harvest any freshly-downloaded mbedTLS tarball from the repo's
+        # local cache into s4's central downloads dir (and replace with
+        # a symlink). Next build reuses it, and ``git clean`` or a repo
+        # reset doesn't lose the cached copy.
+        self._mbedtls_tarball_cache_sync(repo_dir, pre=False)
+
         # Delete debug binary
         debug_bin = Path(f"{bin_path}.debug")
         if self.delete_debug and debug_bin.exists():
@@ -741,6 +747,124 @@ class BuildEngine:
                 self._log(f"[red]{run_label} -> FAIL (exit {rc})[/red]")
         except Exception as e:
             self._log(f"[red]{run_label} -> ERROR: {e}[/red]")
+
+    def _mbedtls_tarball_cache_sync(self, repo_dir: Path, pre: bool) -> None:
+        """Bridge oscam's ``.mbedtls-cache/`` with s4's ``data/downloads/``.
+
+        ``config.sh --mbedtls-fetch`` downloads the pinned tarball
+        named in ``mbedtls/version.conf`` into the repo-local
+        ``.mbedtls-cache/``. Without intervention the cache is
+        repo-scoped — a backup-restore or fresh clone loses it and
+        forces a 7 MB re-download.
+
+        ``pre=True``: before ``make``, if ``data/downloads/<tarball>``
+        already exists, place a symlink under ``.mbedtls-cache/`` so
+        the fetch script finds it and skips the download.
+
+        ``pre=False``: after a successful build, if the repo downloaded
+        a fresh tarball (regular file, not symlink), relocate it to
+        ``data/downloads/`` and replace with a symlink.
+
+        No-op on branches that don't use tarball-based mbedtls
+        (``mbedtls/version.conf`` absent).
+        """
+        version_conf = repo_dir / "mbedtls" / "version.conf"
+        if not version_conf.is_file():
+            return
+        conf: dict[str, str] = {}
+        try:
+            for _line in version_conf.read_text(
+                encoding="utf-8", errors="replace",
+            ).splitlines():
+                _line = _line.strip()
+                if not _line or _line.startswith("#") or "=" not in _line:
+                    continue
+                k, _, v = _line.partition("=")
+                conf[k.strip()] = v.strip().strip('"').strip("'")
+        except Exception:
+            return
+        # version.conf is a shell source-file and uses ``${VAR}`` /
+        # ``$VAR`` interpolation (e.g. URL embeds ``${VERSION}``).
+        # Expand references using the values we already parsed —
+        # limited to a single pass, which is all oscam's file needs.
+        import re as _re
+        def _expand(s: str) -> str:
+            return _re.sub(
+                r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?",
+                lambda m: conf.get(m.group(1), m.group(0)),
+                s,
+            )
+        conf = {k: _expand(v) for k, v in conf.items()}
+        url = conf.get("URL", "")
+        if not url:
+            return
+        tarball_name = url.rsplit("/", 1)[-1]
+        if not tarball_name:
+            return
+
+        # ``self.bin_dir`` is ``data/bin``; downloads lives next to it.
+        downloads_dir = self.bin_dir.parent / "downloads"
+        cache_dir = repo_dir / ".mbedtls-cache"
+        dl_path = downloads_dir / tarball_name
+        cache_path = cache_dir / tarball_name
+
+        # Relative symlink so the repo tree can be tar-balled /
+        # moved / bind-mounted without breaking the cache reference.
+        # Note: oscam's ``config.sh --mbedtls-fetch`` prints the cached
+        # tarball size via ``du -h`` which reports 0 for a symlink —
+        # fix belongs upstream (``du -hL``), not in s4.
+        rel_target = os.path.relpath(dl_path, start=cache_dir)
+
+        try:
+            if pre:
+                # Seed from central store if available and cache empty.
+                if dl_path.is_file() and not cache_path.exists():
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    cache_path.symlink_to(rel_target)
+                    self._log(
+                        f"[cyan]    mbedTLS tarball: reusing {tarball_name} "
+                        f"from data/downloads/[/cyan]"
+                    )
+                elif cache_path.is_symlink():
+                    # Existing symlink — if the target is missing
+                    # (downloads got wiped) remove the dangling link so
+                    # the fetch script re-downloads. A healthy symlink
+                    # pointing at the central copy stays silent; no
+                    # need to clutter every build log with a "nothing
+                    # to do" confirmation.
+                    try:
+                        same = dl_path.is_file() and os.path.samefile(
+                            cache_path, dl_path,
+                        )
+                    except OSError:
+                        same = False
+                    if not same:
+                        cache_path.unlink()
+                        self._log(
+                            f"[yellow]    mbedTLS tarball: removed stale "
+                            f"symlink (target missing), will re-fetch"
+                            f"[/yellow]"
+                        )
+            else:
+                # Harvest a freshly-downloaded copy into data/downloads/.
+                if cache_path.is_file() and not cache_path.is_symlink():
+                    downloads_dir.mkdir(parents=True, exist_ok=True)
+                    if dl_path.exists():
+                        # Another build centralised it first; just drop
+                        # the duplicate local copy + resymlink.
+                        cache_path.unlink()
+                    else:
+                        import shutil as _sh
+                        _sh.move(str(cache_path), str(dl_path))
+                    cache_path.symlink_to(rel_target)
+                    self._log(
+                        f"[cyan]    mbedTLS tarball: moved {tarball_name} "
+                        f"to data/downloads/ (symlinked back)[/cyan]"
+                    )
+        except Exception as e:
+            self._log(
+                f"    [yellow]mbedTLS tarball cache sync failed: {e}[/yellow]"
+            )
 
     def _close_log(self, log_path: Optional[Path]) -> None:
         """Show the log path, apply retention, then close the log file.
@@ -1481,6 +1605,11 @@ class BuildEngine:
 
         # Build
         self._log("  Compiling...")
+        # Bridge oscam's ``.mbedtls-cache/`` with s4's central
+        # ``data/downloads/`` — positioned here so the reuse log
+        # line groups visually with the submodule / mbedtls fetch
+        # output from make below.
+        self._mbedtls_tarball_cache_sync(repo_dir, pre=True)
         ok = self._run(make_cmd, cwd=repo_dir, colorize=True)
         # Stash the env-carrying args of make_cmd so the post-build
         # unit-test step can drive ``make tests`` with the SAME
@@ -1922,8 +2051,12 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         if stripped.startswith("|") or stripped.startswith("+---"):
             return f"[yellow]{rich_escape(stripped)}[/yellow]"
 
-        # Submodule lines
-        if "submodule" in stripped.lower():
+        # Submodule lines + mbedTLS tarball-fetch status
+        # (``mbedTLS 4.1.0 ready (tarball 6.7M, cached)`` / ``fetched``)
+        _low = stripped.lower()
+        if "submodule" in _low or (
+            "mbedtls " in _low and "ready" in _low and "tarball" in _low
+        ):
             return f"[cyan]{rich_escape(stripped)}[/cyan]"
 
         # Known make prefixes
