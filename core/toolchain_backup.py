@@ -99,21 +99,38 @@ def backup_toolchain(
 
         size_mb = backup_file.stat().st_size / (1024 * 1024)
 
-        # Update checksum + URL in local YAML only for local (file://) toolchains
-        if not tc.url or tc.url.startswith("file://"):
-            h = hashlib.sha256()
-            with open(backup_file, "rb") as bf:
-                for chunk in iter(lambda: bf.read(8192), b""):
-                    h.update(chunk)
-            new_checksum = f"sha256:{h.hexdigest()}"
+        # Always update url + checksum in toolchains.local.yaml —
+        # regardless of what was there before (upstream ``https://``,
+        # previous ``file://`` pin, or empty). The local entry is the
+        # user-editable copy of a defaults/ catalog entry and the
+        # restore path reads from the local entry first. After a
+        # backup the locally stored archive IS the source of truth.
+        # Original upstream info stays preserved in
+        # ``defaults/toolchains.yaml`` — if the user later wants to
+        # reset to upstream: delete the install dir + remove the
+        # local.yaml entry and the catalog URL becomes active again.
+        h = hashlib.sha256()
+        with open(backup_file, "rb") as bf:
+            for chunk in iter(lambda: bf.read(8192), b""):
+                h.update(chunk)
+        new_checksum = f"sha256:{h.hexdigest()}"
 
-            local_tcs = registry._load_file(registry.local_path)
-            for ltc in local_tcs:
-                if ltc.name == tc.name:
-                    ltc.url = f"file://{backup_file.name}"
-                    ltc.checksum = new_checksum
-                    break
-            registry.save_local(local_tcs)
+        local_tcs = registry._load_file(registry.local_path)
+        found = False
+        for ltc in local_tcs:
+            if ltc.name == tc.name:
+                ltc.url = f"file://{backup_file.name}"
+                ltc.checksum = new_checksum
+                found = True
+                break
+        if not found:
+            # Defensive fallback — if the local copy somehow disappeared
+            # between install and backup, re-create it from the in-memory
+            # tc so the backup is actually usable for a restore.
+            tc.url = f"file://{backup_file.name}"
+            tc.checksum = new_checksum
+            local_tcs.append(tc)
+        registry.save_local(local_tcs)
 
         blog("")
         blog(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
