@@ -1591,9 +1591,34 @@ class BuildEngine:
             make_cmd.append(flag)
         for key, val in static_libs.items():
             make_cmd.append(f"{key}={val}")
-        # Static libusb needs -lrt on older glibc (clock_gettime not in libc)
+        # Static libusb pulls in extra libraries that a shared build
+        # would already have resolved for us.
+        # * ``-lrt`` — clock_gettime on older glibc lives in librt
+        # * ``-ludev`` — some SDKs (e.g. OpenEmbedded Scarthgap) ship
+        #   libusb-1.0.a compiled with udev support, so the archive
+        #   drags in ``udev_*`` symbols via ``os/linux_udev.o``. We
+        #   probe the archive for those references and only add
+        #   ``-ludev`` if libusb actually uses udev — keeps the
+        #   older no-udev SDKs unchanged.
         if "LIBUSB_LIB" in static_libs:
-            make_cmd.append("EXTRA_LIBS=-lrt")
+            extra_libs = ["-lrt"]
+            libusb_a = static_libs.get("LIBUSB_LIB", "")
+            if libusb_a and Path(libusb_a).is_file() and cross:
+                nm = f"{cross}nm"
+                try:
+                    out = subprocess.check_output(
+                        [nm, "--undefined-only", libusb_a],
+                        stderr=subprocess.DEVNULL, text=True, timeout=10,
+                    )
+                    if "udev_" in out:
+                        extra_libs.append("-ludev")
+                        self._log(
+                            "  Auto-added to EXTRA_LIBS: -ludev "
+                            "(libusb.a references udev symbols)"
+                        )
+                except Exception:
+                    pass
+            make_cmd.append(f"EXTRA_LIBS={' '.join(extra_libs)}")
         if stapi_lib:
             make_cmd.append(stapi_lib)
         if extra_make:
