@@ -255,6 +255,54 @@ class Deployer:
         except Exception as e:
             self._log(f"  [red]Error: {rich_escape(self._mask_password(str(e)))}[/red]")
 
+    def step_backup_target(self) -> None:
+        """Step 4.5: copy the existing target binary to ``<target_path>.bak``
+        before the fresh one replaces it. No-op when the deployment's
+        ``target_backup`` flag is off or when nothing is yet at
+        ``target_path``. Failures are logged yellow but don't abort the
+        deploy — a missing ``.bak`` is not worth blocking a working
+        rollout over."""
+        if not getattr(self.config, "target_backup", False):
+            return
+        path = self.config.target_path
+        if self.dry_run:
+            self._log("[bold]4b. Backup target binary (dry-run)[/bold]")
+            if self.is_local:
+                self._log(f"  [dim]$ cp -a {path} {path}.bak[/dim]")
+            else:
+                self._log(f"  [dim]$ ssh {self._ssh_target} cp -a {path} {path}.bak[/dim]")
+            return
+        self._log(f"[bold]4b. Backup target binary... [dim]({path}.bak)[/dim][/bold]")
+        cmd = f"test -e '{path}' && cp -a '{path}' '{path}.bak'"
+        # Respect the su-wrap pattern the pre/post command steps use
+        # so writing to privileged locations (e.g. /usr/bin/oscam)
+        # works the same way here.
+        actual_cmd, display_cmd = self._wrap_su(cmd)
+        self._log(f"  [dim]$ {display_cmd}[/dim]")
+        try:
+            if self.is_local:
+                result = self._run_local(actual_cmd, timeout=15)
+            else:
+                result = self._ssh(actual_cmd, timeout=15)
+            if result.returncode == 0:
+                self._log(f"  [green]Saved: {path}.bak[/green]")
+            elif result.returncode == 1:
+                # test -e failed — nothing at target yet, first deploy
+                self._log(f"  [dim]skip: no existing binary at {path}[/dim]")
+            else:
+                err = (result.stderr or result.stdout or "").strip() or "unknown"
+                self._log(
+                    f"  [yellow]Backup failed (exit {result.returncode}): "
+                    f"{rich_escape(self._mask_password(err))} "
+                    f"— continuing with deploy[/yellow]"
+                )
+        except Exception as e:
+            self._log(
+                f"  [yellow]Backup error: "
+                f"{rich_escape(self._mask_password(str(e)))}"
+                f" — continuing with deploy[/yellow]"
+            )
+
     def step_deploy(self) -> bool:
         """Step 5: Deploy/copy the binary. Returns True on success."""
         path = self.config.target_path
@@ -347,6 +395,7 @@ class Deployer:
             self.step_system_info()
             self.step_check_binary()
         self.step_pre_install()
+        self.step_backup_target()
         ok = self.step_deploy()
         self.step_post_install()
         self._log(f"  [green]Done: {self.name}[/green]")

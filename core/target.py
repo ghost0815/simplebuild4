@@ -31,6 +31,11 @@ class DeploymentConfig:
     port: int = 22
     key: str = ""                   # SSH key path
     target_path: str = "/usr/bin/oscam"
+    # When true, deployment copies the existing binary on the device
+    # aside before overwriting it with the fresh build. Mirrors the
+    # repo-backup flow: <target_path>.bak is kept so a rollback is a
+    # single ``mv`` away. Off by default to match historical behavior.
+    target_backup: bool = False
     su_password: str = ""              # encrypted, root password for su -c wrapping
     pre_cmd: str = ""
     post_cmd: str = ""
@@ -199,6 +204,7 @@ class Target:
                     "port": u.port,
                     "key": u.key,
                     "target_path": u.target_path,
+                    "target_backup": u.target_backup,
                     "su_password": _encrypt(u.su_password),
                     "pre_cmd": u.pre_cmd,
                     "post_cmd": u.post_cmd,
@@ -304,6 +310,7 @@ class Target:
                 port=u.get("port", 22),
                 key=u.get("key", ""),
                 target_path=u.get("target_path", "/usr/bin/oscam"),
+                target_backup=u.get("target_backup", False),
                 su_password=_decrypt(u.get("su_password", ""), label=lambda tn=_tgt_name, di=_dep_id: f"{t('te_su_password')} (Target '{tn}' / '{di}')"),
                 pre_cmd=u.get("pre_cmd", ""),
                 post_cmd=u.get("post_cmd", ""),

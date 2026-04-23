@@ -85,6 +85,7 @@ def _target_summary(target: Target) -> dict[str, Any]:
             "port": int(getattr(d, "port", 22) or 22),
             "key": getattr(d, "key", ""),
             "target_path": getattr(d, "target_path", "/usr/bin/oscam"),
+            "target_backup": bool(getattr(d, "target_backup", False)),
             "pre_cmd": getattr(d, "pre_cmd", ""),
             "post_cmd": getattr(d, "post_cmd", ""),
         })
@@ -268,6 +269,7 @@ def _apply_patch_to_target(target: Target, patch: dict[str, Any]) -> None:
                 port=int(d.get("port", 22) or 22),
                 key=str(d.get("key", "")),
                 target_path=str(d.get("target_path", "/usr/bin/oscam")),
+                target_backup=bool(d.get("target_backup", False)),
                 pre_cmd=str(d.get("pre_cmd", "")),
                 post_cmd=str(d.get("post_cmd", "")),
                 password=preserved.password if preserved else "",

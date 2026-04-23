@@ -821,7 +821,7 @@ class TargetEditScreen(Screen):
                         _cb.styles.padding = (0, 0)
                         _cb.tooltip = t("te_deploy_active") if up.enabled else t("te_deploy_disabled")
                         yield Horizontal(
-                            Static(f" {t('re_name')}", classes="s-label-tall"),
+                            Static(f" {t('te_enabled_name')}", classes="s-label-tall"),
                             _cb,
                             Input(value=up.name, placeholder=f"#{idx + 1}", id=f"t-dep-name-{idx}"),
                             classes="s-row",
@@ -862,11 +862,21 @@ class TargetEditScreen(Screen):
                             _sp(), _sp(), _sp(),
                             classes="s-row",
                         )
-                        # Row 4 left: Target path + browse
+                        # Row 4 left: Backup checkbox + Target path + browse
                         _path_browse = Button(icon("browse"), id=f"btn-dep-browse-path-{idx}", classes="tc-reset-btn")
                         _path_browse.tooltip = t("rfp_browse_remote")
+                        _bk_cb = Checkbox(
+                            "", value=up.target_backup, id=f"t-dep-backup-{idx}",
+                        )
+                        _bk_cb.styles.width = 5
+                        _bk_cb.styles.min_width = 5
+                        _bk_cb.styles.max_width = 5
+                        _bk_cb.styles.height = 3
+                        _bk_cb.styles.padding = (0, 0)
+                        _bk_cb.tooltip = t("tt_dep_target_backup")
                         yield Horizontal(
                             Static(f" {t('te_target_path')}", classes="s-label-tall"),
+                            _bk_cb,
                             Input(value=up.target_path, id=f"t-dep-path-{idx}"),
                             _path_browse,
                             _sp(),
@@ -2078,6 +2088,10 @@ class TargetEditScreen(Screen):
                 enabled = self.query_one(f"#t-dep-enabled-{idx}", Checkbox).value
             except Exception:
                 enabled = True
+            try:
+                target_backup = self.query_one(f"#t-dep-backup-{idx}", Checkbox).value
+            except Exception:
+                target_backup = False
             deployment.append(DeploymentConfig(
                 name=up_name,
                 enabled=enabled,
@@ -2089,6 +2103,7 @@ class TargetEditScreen(Screen):
                 port=port,
                 key=self.query_one(f"#t-dep-key-{idx}", Input).value.strip(),
                 target_path=self.query_one(f"#t-dep-path-{idx}", Input).value.strip(),
+                target_backup=target_backup,
                 su_password=su_password,
                 pre_cmd=self.query_one(f"#t-dep-pre-{idx}", Input).value.strip(),
                 post_cmd=self.query_one(f"#t-dep-post-{idx}", Input).value.strip(),
