@@ -597,11 +597,34 @@ class RepoManager:
         backup_path = self.backup_dir / filename
         latest_link = self.backup_dir / f"last-oscam-{name}.tar.gz"
 
+        # Exclude directories that contain symlinks pointing outside
+        # the repo tree — Python 3.12+ ``extractall`` with the default
+        # ``data`` filter refuses those and aborts the whole restore.
+        # ``.mbedtls-cache/`` (created by the mbedtls tarball-cache
+        # bridge, see builder._mbedtls_tarball_cache_sync) is exactly
+        # such a case: its ``mbedtls-*.tar.bz2`` is a relative symlink
+        # to ``data/downloads/``. It's pure download cache and gets
+        # re-linked on the next build anyway.
+        _excluded_names = {".mbedtls-cache"}
+
+        def _filter(info):
+            parts = Path(info.name).parts
+            # parts[0] is the archived repo dir (arcname). Anything
+            # below whose first child is in the excluded set is
+            # dropped from the archive.
+            if len(parts) >= 2 and parts[1] in _excluded_names:
+                return None
+            return info
+
         try:
             if log:
                 log(f"Creating backup: {filename}")
             with tarfile.open(backup_path, "w:gz") as tar:
-                tar.add(self.repo_path, arcname=self.repo_path.name)
+                tar.add(
+                    self.repo_path,
+                    arcname=self.repo_path.name,
+                    filter=_filter,
+                )
             # Update latest symlink
             if latest_link.exists() or latest_link.is_symlink():
                 latest_link.unlink()
@@ -639,7 +662,20 @@ class RepoManager:
             if log:
                 log(f"Restoring from: {backup_path.name}")
             with tarfile.open(backup_path, "r:gz") as tar:
-                tar.extractall(self.repo_path.parent)
+                # Custom extract filter: drop any symlink whose target
+                # escapes the repo tree (e.g. the ``.mbedtls-cache/``
+                # tarball created before this was excluded from
+                # backups). Matches Python's default ``data`` filter
+                # behaviour but silently skips instead of aborting.
+                def _safe_extract(member, path):
+                    if member.issym() or member.islnk():
+                        link = member.linkname
+                        if link.startswith("/") or link.startswith("../"):
+                            return None
+                        if ".." in Path(link).parts:
+                            return None
+                    return member
+                tar.extractall(self.repo_path.parent, filter=_safe_extract)
             return True
         except Exception as e:
             if log:
