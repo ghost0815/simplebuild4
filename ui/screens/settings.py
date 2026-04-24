@@ -115,7 +115,32 @@ class SettingsScreen(Screen):
 
             # Log retention
             with Collapsible(title=t('section_logs'), collapsed=True, id="col-logs"):
-                yield _switch_row(t("organize_logs"), s.organize_logs, "set-organize-logs")
+                _org_label = Static(f" {t('organize_logs')}", classes="s-label")
+                _org_sw = Switch(value=s.organize_logs, id="set-organize-logs")
+                _org_label.tooltip = t("tt_organize_logs")
+                _org_sw.tooltip = t("tt_organize_logs")
+                _wipe_btn = Button(
+                    t("logs_wipe_all"), id="btn-logs-wipe",
+                    variant="error",
+                )
+                _wipe_btn.tooltip = t("tt_logs_wipe_all")
+                # Flex spacer pushes the button to the right edge.
+                _mid_sp = Static("")
+                _mid_sp.styles.width = "1fr"
+                # Fixed 1-col trailing spacer so the button doesn't
+                # butt right up against the section border.
+                _tail_sp = Static("")
+                _tail_sp.styles.width = 1
+                _tail_sp.styles.min_width = 1
+                _tail_sp.styles.max_width = 1
+                yield Horizontal(
+                    _org_label,
+                    _org_sw,
+                    _mid_sp,
+                    _wipe_btn,
+                    _tail_sp,
+                    classes="s-toggle",
+                )
                 yield Horizontal(
                     Static(f" {t('log_max_age_days')}", classes="s-label"),
                     Input(value=str(s.log_max_age_days), id="set-log-max-age", type="integer"),
@@ -776,7 +801,56 @@ class SettingsScreen(Screen):
 
         self.app.call_from_thread(self._refresh_mcp_svc_status)
 
+    _logs_wipe_confirm: float = 0
+
+    def _wipe_all_logs(self) -> None:
+        """Remove everything under ``data/logs/`` — files and subdirs —
+        but keep ``data/logs/`` itself. Honours the
+        ``confirm_dangerous`` setting: when on, the first click arms
+        and the second within 3 s actually wipes (matches the pattern
+        used by F11 Remove in main/repository screens)."""
+        import time
+        import shutil as _shutil
+
+        if self.app.settings.confirm_dangerous:
+            now = time.time()
+            if now - self._logs_wipe_confirm < 3:
+                self._logs_wipe_confirm = 0
+            else:
+                self._logs_wipe_confirm = now
+                self.notify(
+                    t("tt_logs_wipe_confirm"), severity="warning", timeout=3,
+                )
+                return
+
+        logs_dir = self.app.paths.logs_dir
+        removed = 0
+        failed = 0
+        if logs_dir.is_dir():
+            for entry in list(logs_dir.iterdir()):
+                try:
+                    if entry.is_dir() and not entry.is_symlink():
+                        _shutil.rmtree(entry)
+                    else:
+                        entry.unlink()
+                    removed += 1
+                except Exception:
+                    failed += 1
+        if failed:
+            self.notify(
+                t("logs_wipe_done_err", removed=removed, failed=failed),
+                severity="error", timeout=8,
+            )
+        else:
+            self.notify(
+                t("logs_wipe_done_ok", removed=removed),
+                severity="information", timeout=5,
+            )
+
     def on_button_pressed(self, event) -> None:
+        if event.button.id == "btn-logs-wipe":
+            self._wipe_all_logs()
+            return
         if event.button.id == "btn-cert-browse":
             self._open_file_picker("set-sign-cert", t("signing_certificate"))
         elif event.button.id == "btn-key-browse":
