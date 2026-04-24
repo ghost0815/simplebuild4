@@ -376,17 +376,24 @@ class BuildEngine:
             elif cross:
                 self._qemu_smoke_test(bin_path, cross, sysroot, tc_dir)
 
-        # Unit tests: run oscam's ``make tests`` target and exec the
-        # resulting ``tests.bin`` via qemu-user (or native). Only for
-        # make-built targets and only if the user opted in via F1 →
-        # QEMU Post-Build Test block.
-        if self.qemu_run_unit_tests and (self.target.build.build_system or "make") == "make":
+        # Unit tests: run oscam's ``tests.bin`` via qemu-user (or
+        # native) if the user opted in via F1 → QEMU Post-Build Test.
+        # make path: ``make tests BUILD_DIR=build-tests``.
+        # cmake path: second configure/build with ``-DBUILD_TESTS=1``
+        # into a separate ``build_s4_tests/`` directory.
+        if self.qemu_run_unit_tests:
             if cross and "android" in cross.lower():
                 self._log("[dim]Unit tests skipped (Android cross-compile)[/dim]")
             else:
-                self._run_unit_tests(repo_dir, cross, sysroot, is_native, tc_dir)
-        elif self.qemu_run_unit_tests:
-            self._log("[dim]Unit tests skipped (only supported on make builds, not cmake)[/dim]")
+                bs = (self.target.build.build_system or "make").lower()
+                if bs == "cmake":
+                    self._run_unit_tests_cmake(
+                        repo_dir, cross, sysroot, is_native, tc_dir,
+                    )
+                else:
+                    self._run_unit_tests(
+                        repo_dir, cross, sysroot, is_native, tc_dir,
+                    )
 
     def _native_smoke_test(self, bin_path: Path, tc_dir: Path | None = None) -> None:
         """Run a smoke test on a native binary (direct execution)."""
@@ -606,25 +613,12 @@ class BuildEngine:
 
     def _run_unit_tests(self, repo_dir: Path, cross: str, sysroot: str,
                         is_native: bool, tc_dir: Path | None) -> None:
-        """Build and run oscam's self-tests (``make tests`` → ``tests.bin``).
-
-        Depends on two upstream oscam commits:
-          * "build: isolate test build artifacts into a separate directory"
-            so the test-mode objects land in ``build-tests/`` without
-            invalidating the next regular build.
-          * "tests: return failures and fail test binary" so ``tests.bin``
-            exits non-zero when any test fails.
-
-        On older oscam checkouts the make step still works (obj files
-        just share the regular ``build/`` dir) but the exit code is
-        always 0, so a failure would go unnoticed.
-        """
-        import time
-        import shutil as _shutil
-        import threading
-
+        """Build and run oscam's self-tests via ``make tests`` (make-built
+        targets). Depends on the upstream commits that isolate the test
+        build into ``build-tests/`` and make ``tests.bin`` exit non-zero
+        on failure; on older checkouts the run still happens but exit
+        code is unreliable."""
         args = list(getattr(self, "_last_make_args", []) or [])
-        # Target-specific extras for the test build
         tests_cmd = ["make", "tests", f"-j{self.max_cpus}",
                      "BUILD_DIR=build-tests", "TESTS_BIN=tests.bin",
                      *args]
@@ -636,6 +630,60 @@ class BuildEngine:
         if not ok_build or not tests_bin.exists():
             self._log("[red]TESTS ------> FAIL (compile error)[/red]")
             return
+        self._exec_tests_bin(tests_bin, cross, sysroot, is_native, tc_dir)
+
+    def _run_unit_tests_cmake(self, repo_dir: Path, cross: str, sysroot: str,
+                              is_native: bool, tc_dir: Path | None) -> None:
+        """cmake analog to ``_run_unit_tests``. oscam's CMakeLists honors
+        ``-DBUILD_TESTS=ON`` by *replacing* the main executable target
+        with ``tests.bin`` (signing/UPX/strip skipped). So we can't reuse
+        ``build_s4/`` — a second configure in ``build_s4_tests/`` on top
+        of the same cross-compile args produces the test binary next to
+        the untouched main build."""
+        import shutil as _shutil
+
+        cmake_args = list(getattr(self, "_last_cmake_args", []) or [])
+        test_build_dir = repo_dir / "build_s4_tests"
+        if test_build_dir.exists():
+            _shutil.rmtree(test_build_dir, ignore_errors=True)
+        test_build_dir.mkdir(parents=True, exist_ok=True)
+
+        configure_cmd = ["cmake", str(repo_dir),
+                         "-DBUILD_TESTS=ON", *cmake_args]
+        self._log("")
+        self._log("[bold]Running unit tests (cmake -DBUILD_TESTS=ON)[/bold]")
+        self._log(f"[dim]          $ {' '.join(configure_cmd)}[/dim]")
+        if not self._run(configure_cmd, cwd=test_build_dir):
+            self._log("[red]TESTS ------> FAIL (cmake configure)[/red]")
+            return
+        build_cmd = ["cmake", "--build", ".", "--", f"-j{self.max_cpus}"]
+        if not self._run(build_cmd, cwd=test_build_dir, colorize=True):
+            self._log("[red]TESTS ------> FAIL (cmake build)[/red]")
+            return
+        tests_bin = test_build_dir / "tests.bin"
+        if not tests_bin.is_file():
+            found = list(test_build_dir.rglob("tests.bin"))
+            found = [p for p in found
+                     if p.is_file() and os.access(p, os.X_OK)]
+            if found:
+                tests_bin = found[0]
+        if not tests_bin.is_file():
+            self._log(
+                "[yellow]TESTS ------> SKIP (no tests.bin produced — "
+                "oscam revision may predate the cmake BUILD_TESTS option)"
+                "[/yellow]"
+            )
+            return
+        self._exec_tests_bin(tests_bin, cross, sysroot, is_native, tc_dir)
+
+    def _exec_tests_bin(self, tests_bin: Path, cross: str, sysroot: str,
+                        is_native: bool, tc_dir: Path | None) -> None:
+        """Run a prebuilt ``tests.bin`` via qemu-user (cross) or directly
+        (native) and report PASS / FAIL based on its exit code. Shared
+        by the make and cmake unit-test paths."""
+        import time
+        import shutil as _shutil
+        import threading
 
         # Build the command that runs tests.bin. Mirrors the qemu-
         # smoke-test path but without the expect-string logic — we
@@ -1779,6 +1827,13 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
         if not ok:
             self._log("[red]cmake configure FAILED[/red]")
             return False, None
+        # Stash the -D args so _run_unit_tests_cmake can reconfigure a
+        # separate ``build_s4_tests/`` dir with the same cross-compile
+        # setup plus ``-DBUILD_TESTS=ON``. oscam's cmake replaces the
+        # main executable target with ``tests.bin`` when that flag is
+        # on, so the test configure has to live in its own build dir
+        # to avoid clobbering the real binary.
+        self._last_cmake_args = [a for a in cmake_cmd[2:] if a.startswith("-D")]
 
         # --- cmake build ---
         self._log("  Compiling...")
