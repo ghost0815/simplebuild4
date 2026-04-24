@@ -72,7 +72,7 @@ class Paths:
             self.toolchains_dir,
             self.logs_dir, self.patches_dir, self.binaries_dir, self.downloads_dir,
             self.bin_dir, self.builders_dir, self.templates_local,
-            self.yaml_backup_dir, self.automation_logs_dir,
+            self.yaml_backup_dir,
             self.translation_user_dir,
         ):
             d.mkdir(parents=True, exist_ok=True)
