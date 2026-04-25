@@ -378,7 +378,8 @@ class BuildEngine:
 
         # Unit tests: run oscam's ``tests.bin`` via qemu-user (or
         # native) if the user opted in via F1 → QEMU Post-Build Test.
-        # make path: ``make tests BUILD_DIR=build-tests``.
+        # make path: ``make tests`` — oscam's rule already routes
+        # the test-mode objects into ``build-tests/`` internally.
         # cmake path: second configure/build with ``-DBUILD_TESTS=1``
         # into a separate ``build_s4_tests/`` directory.
         if self.qemu_run_unit_tests:
@@ -620,8 +621,7 @@ class BuildEngine:
         code is unreliable."""
         args = list(getattr(self, "_last_make_args", []) or [])
         tests_cmd = ["make", "tests", f"-j{self.max_cpus}",
-                     "BUILD_DIR=build-tests", "TESTS_BIN=tests.bin",
-                     *args]
+                     "TESTS_BIN=tests.bin", *args]
         self._log("")
         self._log("[bold]Running unit tests (make tests)[/bold]")
         self._log(f"[dim]          $ {' '.join(tests_cmd)}[/dim]")
