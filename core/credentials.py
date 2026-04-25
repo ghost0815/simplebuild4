@@ -143,6 +143,37 @@ def clear_transient_warnings() -> None:
     _decrypt_warnings.clear()
 
 
+_ASKPASS_PREFIX = "s4-askpass-"
+_ASKPASS_SUFFIX = ".sh"
+_askpass_cleanup_registered = False
+
+
+def _cleanup_stale_askpass(tmp_dir: "Path | None" = None) -> None:
+    """Best-effort removal of leftover ``s4-askpass-*.sh`` scripts.
+
+    Called once on first ``build_git_env`` use (sweeps debris from
+    earlier process crashes) and again on interpreter exit (atexit).
+    Silent: a busy or read-only /tmp is not an error worth surfacing.
+    """
+    import os as _os
+    import tempfile as _tempfile
+    base = Path(tmp_dir) if tmp_dir else Path(_tempfile.gettempdir())
+    if not base.is_dir():
+        return
+    for entry in base.iterdir():
+        try:
+            name = entry.name
+            if (
+                name.startswith(_ASKPASS_PREFIX)
+                and name.endswith(_ASKPASS_SUFFIX)
+                and entry.is_file()
+                and entry.stat().st_uid == _os.getuid()
+            ):
+                entry.unlink(missing_ok=True)
+        except Exception:
+            continue
+
+
 def build_git_env(auth_method: str, ssh_key: str = "",
                   auth_user: str = "", auth_pass: str = "") -> dict[str, str]:
     """Build extra environment variables for git subprocess calls.
@@ -152,17 +183,28 @@ def build_git_env(auth_method: str, ssh_key: str = "",
 
     For username+password auth, a temporary GIT_ASKPASS script is used
     so the password is never embedded in the URL (which breaks with
-    special characters).
+    special characters). The script is auto-cleaned on interpreter
+    exit (atexit hook) and any stale leftovers from previous crashes
+    are swept on first use of this function in the current process.
     """
     import tempfile, stat
+    global _askpass_cleanup_registered
     env: dict[str, str] = {}
     if auth_method == "ssh_key" and ssh_key:
         env["GIT_SSH_COMMAND"] = f"ssh -i {ssh_key} -o StrictHostKeyChecking=no"
     elif auth_method == "userpass" and auth_pass:
+        if not _askpass_cleanup_registered:
+            # First use this process: sweep stale scripts left over by
+            # earlier crashes / kill -9 / OS shutdowns, and arm an
+            # atexit hook so future ones go away on clean shutdown.
+            import atexit
+            _cleanup_stale_askpass()
+            atexit.register(_cleanup_stale_askpass)
+            _askpass_cleanup_registered = True
         # Create a temporary askpass script that returns the password.
         # GIT_ASKPASS is called by git with a prompt; we just echo the password.
         askpass = tempfile.NamedTemporaryFile(
-            mode="w", prefix="s4-askpass-", suffix=".sh", delete=False,
+            mode="w", prefix=_ASKPASS_PREFIX, suffix=_ASKPASS_SUFFIX, delete=False,
         )
         askpass.write(f"#!/bin/sh\necho '{auth_pass}'\n")
         askpass.close()
