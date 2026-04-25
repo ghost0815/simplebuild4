@@ -189,7 +189,9 @@ class MainScreen(Screen):
         if target.description:
             header += f" — {target.description}"
         if build_count:
-            header += f" ({build_count} {t('n_builds') if build_count != 1 else t('n_build')}, {dep_count} {t('n_deployments') if dep_count != 1 else t('n_deployment')})"
+            _bs = (b.build_system or "make").strip().lower()
+            _word = t('n_builds') if build_count != 1 else t('n_build')
+            header += f" ({build_count} {_bs} {_word}, {dep_count} {t('n_deployments') if dep_count != 1 else t('n_deployment')})"
         header += "[/bold]"
 
         def _lbl(key, count):
