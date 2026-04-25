@@ -76,7 +76,7 @@ Screen {
 }
 
 .mod-grid {
-    grid-size: 3;
+    grid-size: 4;
     grid-gutter: 0 1;
     height: auto;
     padding: 0;

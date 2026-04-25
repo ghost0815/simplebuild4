@@ -43,12 +43,18 @@ def _safe_id(name: str) -> str:
     return s
 
 
-def _column_major(items: list, cols: int = 3) -> list:
+def _column_major(items: list, cols: int = 4) -> list:
     """Reorder items so a row-major grid renders them column by column.
 
     Default Textual Grid fills row-by-row (left → right, then next row).
     With this reordering, reading the rendered grid top → bottom in
     column 1, then column 2, etc., yields the original order.
+
+    The returned list keeps ``None`` placeholders for empty grid cells
+    in the last column when ``len(items) % cols != 0`` — without them
+    the trailing items would slide forward into the gap and break the
+    visual column order. Callers must yield a blank widget for any
+    ``None`` they iterate over.
     """
     n = len(items)
     if n == 0 or cols <= 1:
@@ -59,7 +65,7 @@ def _column_major(items: list, cols: int = 3) -> list:
         col = i // rows
         row = i % rows
         placed[row * cols + col] = item
-    return [x for x in placed if x is not None]
+    return placed
 
 
 def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False, row_class: str = "") -> Horizontal:
@@ -696,7 +702,9 @@ class TargetEditScreen(Screen):
         merged_crs = _merge(b.card_readers, oscam.card_readers, oscam.default_enabled.get("card_readers", []), "card_readers")
 
         def _opt_widget(name: str, merged: dict, removed_set: set, pos: int = 0):
-            row_class = "row-even" if (pos // 3) % 2 == 0 else "row-odd"
+            # Banding pairs the row class to the grid column count
+            # (.mod-grid is 4 columns, so flip every 4 cells).
+            row_class = "row-even" if (pos // 4) % 2 == 0 else "row-odd"
             return _switch_compact(
                 name,
                 merged.get(name, False),
@@ -734,7 +742,10 @@ class TargetEditScreen(Screen):
                     yield _section_toggle("addons", all_addons, merged_addons, "Addons")
                     with Grid(classes="mod-grid"):
                         for _i, mod in enumerate(_column_major(all_addons)):
-                            yield _opt_widget(mod, merged_addons, set(removed_addons), pos=_i)
+                            if mod is None:
+                                yield Static("", classes="s-compact")
+                            else:
+                                yield _opt_widget(mod, merged_addons, set(removed_addons), pos=_i)
                 else:
                     yield Static(f"  [dim]{t('te_select_source_first')}[/dim]")
 
@@ -747,7 +758,10 @@ class TargetEditScreen(Screen):
                     yield _section_toggle("protocols", all_protos, merged_protos, "Protocols")
                 with Grid(classes="mod-grid"):
                     for _i, mod in enumerate(_column_major(all_protos)):
-                        yield _opt_widget(mod, merged_protos, set(removed_protos), pos=_i)
+                        if mod is None:
+                            yield Static("", classes="s-compact")
+                        else:
+                            yield _opt_widget(mod, merged_protos, set(removed_protos), pos=_i)
 
             readers_sorted = sorted(oscam.readers)
             removed_readers = sorted(self._removed_opts.get("readers", []))
@@ -758,7 +772,10 @@ class TargetEditScreen(Screen):
                     yield _section_toggle("readers", all_readers, merged_readers, "Readers")
                 with Grid(classes="mod-grid"):
                     for _i, mod in enumerate(_column_major(all_readers)):
-                        yield _opt_widget(mod, merged_readers, set(removed_readers), pos=_i)
+                        if mod is None:
+                            yield Static("", classes="s-compact")
+                        else:
+                            yield _opt_widget(mod, merged_readers, set(removed_readers), pos=_i)
 
             crs_sorted = sorted(oscam.card_readers)
             removed_crs = sorted(self._removed_opts.get("card_readers", []))
@@ -769,7 +786,10 @@ class TargetEditScreen(Screen):
                     yield _section_toggle("card_readers", all_crs, merged_crs, "Card Readers")
                 with Grid(classes="mod-grid"):
                     for _i, mod in enumerate(_column_major(all_crs)):
-                        yield _opt_widget(mod, merged_crs, set(removed_crs), pos=_i)
+                        if mod is None:
+                            yield Static("", classes="s-compact")
+                        else:
+                            yield _opt_widget(mod, merged_crs, set(removed_crs), pos=_i)
 
             # The reset action lives on F11 in the footer (only when
             # the Options tab is active) — see do_remove.
