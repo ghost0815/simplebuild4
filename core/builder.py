@@ -1974,7 +1974,6 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
                 ("IPV6SUPPORT", "ipv6"),
                 ("WITH_ARM_NEON", "neon"),
                 ("WITH_SIGNING", "signed"),
-                ("WITH_SSL", "ssl"),
                 ("WEBIF", "webif"),
             ]
             for option, suffix in checks:
@@ -1984,6 +1983,7 @@ set(OSCAM_SYSTEM_NAME "Tuxbox")
 
         # USE_FLAGS based features
         _feature_map = {
+            "SSL": "ssl",
             "LIBDVBCSA": "libdvbcsa", "LIBUSB": "libusb", "PCSC": "pcsc",
             "STAPI": "stapi", "STAPI5": "stapi5",
         }

@@ -276,8 +276,11 @@ class Target:
                 if val:
                     static_flags[flag] = True
 
+        # WITH_SSL moved upstream from addons to the USE_SSL build flag —
+        # drop leftover entries; users re-enable via use_flags.SSL.
+        _modules = [m for m in (build_data.get("modules") or []) if m != "WITH_SSL"]
         build = BuildSettings(
-            modules=sorted(build_data.get("modules") or []),
+            modules=sorted(_modules),
             protocols=sorted(build_data.get("protocols") or []),
             readers=sorted(build_data.get("readers") or []),
             card_readers=sorted(build_data.get("card_readers") or []),

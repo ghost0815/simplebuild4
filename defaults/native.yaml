@@ -14,7 +14,6 @@ build:
     - WEBIF_LIVELOG
     - WEBIF_JQUERY
     - TOUCH
-    - WITH_SSL
     - HAVE_DVBAPI
     - WITH_LB
     - CS_CACHEEX
