@@ -103,30 +103,32 @@ def _systemd_output_mode() -> str:
 
 
 def _ensure_mcp_packages(python: str, log: Callable[[str], None]) -> bool:
-    """Install 'mcp' (and Starlette/uvicorn — pulled in as deps).
+    """Ensure mcp + starlette + uvicorn are importable.
 
-    Idempotent: if mcp imports, we're done.
+    Skipped silently if everything already imports. Otherwise delegates
+    to :class:`core.dep_checker.DependencyChecker` so the install runs
+    through the same safety net the F1 dependency modal uses: never as
+    root, drops to $SUDO_USER when needed, retries with
+    --break-system-packages on PEP 668. Note that ``starlette`` and
+    ``uvicorn`` are NOT pulled in as transitive deps of ``mcp`` — the
+    HTTP transport needs them explicitly.
     """
-    try:
-        __import__("mcp")
-        return True
-    except ImportError:
-        pass
-    log("  Installing: mcp (pulls in starlette + uvicorn)")
-    pip = [python, "-m", "pip", "install", "--user", "mcp"]
-    try:
-        subprocess.check_call(pip, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        return True
-    except Exception:
+    needed: list[str] = []
+    for mod in ("mcp", "starlette", "uvicorn"):
         try:
-            subprocess.check_call(
-                pip[:5] + ["--break-system-packages", "mcp"],
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-            )
-            return True
-        except Exception as e:
-            log(f"[red]  Failed to install mcp: {e}[/red]")
-            return False
+            __import__(mod)
+        except ImportError:
+            needed.append(mod)
+    if not needed:
+        return True
+    log(f"  Installing: {', '.join(needed)}")
+    # Late import to avoid pulling yaml at module-load time when this
+    # file is imported by very-early bootstrap code.
+    from pathlib import Path
+    from core.dep_checker import DependencyChecker
+    deps_yaml = Path(__file__).resolve().parent.parent / "defaults" / "dependencies.yaml"
+    checker = DependencyChecker(deps_yaml, log=log)
+    return checker.install_python_specs(needed)
 
 
 class McpServiceManager:

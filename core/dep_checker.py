@@ -313,6 +313,24 @@ class DependencyChecker:
             if e.get("max_version"):
                 spec += f",<{e['max_version']}"
             specs.append(spec)
+        return self.install_python_specs(specs)
+
+    def install_python_specs(self, specs: list[str]) -> bool:
+        """Run ``pip install --user --upgrade`` for the given specs.
+
+        Lower-level than ``install_python`` — takes raw pip strings
+        (``"mcp"``, ``"textual>=5.0"``, ``"foo>=1.0,<2.0"``) and wires
+        them through the same safety net: never as root, drops to
+        $SUDO_USER when needed, auto-retries with
+        --break-system-packages on PEP 668 failures, prints which
+        interpreter is being used.
+
+        Used by callers that need to install a fixed set of packages
+        (e.g. the MCP service installer that wants ``mcp + starlette
+        + uvicorn`` regardless of YAML state).
+        """
+        if not specs:
+            return True
 
         # Decide who runs pip — never root, even if s4 was started with sudo
         sudo_user = os.environ.get("SUDO_USER", "")
