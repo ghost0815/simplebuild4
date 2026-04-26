@@ -236,24 +236,38 @@ class DependencyChecker:
         Returns ``{pip_name: latest_version}`` for every package that
         has a newer release on PyPI. Calls ``pip list --outdated`` once
         (single subprocess) so the network round-trips are batched.
-
-        Empty dict on any failure — this is best-effort UI sugar, not
-        critical path. Times out after 20 s to keep the modal snappy.
+        Logs a brief diagnostic on failure (timeout, non-zero exit,
+        non-JSON output) so the user knows the OK list is *not* a
+        guarantee that everything is current — they just won't see
+        the ``→ latest`` annotations.
         """
         try:
             res = subprocess.run(
                 [sys.executable, "-m", "pip", "list", "--outdated",
                  "--format=json", "--disable-pip-version-check"],
-                capture_output=True, text=True, timeout=20,
+                capture_output=True, text=True, timeout=60,
             )
-        except (FileNotFoundError, subprocess.TimeoutExpired):
+        except FileNotFoundError as e:
+            self._log(f"[yellow]Update check failed: {e}[/yellow]")
+            return {}
+        except subprocess.TimeoutExpired:
+            self._log(
+                "[yellow]Update check timed out after 60 s — "
+                "skipping ‘update available’ annotations.[/yellow]"
+            )
             return {}
         if res.returncode != 0:
+            tail = (res.stderr or "").strip().splitlines()[-1:] or [""]
+            self._log(
+                f"[yellow]pip list --outdated exited "
+                f"{res.returncode}: {tail[0][:200]}[/yellow]"
+            )
             return {}
         try:
             import json as _json
             data = _json.loads(res.stdout or "[]")
-        except Exception:
+        except Exception as e:
+            self._log(f"[yellow]Could not parse pip output: {e}[/yellow]")
             return {}
         out: dict[str, str] = {}
         for entry in data:
@@ -368,8 +382,20 @@ class DependencyChecker:
         env.pop("PIP_REQUIRE_VIRTUALENV", None)  # never relevant for --user
 
         def _run(extra_flags: list[str]) -> subprocess.CompletedProcess[str]:
-            base = [sys.executable, "-m", "pip", "install",
-                    "--user", "--upgrade", *extra_flags]
+            base = [
+                sys.executable, "-m", "pip", "install",
+                "--user", "--upgrade",
+                # Quiet two warnings that are confusing to non-Python
+                # users: ``--no-warn-script-location`` hides the
+                # "/home/x/.local/bin is not on PATH" notice (we use
+                # the modules as Python imports, not as shell
+                # commands), ``--disable-pip-version-check`` hides
+                # the "new pip available" hint (pip is now in
+                # dependencies.yaml and we surface its update there).
+                "--no-warn-script-location",
+                "--disable-pip-version-check",
+                *extra_flags,
+            ]
             if as_user:
                 joined = " ".join(f"'{s}'" for s in base + specs)
                 cmd = ["su", "-", as_user, "-c", joined]

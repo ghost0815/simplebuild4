@@ -118,6 +118,11 @@ headers:
 # inclusive lower / exclusive upper bounds. optional: true entries
 # are listed for visibility but never auto-installed.
 python:
+  # pip itself — included so the modal tracks its version and lets
+  # the user update it through the same flow as everything else.
+  # (s4 doesn't depend on a specific pip version, but a stale pip
+  # is the most common source of "wheel format unsupported" errors.)
+  - name: pip
   - name: textual
     min_version: "5.0"
   - name: yaml
