@@ -186,67 +186,81 @@ if [ "$1" == "mcp" ]; then
     exec $PYTHON -m mcp_server "$@"
 fi
 
-# --- Check Python modules (import + version) ---
+# --- Minimal Python bootstrap ---
+#
+# We only need PyYAML at this stage so the dependency checker can read
+# defaults/dependencies.yaml — everything else (textual, mcp, …) is
+# resolved by the in-app DependencyCheckModal which runs in the user's
+# context, never as root, and obeys the version constraints declared
+# in the YAML. Keeps this script short and the source-of-truth single.
+YAML_OK=$($PYTHON -c "import yaml" 2>/dev/null && echo ok)
 TEXTUAL_OK=$($PYTHON -c "
 try:
     import textual
     v = tuple(int(x) for x in textual.__version__.split('.')[:2])
-    print('ok' if v >= (2, 0) else 'old')
+    print('ok' if v >= (5, 0) else 'old')
 except ImportError:
     print('missing')
 " 2>/dev/null)
-YAML_OK=$($PYTHON -c "import yaml; print('ok')" 2>/dev/null)
 
-if [ "$TEXTUAL_OK" != "ok" ] || [ "$YAML_OK" != "ok" ]; then
+if [ "$YAML_OK" != "ok" ] || [ "$TEXTUAL_OK" != "ok" ]; then
     echo ""
-    [ "$TEXTUAL_OK" == "missing" ] && echo "  textual: not installed"
-    [ "$TEXTUAL_OK" == "old" ] && echo "  textual: too old (need >= 2.0)"
     [ "$YAML_OK" != "ok" ] && echo "  pyyaml: not installed"
-    echo ""
+    [ "$TEXTUAL_OK" = "missing" ] && echo "  textual: not installed"
+    [ "$TEXTUAL_OK" = "old" ] && echo "  textual: too old (need >= 5.0)"
 
-    # Try pip first (gets latest version, works everywhere)
-    if $PYTHON -m pip --version &>/dev/null; then
-        echo "  Installing via pip..."
-        $PYTHON -m pip install --user --upgrade textual pyyaml 2>/dev/null \
-            || $PYTHON -m pip install --user --upgrade --break-system-packages textual pyyaml 2>/dev/null
-    else
-        # Fallback: apt/dnf/pacman
-        rootuser="$(ps -jf 1 | tail -n 1 | awk '{print $1}')"
+    # Make sure pip itself is available — on minimal containers / fresh
+    # installs it can be missing. Falling back to the distro package
+    # manager is the only way to bootstrap pip without manual user
+    # intervention. This is the ONLY step that may need root.
+    if ! $PYTHON -m pip --version &>/dev/null; then
+        echo "  pip is not installed — bootstrapping via system package manager..."
         if [ "$EUID" -ne 0 ]; then
-            ! hash "sudo" 2>/dev/null && prefix="su $rootuser -c" || prefix="sudo sh -c"
+            hash sudo 2>/dev/null && prefix="sudo sh -c" \
+                || prefix="su root -c"
         else
             prefix="sh -c"
         fi
-
         if [ -f /etc/debian_version ]; then
-            echo "  Installing via apt + pip..."
-            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "\n  Enter $rootuser password: "
-            $prefix "apt-get -y -qq install python3-pip python3-yaml" 2>/dev/null
-            $PYTHON -m pip install --user --upgrade textual 2>/dev/null \
-                || $PYTHON -m pip install --user --upgrade --break-system-packages textual 2>/dev/null
+            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "  Enter root password: "
+            $prefix "apt-get -y -qq install python3-pip" || true
         elif [ -f /etc/redhat-release ]; then
-            echo "  Installing via dnf..."
-            $prefix "dnf -y install python3-pip python3-pyyaml" 2>/dev/null
-            $PYTHON -m pip install --user --upgrade textual 2>/dev/null \
-                || $PYTHON -m pip install --user --upgrade --break-system-packages textual 2>/dev/null
+            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "  Enter root password: "
+            $prefix "dnf -y install python3-pip" || true
         elif [ -f /etc/arch-release ] || [ -f /etc/manjaro-release ]; then
-            echo "  Installing via pacman..."
-            $prefix "pacman -S --noconfirm python-textual python-yaml" 2>/dev/null
+            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "  Enter root password: "
+            $prefix "pacman -S --noconfirm python-pip" || true
+        elif [ -f /etc/os-release ] && grep -qi 'opensuse\|sles' /etc/os-release; then
+            [[ "$prefix" =~ ^su[[:space:]].* ]] && echo -en "  Enter root password: "
+            $prefix "zypper --non-interactive install python3-pip" || true
         else
-            echo "  Please install manually: pip install textual pyyaml"
+            echo "  Unknown distro — please install python3-pip manually, then re-run s4."
+            exit 1
+        fi
+        if ! $PYTHON -m pip --version &>/dev/null; then
+            echo "  pip bootstrap failed. Install manually: <distro-pkg-mgr> install python3-pip"
             exit 1
         fi
     fi
 
-    # Verify
-    TEXTUAL_OK=$($PYTHON -c "import textual; v = tuple(int(x) for x in textual.__version__.split('.')[:2]); print('ok' if v >= (2, 0) else 'old')" 2>/dev/null)
-    $PYTHON -c "import yaml" 2>/dev/null
-    if [ "$TEXTUAL_OK" != "ok" ]; then
-        echo -e "\n  Installation failed. Please install manually:"
-        echo "  $PYTHON -m pip install textual pyyaml"
+    echo "  Bootstrapping minimum modules via pip --user (one time)..."
+    $PYTHON -m pip install --user --upgrade pyyaml "textual>=5.0" 2>/dev/null \
+        || $PYTHON -m pip install --user --upgrade --break-system-packages pyyaml "textual>=5.0" 2>/dev/null
+    YAML_OK=$($PYTHON -c "import yaml" 2>/dev/null && echo ok)
+    TEXTUAL_OK=$($PYTHON -c "
+try:
+    import textual
+    v = tuple(int(x) for x in textual.__version__.split('.')[:2])
+    print('ok' if v >= (5, 0) else 'old')
+except ImportError:
+    print('missing')
+" 2>/dev/null)
+    if [ "$YAML_OK" != "ok" ] || [ "$TEXTUAL_OK" != "ok" ]; then
+        echo "  Bootstrap failed. Install manually:"
+        echo "    $PYTHON -m pip install --user pyyaml 'textual>=5.0'"
         exit 1
     fi
-    echo -e "  Done.\n"
+    echo "  Done. Use F1 → 'Check & Install Dependencies' inside s4 for the rest."
 fi
 
 exec $PYTHON s4.py "$@"

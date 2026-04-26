@@ -6,13 +6,35 @@ libraries, and installs missing packages via the system package manager.
 
 from __future__ import annotations
 
+import importlib
+import importlib.metadata
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Callable, Optional
 
 import yaml
+
+
+def _parse_version(s: str) -> tuple[int, ...]:
+    """Lenient ``X.Y[.Z][.…]`` parser. Non-numeric tails are dropped, so
+    ``8.2.3.dev0`` is read as ``(8, 2, 3)``. Empty / unparseable yields
+    ``(0,)`` — comparing against any real version then sorts as oldest.
+    """
+    out: list[int] = []
+    for part in (s or "").split("."):
+        digits = ""
+        for ch in part:
+            if ch.isdigit():
+                digits += ch
+            else:
+                break
+        if not digits:
+            break
+        out.append(int(digits))
+    return tuple(out) if out else (0,)
 
 
 class DependencyChecker:
@@ -123,6 +145,9 @@ class DependencyChecker:
         # Check meta package need
         meta_needed = len(missing_bins) > 0 or not shutil.which("gcc")
 
+        # Check Python modules
+        py_result = self.check_python()
+
         return {
             "distro_id": self._distro_id,
             "distro_name": self._distro_name,
@@ -132,7 +157,249 @@ class DependencyChecker:
             "installed_bins": installed_bins,
             "installed_headers": installed_headers,
             "meta_needed": meta_needed,
+            "missing_python": py_result["missing"],
+            "outdated_python": py_result["outdated"],
+            "installed_python": py_result["installed"],
         }
+
+    def check_python(self) -> dict:
+        """Check Python modules listed under ``python:`` in dependencies.yaml.
+
+        Returns ``{"installed": [...], "missing": [...], "outdated": [...]}``.
+
+        For each entry, ``import <module>`` is attempted and the resolved
+        ``__version__`` (or distribution metadata) is checked against the
+        optional ``min_version`` / ``max_version`` constraints.
+        ``optional: true`` entries are tracked but never installed unless
+        the user opts in — they show up in ``missing`` for visibility.
+        """
+        installed: list[dict] = []
+        missing: list[dict] = []
+        outdated: list[dict] = []
+        for dep in self._deps.get("python", []) or []:
+            mod_name = dep.get("name", "")
+            if not mod_name:
+                continue
+            pip_name = dep.get("pip_name") or mod_name
+            min_v = dep.get("min_version") or ""
+            max_v = dep.get("max_version") or ""
+            optional = bool(dep.get("optional", False))
+            entry = {
+                "name": mod_name,
+                "pip_name": pip_name,
+                "min_version": min_v,
+                "max_version": max_v,
+                "optional": optional,
+                "installed_version": "",
+            }
+            # Prefer dist-info metadata over the cached module's
+            # ``__version__`` attribute. Once a module is imported into
+            # the running process, ``mod.__version__`` is frozen at the
+            # value Python saw at first import — pip upgrades on disk
+            # don't refresh it. importlib.metadata.version() reads the
+            # ``.dist-info/METADATA`` file off disk every call, so it
+            # reflects the current pip state. Falls back to the module
+            # attribute only when no dist-info is available (rare:
+            # vendored / locally-checked-out packages).
+            version = ""
+            try:
+                version = importlib.metadata.version(pip_name)
+            except Exception:
+                version = ""
+            try:
+                mod = importlib.import_module(mod_name)
+            except Exception:
+                if not version:
+                    missing.append(entry)
+                    continue
+                # Importable through metadata but failed to import — odd,
+                # treat as installed with the metadata version.
+                mod = None
+            if not version and mod is not None:
+                version = getattr(mod, "__version__", "") or ""
+            entry["installed_version"] = version
+            v = _parse_version(version) if version else (0,)
+            if min_v and v < _parse_version(min_v):
+                entry["reason"] = f"too old (have {version}, need >= {min_v})"
+                outdated.append(entry)
+                continue
+            if max_v and v >= _parse_version(max_v):
+                entry["reason"] = f"too new (have {version}, supported < {max_v})"
+                outdated.append(entry)
+                continue
+            installed.append(entry)
+        return {"installed": installed, "missing": missing, "outdated": outdated}
+
+    def check_python_updates(self) -> dict[str, str]:
+        """Query pip for newer versions of any installed Python module.
+
+        Returns ``{pip_name: latest_version}`` for every package that
+        has a newer release on PyPI. Calls ``pip list --outdated`` once
+        (single subprocess) so the network round-trips are batched.
+
+        Empty dict on any failure — this is best-effort UI sugar, not
+        critical path. Times out after 20 s to keep the modal snappy.
+        """
+        try:
+            res = subprocess.run(
+                [sys.executable, "-m", "pip", "list", "--outdated",
+                 "--format=json", "--disable-pip-version-check"],
+                capture_output=True, text=True, timeout=20,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return {}
+        if res.returncode != 0:
+            return {}
+        try:
+            import json as _json
+            data = _json.loads(res.stdout or "[]")
+        except Exception:
+            return {}
+        out: dict[str, str] = {}
+        for entry in data:
+            name = (entry.get("name") or "").lower()
+            latest = entry.get("latest_version") or ""
+            if name and latest:
+                out[name] = latest
+        return out
+
+    def install_python(self, include_updates: bool = True) -> bool:
+        """Install missing / upgrade outdated Python modules via pip.
+
+        Always runs ``pip install --user --upgrade`` — never with sudo,
+        never inside a privileged context. If s4 was launched as root
+        (``sudo s4``), drops privileges to ``$SUDO_USER`` so packages
+        end up in the originating user's site-packages, not /root.
+
+        Optional entries are skipped (user-only-on-demand).
+
+        ``include_updates`` (default True): also upgrade modules that
+        satisfy min/max but have a newer version on PyPI. Set False to
+        only fix missing / out-of-bounds entries.
+        """
+        py = self.check_python()
+        targets: list[dict] = []
+        for e in py["missing"] + py["outdated"]:
+            if e.get("optional"):
+                continue
+            targets.append(e)
+
+        # Include "installed-but-newer-on-PyPI" modules so a user-driven
+        # Install press also picks up routine version bumps.
+        # Note: ``optional`` means "don't auto-install if MISSING" — but
+        # once present, we keep it current so optional modules don't
+        # silently rot at their first-install version.
+        if include_updates:
+            updates = self.check_python_updates()
+            already = {e["pip_name"] or e["name"] for e in targets}
+            for e in py["installed"]:
+                pip_name = e["pip_name"] or e["name"]
+                if pip_name in already:
+                    continue
+                latest = updates.get(pip_name.lower(), "")
+                if latest and latest != e.get("installed_version"):
+                    targets.append(e)
+
+        if not targets:
+            self._log("[green]All Python modules are up to date[/green]")
+            return True
+
+        # Build pip specs honouring min/max constraints
+        specs: list[str] = []
+        for e in targets:
+            spec = e["pip_name"]
+            if e.get("min_version"):
+                spec += f">={e['min_version']}"
+            if e.get("max_version"):
+                spec += f",<{e['max_version']}"
+            specs.append(spec)
+
+        # Decide who runs pip — never root, even if s4 was started with sudo
+        sudo_user = os.environ.get("SUDO_USER", "")
+        as_user = ""
+        try:
+            is_root = os.geteuid() == 0  # type: ignore[attr-defined]
+        except AttributeError:
+            is_root = False
+        if is_root and sudo_user and sudo_user != "root":
+            as_user = sudo_user
+            self._log(
+                f"[yellow]Detected sudo context — dropping to user "
+                f"'{as_user}' for pip install[/yellow]"
+            )
+
+        # Be loud about which Python is actually used — install ends up
+        # in ``~/.local/lib/pythonX.Y/site-packages`` for THIS interpreter,
+        # so if the user normally launches s4 with a different python
+        # (pyenv, conda, system 3.10 vs sudo's 3.12) the install lands
+        # in a parallel directory and the next ``import`` will still
+        # fail. The path + version line lets them spot the mismatch.
+        py_ver = ".".join(str(x) for x in sys.version_info[:3])
+        self._log(
+            f"[dim]Using Python {py_ver} at {sys.executable}[/dim]"
+        )
+        if is_root and not as_user:
+            self._log(
+                "[yellow]WARNING: running as root with no SUDO_USER — "
+                "modules will install to /root/.local. If you normally "
+                "launch s4 as a regular user, exit and re-run without "
+                "sudo so the modules land in your home directory.[/yellow]"
+            )
+
+        env = dict(os.environ)
+        env.pop("PIP_REQUIRE_VIRTUALENV", None)  # never relevant for --user
+
+        def _run(extra_flags: list[str]) -> subprocess.CompletedProcess[str]:
+            base = [sys.executable, "-m", "pip", "install",
+                    "--user", "--upgrade", *extra_flags]
+            if as_user:
+                joined = " ".join(f"'{s}'" for s in base + specs)
+                cmd = ["su", "-", as_user, "-c", joined]
+            else:
+                cmd = base + specs
+            return subprocess.run(
+                cmd, env=env,
+                capture_output=True, text=True, timeout=600,
+            )
+
+        self._log(f"[bold]Installing Python modules:[/bold] {', '.join(specs)}")
+        try:
+            res = _run([])
+            # PEP 668: Debian / Ubuntu 24.04+ ship Python with the
+            # externally-managed marker, which blocks plain ``pip --user``.
+            # Auto-retry with --break-system-packages — that's the
+            # documented escape hatch for user-local installs that
+            # don't touch the system site-packages.
+            if (
+                res.returncode != 0
+                and "externally-managed-environment" in (res.stderr or "")
+            ):
+                self._log(
+                    "[dim]Distro marks Python as externally-managed; "
+                    "retrying with --break-system-packages (only affects "
+                    "your --user dir, not the system).[/dim]"
+                )
+                res = _run(["--break-system-packages"])
+        except FileNotFoundError as e:
+            self._log(f"[red]pip invocation failed: {e}[/red]")
+            return False
+        except subprocess.TimeoutExpired:
+            self._log("[red]pip install timed out (10 min)[/red]")
+            return False
+
+        # Stream output (pip is chatty — only show non-empty trailing
+        # progress lines, not the megabytes of wheel-cache noise)
+        for line in (res.stdout or "").splitlines()[-30:]:
+            self._log(f"  {line}")
+        for line in (res.stderr or "").splitlines()[-10:]:
+            if line.strip():
+                self._log(f"  [yellow]{line}[/yellow]")
+
+        if res.returncode == 0:
+            self._log("[green]Python modules installed[/green]")
+            return True
+        self._log(f"[red]pip exited with code {res.returncode}[/red]")
+        return False
 
     def install(self, password: str = "") -> bool:
         """Install all missing packages. Returns True on success.

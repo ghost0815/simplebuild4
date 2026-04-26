@@ -121,9 +121,12 @@ class DependencyCheckModal(ModalScreen[None]):
     def _do_check(self) -> None:
         try:
             from core.dep_checker import DependencyChecker
+            import sys as _sys
             checker = DependencyChecker(self._deps_yaml, log=self._log)
             pkg_mgr = checker.detect_distro()
+            _pyver = ".".join(str(x) for x in _sys.version_info[:3])
             self._log(f"System: {checker._distro_name or checker._distro_id or 'unknown'}")
+            self._log(f"Python: {_pyver} at {_sys.executable}")
             self._log(f"Package manager: {pkg_mgr or 'not detected'}")
             self._log("")
 
@@ -136,10 +139,41 @@ class DependencyCheckModal(ModalScreen[None]):
                 self._log(f"[green]Headers OK ({len(result['installed_headers'])}):[/green] {', '.join(result['installed_headers'])}")
             self._log("")
 
+            # Python modules
+            installed_py = result.get("installed_python", [])
+            missing_py = result.get("missing_python", [])
+            outdated_py = result.get("outdated_python", [])
+
+            # Best-effort PyPI update check (batched in one pip call,
+            # 20 s timeout). Annotates the OK list with "→ latest"
+            # whenever a newer release is available so the user knows
+            # whether clicking Install would actually upgrade something.
+            self._log("[dim]Checking PyPI for updates ...[/dim]")
+            updates = checker.check_python_updates()
+
+            if installed_py:
+                items = []
+                for e in installed_py:
+                    label = f"{e['name']} {e['installed_version']}".rstrip()
+                    latest = updates.get((e['pip_name'] or e['name']).lower(), "")
+                    if latest and latest != e['installed_version']:
+                        label += f" [yellow]→ {latest}[/yellow]"
+                    items.append(label)
+                self._log(f"[green]Python OK ({len(installed_py)}):[/green] {', '.join(items)}")
+            updates_available = sum(
+                1 for e in installed_py
+                if updates.get((e['pip_name'] or e['name']).lower(), "")
+                and updates[(e['pip_name'] or e['name']).lower()] != e['installed_version']
+            )
+            if updates_available:
+                self._log(f"[yellow]{updates_available} Python module(s) have updates available — click Install to upgrade.[/yellow]")
+
             # Show missing
             missing_bins = result["missing_bins"]
             missing_headers = result["missing_headers"]
-            total_missing = len(missing_bins) + len(missing_headers)
+            # Python: only count non-optional as 'missing' for the install gate
+            need_py_install = [e for e in missing_py + outdated_py if not e.get("optional")]
+            total_missing = len(missing_bins) + len(missing_headers) + len(need_py_install)
 
             if missing_bins:
                 self._log(f"[red]Missing binaries ({len(missing_bins)}):[/red]")
@@ -149,13 +183,28 @@ class DependencyCheckModal(ModalScreen[None]):
                 self._log(f"[red]Missing headers ({len(missing_headers)}):[/red]")
                 for dep in missing_headers:
                     self._log(f"  [red]✗[/red] {dep['name']} → {dep['package']}")
+            if need_py_install:
+                self._log(f"[red]Missing/outdated Python modules ({len(need_py_install)}):[/red]")
+                for e in need_py_install:
+                    detail = e.get("reason") or "not installed"
+                    self._log(f"  [red]✗[/red] {e['name']} ({e['pip_name']}) — {detail}")
+            optional_missing = [e for e in missing_py if e.get("optional")]
+            if optional_missing:
+                self._log(f"[dim]Optional Python modules not installed:[/dim] "
+                          + ", ".join(e['name'] for e in optional_missing))
 
-            if total_missing == 0:
+            if total_missing == 0 and not updates_available:
                 self._log(f"[bold green]{t('dep_all_ok')}[/bold green]")
                 self._has_missing = False
             else:
-                self._log(f"\n[bold yellow]{t('dep_missing').format(count=total_missing)}[/bold yellow]")
-                self._log(f"[dim]{t('dep_enter_root_pwd')}[/dim]")
+                if total_missing > 0:
+                    self._log(f"\n[bold yellow]{t('dep_missing').format(count=total_missing)}[/bold yellow]")
+                    if missing_bins or missing_headers:
+                        self._log(f"[dim]{t('dep_enter_root_pwd')}[/dim]")
+                    if need_py_install:
+                        self._log(f"[dim]Python modules install as your user (no root password needed).[/dim]")
+                if updates_available:
+                    self._log(f"[dim]Click Install to upgrade {updates_available} Python module(s).[/dim]")
                 self._has_missing = True
 
             # Enable/disable install button
@@ -193,7 +242,23 @@ class DependencyCheckModal(ModalScreen[None]):
             from core.dep_checker import DependencyChecker
             checker = DependencyChecker(self._deps_yaml, log=self._log)
             checker.detect_distro()
-            success = checker.install(password=password)
+
+            # Step 1: system packages (needs root only if there's anything to install)
+            pre = checker.check_all()
+            sys_targets = pre["missing_bins"] + pre["missing_headers"]
+            sys_ok = True
+            if sys_targets or pre.get("meta_needed"):
+                sys_ok = checker.install(password=password)
+
+            # Step 2: Python modules — always in user context, no
+            # password needed. install_python() will pick up missing,
+            # outdated, AND installed-but-newer-on-PyPI in one go;
+            # if nothing needs doing, it logs "All up to date" and
+            # returns immediately.
+            self._log("")
+            py_ok = checker.install_python()
+
+            success = sys_ok and py_ok
 
             if success:
                 self._log(f"\n[bold green]{t('dep_install_done')}[/bold green]")

@@ -111,3 +111,22 @@ headers:
       dnf: pcsc-lite-devel
       pacman: pcsclite
       zypper: pcsc-lite-devel
+
+# Python modules — installed via ``pip install --user`` (never as root)
+# Each entry: name = import name, pip_name (optional) = PyPI package
+# name when it differs from import. min_version / max_version are
+# inclusive lower / exclusive upper bounds. optional: true entries
+# are listed for visibility but never auto-installed.
+python:
+  - name: textual
+    min_version: "5.0"
+  - name: yaml
+    pip_name: pyyaml
+    min_version: "6.0"
+  - name: mcp
+    optional: true
+    min_version: "1.0"
+  - name: starlette
+    optional: true
+  - name: uvicorn
+    optional: true
