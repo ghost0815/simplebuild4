@@ -139,6 +139,68 @@ def _git_log(cwd, limit: int, path: str | None) -> list[dict[str, Any]]:
     return commits
 
 
+def _get_oscam_options_impl(ctx: McpContext, name: str) -> dict[str, Any]:
+    """Read the oscam build options + USE flags + descriptions from a
+    cloned repo's config.sh and Makefile.
+
+    Returned shape (per category and for use_flags):
+
+        {
+          "repo": "default",
+          "clone_path": "data/repos/oscam-default",
+          "categories": {
+            "addons":       [{"name": "WEBIF", "label": "Web Interface", "default": true}, ...],
+            "protocols":    [...],
+            "readers":      [...],
+            "card_readers": [...]
+          },
+          "use_flags": [
+            {"name": "SSL", "description": "Request linking with libssl. ..."},
+            ...
+          ]
+        }
+
+    The LLM should call this **before** create_target / update_target
+    when it needs to know which addon / protocol / reader / use_flag
+    names are valid for a given source repo, and what each one means.
+    """
+    from core.oscam_config import read_options
+    repos = load_repos(ctx.paths.repos_config)
+    cfg = next((r for r in repos if r.name == name), None)
+    if not cfg:
+        raise ValueError(f"Unknown repository: {name}")
+    clone_path = ctx.paths.repos_dir / f"oscam-{name}"
+    if not clone_path.exists():
+        raise ValueError(
+            f"Repository '{name}' is not cloned yet "
+            f"(expected at {clone_path}) — run clone_repository first"
+        )
+    opts = read_options(clone_path)
+    if opts is None:
+        raise ValueError(
+            f"config.sh not found in {clone_path} — repo may be incomplete"
+        )
+    out: dict[str, Any] = {
+        "repo": name,
+        "clone_path": str(clone_path),
+        "categories": {},
+        "use_flags": [],
+    }
+    for cat in ("addons", "protocols", "readers", "card_readers"):
+        defaults_set = set(opts.default_enabled.get(cat, []))
+        out["categories"][cat] = [
+            {
+                "name": opt,
+                "label": opts.descriptions.get(opt, ""),
+                "default": opt in defaults_set,
+            }
+            for opt in getattr(opts, cat)
+        ]
+    for flag, desc in sorted(opts.use_flag_descriptions.items()):
+        out["use_flags"].append({"name": flag, "description": desc})
+    return out
+
+
 def _get_repository_commits_impl(
     ctx: McpContext, name: str, limit: int = 20, path: str | None = None,
 ) -> dict[str, Any]:
@@ -392,6 +454,31 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
             },
         ),
         Tool(
+            name="get_oscam_options",
+            description=(
+                "Return all available oscam build options for a repo's "
+                "config.sh — addons, protocols, readers, card_readers — "
+                "each with its human-readable label and default-enabled "
+                "flag. Also returns USE_* build flags parsed from the "
+                "Makefile help with full descriptions. "
+                "Call this before create_target / update_target when "
+                "you need to know which option names are valid for a "
+                "given source repo and what they mean. The repo must "
+                "already be cloned (run clone_repository first)."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "Repository name (e.g. 'default').",
+                    },
+                },
+                "required": ["name"],
+                "additionalProperties": False,
+            },
+        ),
+        Tool(
             name="get_repository_commits",
             description=(
                 "Return the recent git commit log of a cloned repository "
@@ -575,6 +662,8 @@ def dispatch(ctx: McpContext, name: str, args: dict[str, Any]) -> Any:
         return _list_repositories_impl(ctx)
     if name == "get_repository":
         return _get_repository_impl(ctx, args["name"])
+    if name == "get_oscam_options":
+        return _get_oscam_options_impl(ctx, args["name"])
     if name == "get_repository_commits":
         return _get_repository_commits_impl(
             ctx, args["name"],
@@ -607,7 +696,8 @@ def dispatch(ctx: McpContext, name: str, args: dict[str, Any]) -> Any:
 
 
 TOOL_NAMES = {
-    "list_repositories", "get_repository", "get_repository_commits",
+    "list_repositories", "get_repository", "get_oscam_options",
+    "get_repository_commits",
     "create_repository", "update_repository", "delete_repository",
     "clone_repository", "update_repository_sources",
     "list_patches", "add_patch_source", "remove_patch_source",

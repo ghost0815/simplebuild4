@@ -593,7 +593,11 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                     "category from the assigned source repo's config.sh "
                     "defaults — same behaviour as the TUI's target editor. "
                     "The returned dict includes ``seeded_oscam_defaults`` "
-                    "with the per-category count when that kicks in."
+                    "with the per-category count when that kicks in. "
+                    "TIP: call get_oscam_options first to discover valid "
+                    "addon / protocol / reader / card_reader / USE_* flag "
+                    "names and their meanings for the source repo you're "
+                    "targeting."
                 ),
                 inputSchema={
                     "type": "object",
@@ -611,7 +615,10 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                     "Patch fields of an existing target. Simple top-level "
                     "fields and build.* keys are replaced per-key; sources, "
                     "toolchains and deployment are replaced as a whole list. "
-                    "Use get_target first to see the current shape."
+                    "Use get_target first to see the current shape, and "
+                    "get_oscam_options if you need to look up valid option "
+                    "names + descriptions for build.modules / protocols / "
+                    "readers / card_readers / use_flags."
                 ),
                 inputSchema={
                     "type": "object",

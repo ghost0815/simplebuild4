@@ -68,17 +68,17 @@ def _column_major(items: list, cols: int = 4) -> list:
     return placed
 
 
-def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False, row_class: str = "") -> Horizontal:
+def _switch_compact(label: str, value: bool, widget_id: str, removed: bool = False, row_class: str = "", tooltip: str = "") -> Horizontal:
     """Compact switch for multi-column grid layout."""
     display_label = f" [red strike]{label}[/red strike]" if removed else f" {label}"
     classes = "s-compact"
     if row_class:
         classes = f"s-compact {row_class}"
-    return Horizontal(
-        Switch(value=value, id=widget_id),
-        Static(display_label, classes="sc-label"),
-        classes=classes,
-    )
+    sw = Switch(value=value, id=widget_id)
+    if tooltip:
+        sw.tooltip = tooltip
+    lbl = Static(display_label, classes="sc-label")
+    return Horizontal(sw, lbl, classes=classes)
 
 
 class TargetEditScreen(Screen):
@@ -576,24 +576,30 @@ class TargetEditScreen(Screen):
                     if has_dual_backend or stale_dual:
                         openssl_on = b.use_flags.get("OPENSSL", False)
                         mbedtls_on = b.use_flags.get("MBEDTLS", not openssl_on if has_dual_backend else False)
+                        _msw = Switch(value=mbedtls_on, id="f-use-MBEDTLS")
+                        _msw.tooltip = oscam.use_flag_descriptions.get("MBEDTLS", "")
+                        _osw = Switch(value=openssl_on, id="f-use-OPENSSL")
+                        _osw.tooltip = oscam.use_flag_descriptions.get("OPENSSL", "")
                         yield Horizontal(
-                            Static(_flag_label("USE_MBEDTLS", stale=stale_dual), classes="flag-label"),
-                            Switch(value=mbedtls_on, id="f-use-MBEDTLS"),
-                            Static(_flag_label("USE_OPENSSL", stale=stale_dual), classes="flag-label"),
-                            Switch(value=openssl_on, id="f-use-OPENSSL"),
+                            Static(_flag_label("USE_MBEDTLS", stale=stale_dual), classes="flag-label"), _msw,
+                            Static(_flag_label("USE_OPENSSL", stale=stale_dual), classes="flag-label"), _osw,
                             classes="flag-row",
                         )
                     for flag in all_lib_flags:
                         is_stale = flag in stale_lib_set
+                        _sw = Switch(value=b.use_flags.get(flag, False), id=f"f-use-{flag}")
+                        _sw.tooltip = oscam.use_flag_descriptions.get(flag, "")
                         widgets = [
                             Static(_flag_label(f"USE_{flag}", stale=is_stale), classes="flag-label"),
-                            Switch(value=b.use_flags.get(flag, False), id=f"f-use-{flag}"),
+                            _sw,
                         ]
                         if flag in _STATIC_CAPABLE:
                             s_stale = is_stale or flag in stale_static_set
+                            _ssw = Switch(value=b.static_flags.get(flag, False), id=f"f-static-{flag}")
+                            _ssw.tooltip = f"Link {flag} statically into the binary."
                             widgets += [
                                 Static(_flag_label(f"STATIC_{flag}", stale=s_stale), classes="flag-label"),
-                                Switch(value=b.static_flags.get(flag, False), id=f"f-static-{flag}"),
+                                _ssw,
                             ]
                         yield Horizontal(*widgets, classes="flag-row")
 
@@ -602,14 +608,18 @@ class TargetEditScreen(Screen):
                     if "STAPI" in hw_flags or "STAPI5" in hw_flags:
                         _stapi_widgets = []
                         if "STAPI" in hw_flags:
+                            _ssw = Switch(value=b.use_flags.get("STAPI", False), id="f-use-STAPI")
+                            _ssw.tooltip = oscam.use_flag_descriptions.get("STAPI", "")
                             _stapi_widgets += [
                                 Static(" USE_STAPI", classes="flag-label"),
-                                Switch(value=b.use_flags.get("STAPI", False), id="f-use-STAPI"),
+                                _ssw,
                             ]
                         if "STAPI5" in hw_flags:
                             _stapi5_sw = Switch(value=b.use_flags.get("STAPI5", False), id="f-use-STAPI5")
+                            _stapi5_sw.tooltip = oscam.use_flag_descriptions.get("STAPI5", "")
                             _stapi_widgets += [
-                                Static(" USE_STAPI5", classes="flag-label"), _stapi5_sw,
+                                Static(" USE_STAPI5", classes="flag-label"),
+                                _stapi5_sw,
                             ]
                         if b.use_flags.get("STAPI") or b.use_flags.get("STAPI5"):
                             _stapi_default = ""
@@ -645,9 +655,11 @@ class TargetEditScreen(Screen):
                         widgets = []
                         for f in other_hw[i:i+2]:
                             is_stale = f in stale_hw_set
+                            _hwsw = Switch(value=b.use_flags.get(f, False), id=f"f-use-{f}")
+                            _hwsw.tooltip = oscam.use_flag_descriptions.get(f, "")
                             widgets += [
                                 Static(_flag_label(f"USE_{f}", stale=is_stale), classes="flag-label"),
-                                Switch(value=b.use_flags.get(f, False), id=f"f-use-{f}"),
+                                _hwsw,
                             ]
                         yield Horizontal(*widgets, classes="flag-row")
             else:
@@ -711,6 +723,7 @@ class TargetEditScreen(Screen):
                 f"m-{name}",
                 removed=name in removed_set,
                 row_class=row_class,
+                tooltip=oscam.descriptions.get(name, ""),
             )
 
         def _section_toggle(category: str, items: list[str], merged: dict, section_label: str):

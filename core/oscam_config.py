@@ -18,6 +18,11 @@ class OscamOptions:
     # Default enabled state (from config.h defaults)
     default_enabled: dict[str, list[str]] = field(default_factory=dict)
 
+    # Human-readable descriptions parsed from config.sh menu_* blocks
+    # and Makefile USE_* help — keyed by option / flag name.
+    descriptions: dict[str, str] = field(default_factory=dict)
+    use_flag_descriptions: dict[str, str] = field(default_factory=dict)
+
 
 def _parse_defconfig_defaults(config_sh: Path) -> dict[str, list[str]]:
     """Parse the ``$defconfig`` shell variable out of ``config.sh`` and
@@ -74,6 +79,76 @@ def _parse_defconfig_defaults(config_sh: Path) -> dict[str, list[str]]:
     return result
 
 
+def _parse_menu_descriptions(config_sh: Path) -> dict[str, str]:
+    """Extract ``OPTION  "Description"`` pairs from every ``menu_*()``
+    function in ``config.sh``. These are the human-readable labels
+    oscam shows in its own ``make config`` dialog.
+
+    Returns a flat dict — option names are unique across categories.
+    """
+    import re as _re
+    try:
+        text = config_sh.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+    descs: dict[str, str] = {}
+    # Capture each menu_<name>() { ... } block
+    for block in _re.finditer(r"^menu_\w+\(\)\s*\{(.*?)^\}", text, _re.DOTALL | _re.MULTILINE):
+        body = block.group(1)
+        # Lines look like:  OPTION_NAME    "Some label"    $(check_test "OPTION_NAME") \
+        for m in _re.finditer(r'^\s*([A-Z][A-Z0-9_]+)\s+"([^"]+)"\s+\$\(check_test', body, _re.MULTILINE):
+            descs[m.group(1)] = m.group(2)
+    return descs
+
+
+def _parse_makefile_useflags(makefile: Path) -> dict[str, str]:
+    """Extract ``USE_FOO=1 - description`` blocks from oscam's Makefile
+    help text. Each entry spans multiple indented lines until the next
+    blank line or the next ``USE_*=1`` block.
+
+    Returns ``{"FOO": "Request linking with libfoo. ..."}`` (the
+    ``USE_`` prefix is stripped to match s4's ``use_flags`` keys).
+    """
+    import re as _re
+    try:
+        text = makefile.read_text(encoding="utf-8", errors="replace")
+    except Exception:
+        return {}
+    descs: dict[str, str] = {}
+    # Match a header line like:  USE_SSL=1       - Request linking with libssl. ...
+    # then continuation lines indented with spaces (until blank line or next flag).
+    pat = _re.compile(
+        r"^\s*USE_([A-Z0-9_]+)=1\s*-\s*(.*?)(?=\n\s*\n|\n\s*USE_[A-Z0-9_]+=1\s*-)",
+        _re.DOTALL | _re.MULTILINE,
+    )
+    for m in pat.finditer(text):
+        flag = m.group(1)
+        # Collapse the multi-line continuation. The Makefile help is a
+        # printf-style string: each source line ends with literal "\n\"
+        # (backslash-n, backslash). Strip those, plus any plain trailing
+        # backslashes, and drop empty lines.
+        raw = m.group(2)
+        cleaned = []
+        for ln in raw.splitlines():
+            ln = ln.strip()
+            # Drop trailing line-continuation: "...text\n\" or "...text\"
+            while ln.endswith("\\"):
+                ln = ln[:-1].rstrip()
+            if ln.endswith(r"\n"):
+                ln = ln[:-2].rstrip()
+            if ln:
+                cleaned.append(ln)
+        joined = " ".join(cleaned)
+        # Drop the trailing example variable list (everything after the
+        # first occurrence of "The variables that control") — keeps the
+        # tooltip readable. If not present, keep full text.
+        cut = joined.find("The variables that control")
+        if cut > 0:
+            joined = joined[:cut].rstrip(" .")
+        descs[flag] = joined
+    return descs
+
+
 def read_options(repo_dir: Path) -> OscamOptions | None:
     """Read all available options from a cloned oscam repo's config.sh.
 
@@ -101,6 +176,10 @@ def read_options(repo_dir: Path) -> OscamOptions | None:
     defaults = _parse_defconfig_defaults(config_sh)
     for category in ("addons", "protocols", "readers", "card_readers"):
         opts.default_enabled[category] = defaults.get(category, [])
+
+    # Human-readable labels — for tooltips in the Target Editor.
+    opts.descriptions = _parse_menu_descriptions(config_sh)
+    opts.use_flag_descriptions = _parse_makefile_useflags(repo_dir / "Makefile")
 
     return opts
 
@@ -216,6 +295,13 @@ def merge_options(repo_dirs: list[Path]) -> OscamOptions:
                 if opt not in existing_defaults:
                     merged.default_enabled[cat].append(opt)
                     existing_defaults.add(opt)
+        # Descriptions: first repo wins (later repos don't overwrite),
+        # so a stable forked oscam can't silently relabel options that
+        # already exist in the canonical upstream entry.
+        for k, v in opts.descriptions.items():
+            merged.descriptions.setdefault(k, v)
+        for k, v in opts.use_flag_descriptions.items():
+            merged.use_flag_descriptions.setdefault(k, v)
 
     return merged
 
