@@ -565,12 +565,14 @@ Switch.-on .switch--slider {
 #tc-browser {
     height: 1fr;
     margin: 0 1;
+    border-bottom: solid #444444;
 }
 
 #tc-selfbuild {
     display: none;
     height: 1fr;
     margin: 0 1;
+    border-bottom: solid #444444;
 }
 
 #tc-browser S4DataTable, #tc-selfbuild S4DataTable {
