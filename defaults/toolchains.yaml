@@ -1030,7 +1030,7 @@ toolchains:
   category: legacy
   arch: aarch64
   prefix: aarch64-dream_one-linux-gnu-
-  sysroot: aarch64-dream_one-linux-gnu/sysroot/
+  sysroot: aarch64-dream_one-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-dream_one.tar.xz
   checksum: sha256:4763ccee1e715289114f3fa8986242ca3481e1defc6457f9c3c7d7965a42c6d8
 
@@ -1051,7 +1051,7 @@ toolchains:
   category: legacy
   arch: arm
   prefix: arm-unknown-linux-gnueabihf-
-  sysroot: arm-unknown-linux-gnueabihf/sys-root/
+  sysroot: arm-unknown-linux-gnueabihf/sys-root
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-hd51.tar.xz
   checksum: sha256:1f4a24d76e7b5e6c900f3db76d0b317cafc5dd3805b4f8e4fcbc7428ca9e8930
 
@@ -1098,7 +1098,7 @@ toolchains:
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
-  sysroot: /
+  sysroot: mipsel-simplebuild3-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl098.tar.xz
   checksum: sha256:dce6ceda5bc829ae8d462b21c62b58f533cf57d3aa654bcb84d036ceb5a7066c
 
@@ -1109,7 +1109,7 @@ toolchains:
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
-  sysroot: /
+  sysroot: mipsel-simplebuild3-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl100.tar.xz
   checksum: sha256:23c0c0938e5012cfffd369ef0d970453cdfcd442b1cfd924ef25c87080247691
 
@@ -1120,7 +1120,7 @@ toolchains:
   category: legacy
   arch: mipsel
   prefix: mipsel-simplebuild3-linux-gnu-
-  sysroot: /mipsel-simplebuild3-linux-gnu/sysroot
+  sysroot: mipsel-simplebuild3-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-mipsel_s3_ssl102.tar.xz
   checksum: sha256:110607cc3395002360f826303cb30b9dde1c561a6f58b64369314b1edc881b60
 
@@ -1189,7 +1189,7 @@ toolchains:
   category: legacy
   arch: aarch64
   prefix: aarch64-osmio4k-linux-gnu-
-  sysroot: aarch64-osmio4k-linux-gnu/sysroot/
+  sysroot: aarch64-osmio4k-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-osmio4k.tar.xz
   checksum: sha256:79ebec6f61abdca896681c09de623d753834514a122367522710434a5e0f4b7b
 
@@ -1208,7 +1208,7 @@ toolchains:
   category: legacy
   arch: arm
   prefix: arm-bcm2708hardfp-linux-gnueabi-
-  sysroot: arm-bcm2708hardfp-linux-gnueabi/sysroot/usr
+  sysroot: arm-bcm2708hardfp-linux-gnueabi/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-Raspberrypi_hard_s_u_p.tar.xz
   checksum: sha256:ce4182d3eebc2e69c3112773854a68d3cf6f36e58c40072d62013bece9dab24c
 
@@ -1229,7 +1229,7 @@ toolchains:
   category: legacy
   arch: sh4
   prefix: sh4-streamboard-linux-gnu-
-  sysroot: sh4-streamboard-linux-gnu/sysroot/usr
+  sysroot: sh4-streamboard-linux-gnu/sysroot
   url: https://simplebuild.dedyn.io/toolchains/legacy/Toolchain-NEWSH4-Streamboard_s_u_p.tar.xz
   checksum: sha256:da9f4faba56c06ea482959313f07d6065cb61d06e87cf826ba849c38b036b6ce
 
