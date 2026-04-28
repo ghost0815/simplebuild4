@@ -17,7 +17,7 @@ from textual.widgets import Static, Input, Button, Collapsible, DataTable, Selec
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.coordinate import Coordinate
 
-from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS
+from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS, rmtree_force, ensure_writable_dirs
 from core.lib_builder import build_library, sort_by_dependencies
 from translation import t
 from ui.header import S4Header
@@ -935,7 +935,14 @@ class ToolchainsScreen(Screen):
             pass
 
     def _set_tc_status(self, tc_name: str, status: str) -> None:
-        """Update the status and row color of a toolchain in its category DataTable."""
+        """Update the status and row color of a toolchain in its category DataTable.
+
+        S4DataTable prepends a hidden marker column to whatever
+        ``add_columns`` was called with. So a category table created
+        as ``add_columns("●", "Name", "Arch", "Description")`` actually
+        ends up with 5 columns: ``[marker, ●, Name, Arch, Description]``.
+        We skip ``cols[0]`` (the marker) and write into ``cols[1..4]``.
+        """
         from rich.text import Text
         reg = self._get_registry()
         tc = reg.get(tc_name)
@@ -949,26 +956,28 @@ class ToolchainsScreen(Screen):
                     continue
                 rk = row_keys[tc_name]
                 cols = list(tbl.columns.keys())
+                # cols[0] is S4DataTable's hidden marker — skip it.
+                c_status, c_name, c_arch, c_desc = cols[1], cols[2], cols[3], cols[4]
                 if "installing" in status:
-                    tbl.update_cell(rk, cols[0], Text("⟳", style="yellow"))
-                    tbl.update_cell(rk, cols[1], Text(tc.name, style="yellow"))
-                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="yellow"))
-                    tbl.update_cell(rk, cols[3], Text(tc.description, style="yellow"))
+                    tbl.update_cell(rk, c_status, Text("⟳", style="yellow"))
+                    tbl.update_cell(rk, c_name,   Text(tc.name, style="yellow"))
+                    tbl.update_cell(rk, c_arch,   Text(tc.arch, style="yellow"))
+                    tbl.update_cell(rk, c_desc,   Text(tc.description, style="yellow"))
                 elif "done" in status:
-                    tbl.update_cell(rk, cols[0], Text("●", style="green"))
-                    tbl.update_cell(rk, cols[1], Text(tc.name, style="green"))
-                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="green"))
-                    tbl.update_cell(rk, cols[3], Text(tc.description, style="green"))
+                    tbl.update_cell(rk, c_status, Text("●", style="green"))
+                    tbl.update_cell(rk, c_name,   Text(tc.name, style="green"))
+                    tbl.update_cell(rk, c_arch,   Text(tc.arch, style="green"))
+                    tbl.update_cell(rk, c_desc,   Text(tc.description, style="green"))
                 elif "failed" in status:
-                    tbl.update_cell(rk, cols[0], Text("✗", style="red"))
-                    tbl.update_cell(rk, cols[1], Text(tc.name, style="red"))
-                    tbl.update_cell(rk, cols[2], Text(tc.arch, style="red"))
-                    tbl.update_cell(rk, cols[3], Text(tc.description, style="red"))
+                    tbl.update_cell(rk, c_status, Text("✗", style="red"))
+                    tbl.update_cell(rk, c_name,   Text(tc.name, style="red"))
+                    tbl.update_cell(rk, c_arch,   Text(tc.arch, style="red"))
+                    tbl.update_cell(rk, c_desc,   Text(tc.description, style="red"))
                 else:
-                    tbl.update_cell(rk, cols[0], "●" if tc.installed else "")
-                    tbl.update_cell(rk, cols[1], tc.name)
-                    tbl.update_cell(rk, cols[2], tc.arch)
-                    tbl.update_cell(rk, cols[3], tc.description)
+                    tbl.update_cell(rk, c_status, "●" if tc.installed else "")
+                    tbl.update_cell(rk, c_name,   tc.name)
+                    tbl.update_cell(rk, c_arch,   tc.arch)
+                    tbl.update_cell(rk, c_desc,   tc.description)
                 return
             except Exception:
                 continue
@@ -2825,6 +2834,11 @@ class ToolchainsScreen(Screen):
                 self.app.call_from_thread(self._set_installed_status, tc, "failed")
                 return
 
+            # Some vendor tarballs (legacy simplebuild3, OE-SDK) ship dirs
+            # with mode 0555 — add u+rwx so later library installs and
+            # uninstall don't trip on Permission denied.
+            ensure_writable_dirs(install_dir)
+
             self._relocate_toolchain(install_dir, tc)
             self._fix_pc_files(install_dir)
             self._fix_la_files(install_dir)
@@ -2836,7 +2850,15 @@ class ToolchainsScreen(Screen):
                 local_tcs.append(tc)
                 reg.save_local(local_tcs)
             self._log(f"[green]{tc.name} installed successfully[/green]")
+            # Invalidate the cached registry and re-mount the screen so
+            # both the Installed table and the PreBuild category table
+            # reflect the new state from a clean slate. Cheaper than
+            # patching individual cells and immune to DuplicateKey
+            # errors when a row was added once during compose then
+            # again here.
+            self._registry = None
             self.app.call_from_thread(self._set_installed_status, tc, "done")
+            self.app.call_from_thread(self._refresh)
 
         self._run_in_thread(do_install)
 
@@ -3263,18 +3285,35 @@ class ToolchainsScreen(Screen):
         self._run_in_thread(do_restore)
 
     def _fix_pc_files(self, install_dir: Path) -> tuple:
-        """Fix prefix= paths in .pc files. Returns (total, fixed) counts."""
+        """Fix prefix= paths in .pc files. Returns (total, fixed) counts.
+
+        Two passes:
+          1. Rewrite ``prefix=`` to match the current install location
+             (the original was baked at vendor build time and breaks
+             after a tarball relocation).
+          2. Sanity-check the resulting ``includedir``/``libdir`` —
+             some vendor toolchains ship a stale ``.pc`` whose
+             ``${prefix}/include`` doesn't exist on disk (e.g. a
+             ``libusb-1.0.pc`` left over from a different sysroot
+             layout). pkg-config picks these up and reports headers
+             that aren't there, blocking subsequent library installs
+             that depend on them. We delete such files so a later,
+             correctly-installed copy in another pkgconfig dir wins.
+        """
+        import re as _re
         pc_files = list(install_dir.glob("**/pkgconfig/*.pc"))
         self._log(f"  Checking {len(pc_files)} .pc files...")
         fixed = 0
+        broken = 0
         for pc_file in pc_files:
             try:
                 content = pc_file.read_text(encoding="utf-8", errors="replace")
-                old_prefix = ""
+                vars_: dict[str, str] = {}
                 for line in content.splitlines():
-                    if line.startswith("prefix="):
-                        old_prefix = line.split("=", 1)[1].strip()
-                        break
+                    m = _re.match(r"^(\w+)\s*=\s*(.*)$", line)
+                    if m:
+                        vars_[m.group(1)] = m.group(2).strip()
+                old_prefix = vars_.get("prefix", "")
                 if not old_prefix:
                     continue
 
@@ -3287,8 +3326,39 @@ class ToolchainsScreen(Screen):
                     pc_file.write_text(content, encoding="utf-8")
                     self._log(f"  Fixed {pc_file.name}")
                     fixed += 1
+                    # Re-read the variable map after the substitution
+                    vars_ = {}
+                    for line in content.splitlines():
+                        m = _re.match(r"^(\w+)\s*=\s*(.*)$", line)
+                        if m:
+                            vars_[m.group(1)] = m.group(2).strip()
+
+                # Quarantine broken .pc files whose includedir is a
+                # phantom path (vendor tarball shipped a stale .pc).
+                def _resolve(val: str) -> str:
+                    # Naive ${var} expansion against the just-parsed map.
+                    out = val
+                    for _ in range(5):
+                        prev = out
+                        for k, v in vars_.items():
+                            out = out.replace("${" + k + "}", v)
+                        if out == prev:
+                            break
+                    return out
+
+                inc = _resolve(vars_.get("includedir", ""))
+                lib = _resolve(vars_.get("libdir", ""))
+                if (inc and not Path(inc).is_dir()) or (lib and not Path(lib).is_dir()):
+                    pc_file.unlink()
+                    self._log(
+                        f"  [yellow]Removed stale {pc_file.name}[/yellow] "
+                        f"(includedir/libdir does not exist on disk)"
+                    )
+                    broken += 1
             except Exception:
                 pass
+        if broken:
+            self._log(f"  Removed {broken} stale .pc file(s)")
         return (len(pc_files), fixed)
 
     def _fix_la_files(self, install_dir: Path) -> tuple:
@@ -3944,8 +4014,7 @@ class ToolchainsScreen(Screen):
 
         if tc.native:
             install_dir = self.app.paths.toolchains_dir / tc.name
-            if install_dir.exists():
-                shutil.rmtree(install_dir)
+            rmtree_force(install_dir)
             reg = self._get_registry()
             local_tcs = [t for t in reg._load_file(reg.local_path) if not t.native]
             reg.save_local(local_tcs)
@@ -3954,8 +4023,18 @@ class ToolchainsScreen(Screen):
             return
 
         install_dir = self.app.paths.toolchains_dir / tc.name
-        if install_dir.exists():
-            shutil.rmtree(install_dir)
+        rmtree_force(install_dir)
+        # Drop the entry from toolchains.local.yaml too — otherwise it
+        # stays as a ghost (installed=False on next load) and its
+        # cached fields (sysroot, prefix, libraries, …) keep
+        # overriding the catalog defaults forever, even after we
+        # actually corrected them upstream.
+        reg = self._get_registry()
+        local_tcs = [t for t in reg._load_file(reg.local_path) if t.name != tc.name]
+        reg.save_local(local_tcs)
+        # Invalidate the cached registry so subsequent actions don't
+        # see the just-removed entry as installed.
+        self._registry = None
         self._log_sync(f"[yellow]Removed {tc.name}[/yellow]")
         self.notify(t("tc_removed", name=tc.name), severity="warning")
         self._refresh()

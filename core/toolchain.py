@@ -87,6 +87,62 @@ KNOWN_LIBS = [
 ]
 
 
+def ensure_writable_dirs(root: Path) -> None:
+    """Add ``u+rwx`` to every directory under ``root``.
+
+    Several vendor toolchain tarballs ship directories with mode 0555
+    (read-only). After extraction, that blocks any later operation
+    that needs to add or remove an entry inside such a directory:
+    library installs into the sysroot, ``rmtree`` on uninstall, fixup
+    of pkg-config files, etc. Files are left untouched so executable
+    bits on binaries stay intact.
+
+    No-op when ``root`` doesn't exist or isn't a directory.
+    """
+    import os, stat
+    if not root.is_dir():
+        return
+    for dirpath, _dirs, _files in os.walk(root):
+        try:
+            st = os.stat(dirpath).st_mode
+            if (st & stat.S_IRWXU) != stat.S_IRWXU:
+                os.chmod(dirpath, st | stat.S_IRWXU)
+        except OSError:
+            # Best effort — don't crash an install over one stubborn
+            # entry; ``rmtree_force`` has the same retry logic and
+            # will sweep up if needed.
+            pass
+
+
+def rmtree_force(path: Path) -> None:
+    """``shutil.rmtree`` that survives read-only directory entries.
+
+    Many vendor toolchain tarballs (crosstool-ng, OE-SDK, simplebuild3
+    legacy …) are packed with mode 0555 on every directory, so a plain
+    ``rmtree`` fails with ``Permission denied`` because removing an
+    inode requires write+execute on its parent dir.
+
+    We attach an ``onerror`` callback that chmods the offending path
+    to 0700 and retries — only triggered when needed, so the common
+    case (writable tree) costs nothing.
+    """
+    import os, stat
+
+    def _on_error(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IRWXU)
+        except OSError:
+            pass
+        try:
+            func(p)
+        except OSError:
+            pass
+
+    if not Path(path).exists():
+        return
+    shutil.rmtree(path, onerror=_on_error)
+
+
 @dataclass
 class LibraryInfo:
     """Detected library in a toolchain sysroot."""

@@ -176,6 +176,12 @@ def install_toolchain_from_catalog(
         shutil.rmtree(install_dir, ignore_errors=True)
         return False
 
+    # Some vendor tarballs (legacy simplebuild3, OE-SDK) ship dirs
+    # with mode 0555 — add u+rwx so later library installs and
+    # uninstall don't trip on Permission denied.
+    from core.toolchain import ensure_writable_dirs
+    ensure_writable_dirs(install_dir)
+
     # ---- 4. Relocate + fix .pc / .la -------------------------------------
     _relocate(install_dir, _log)
     try:
