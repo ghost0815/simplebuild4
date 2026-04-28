@@ -761,10 +761,25 @@ class BuildEngine:
 
             def reader():
                 nonlocal done
+                from rich.markup import escape as _rich_escape
+                import re as _re
+                _summary_re = _re.compile(r"^\s*Summary:\s*(\d+)\s*failure")
                 for line in proc.stdout:
                     stripped = line.rstrip()
-                    if stripped and not stripped.startswith("qemu: Unsupported syscall"):
-                        self._log(f"          {stripped}")
+                    if not stripped or stripped.startswith("qemu: Unsupported syscall"):
+                        continue
+                    # Escape so '[OK]' and other bracketed test-binary
+                    # output isn't (mis)parsed as Rich markup. Without
+                    # this, the trailing ``Summary: N failure(s)`` ends
+                    # up styled by an unclosed tag from earlier.
+                    safe = _rich_escape(stripped)
+                    m = _summary_re.match(stripped)
+                    if m:
+                        n = int(m.group(1))
+                        colour = "green" if n == 0 else "red"
+                        self._log(f"          [{colour}]{safe}[/{colour}]")
+                    else:
+                        self._log(f"          {safe}")
                 done = True
 
             t = threading.Thread(target=reader, daemon=True)
