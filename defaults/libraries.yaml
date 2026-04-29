@@ -101,7 +101,7 @@ libraries:
     install: "make install"
     depends: [OpenSSL, zlib]
     variants:
-      - version: "8.19.0"
+      - version: "8.20.0"
         label: "8.x (current, needs OpenSSL 3)"
         requires: "c11"
         source: https://github.com/curl/curl/releases/download/curl-8_19_0/curl-@VERSION@.tar.gz
