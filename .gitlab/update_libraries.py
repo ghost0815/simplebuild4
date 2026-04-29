@@ -302,7 +302,34 @@ def apply_updates(content: str, updates: list[tuple[str, str]], lib_name: str) -
                 content = content.replace(old_p, new_p, 1)
                 break
 
-        # 2. Update label field — search for both the exact version string and the
+        # 2. Update source: URLs that bake the version inline. Some
+        #    upstreams (curl, OpenSSL) put the version into the
+        #    GitHub release tag with underscores (e.g. ``curl-8_19_0``);
+        #    if we only bumped ``version:`` the next build would 404.
+        #    Bump both forms in any source: line that follows the
+        #    version: line up to the next variant boundary.
+        old_under = old_ver.replace(".", "_")
+        new_under = new_ver.replace(".", "_")
+        # Limit substitution to the variant block we just touched —
+        # search forward from the just-replaced version: marker until
+        # the next ``- version:`` or library block start.
+        version_marker = f'version: "{new_ver}"' if f'version: "{new_ver}"' in content else f'version: {new_ver}'
+        block_start = content.find(version_marker)
+        if block_start >= 0:
+            block_end = content.find("- version:", block_start + len(version_marker))
+            if block_end < 0:
+                block_end = content.find("\n  - name:", block_start)
+            if block_end < 0:
+                block_end = len(content)
+            block = content[block_start:block_end]
+            new_block = block
+            new_block = new_block.replace(old_ver, new_ver)
+            if old_under != old_ver:
+                new_block = new_block.replace(old_under, new_under)
+            if new_block != block:
+                content = content[:block_start] + new_block + content[block_end:]
+
+        # 3. Update label field — search for both the exact version string and the
         #    space-normalised form (labels may use "4.0.0 beta1" for "4.0.0-beta1").
         old_forms = [re.escape(old_ver)]
         old_space = old_ver.replace("-", " ")
