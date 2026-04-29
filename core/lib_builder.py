@@ -303,10 +303,18 @@ def _do_build(
         filepath = local_path
         if log:
             log(f"Using local file: {filepath.name}")
-    elif filepath.exists() and filepath.stat().st_size > 0:
+    elif filepath.exists() and filepath.stat().st_size > 0 and _looks_like_archive(filepath):
         if log:
             log(f"Using cached {filename}")
     else:
+        # Wipe a poisoned cache entry (e.g. a 404 HTML body that some
+        # earlier download saved under the archive's filename) so the
+        # next attempt actually re-fetches.
+        if filepath.exists():
+            try:
+                filepath.unlink()
+            except OSError:
+                pass
         if log:
             log(f"Downloading {filename}...")
         if not _download(source, filepath, log):
@@ -558,28 +566,83 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
     return False
 
 
+def _looks_like_archive(path: Path) -> bool:
+    """Quick magic-byte check for the tarball formats we ship.
+
+    Catches the common failure mode where a download silently captured
+    a 404 HTML page (``<!DOCTYPE html``…) under a ``.tar.gz`` name and
+    poisoned the cache. We only need to recognise gzip / xz / bzip2 /
+    plain tar — anything else is treated as garbage and re-downloaded.
+    """
+    try:
+        with path.open("rb") as f:
+            head = f.read(262)
+    except OSError:
+        return False
+    if not head:
+        return False
+    if head.startswith(b"\x1f\x8b"):
+        return True  # gzip
+    if head.startswith(b"\xfd7zXZ\x00"):
+        return True  # xz
+    if head.startswith(b"BZh"):
+        return True  # bzip2
+    if head.startswith(b"PK\x03\x04") or head.startswith(b"PK\x05\x06"):
+        return True  # zip (libdvbcsa github master.zip and friends)
+    if len(head) >= 262 and head[257:262] == b"ustar":
+        return True  # plain (uncompressed) tar
+    return False
+
+
 def _download(url: str, filepath: Path, log: Optional[Callable[[str], None]] = None) -> bool:
-    """Download a file."""
+    """Download a file. Verifies the result before claiming success.
+
+    Both fetchers use options that fail on HTTP 4xx/5xx so a 404 body
+    can't masquerade as a tarball:
+      * ``wget`` exits non-zero on errors by default.
+      * ``curl -fsL`` adds ``-f`` (fail on HTTP errors) — without it
+        curl happily writes the error page to the output file and
+        returns 0.
+    The downloaded file is then magic-byte checked so a server that
+    returns 200 with an HTML error page (some CDNs do) still gets
+    rejected.
+    """
+    def _ok() -> bool:
+        return filepath.exists() and filepath.stat().st_size > 0 and _looks_like_archive(filepath)
+
     try:
         result = subprocess.run(
             ["wget", "-q", "-O", str(filepath), url],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
         )
-        if result.returncode == 0 and filepath.exists() and filepath.stat().st_size > 0:
+        if result.returncode == 0 and _ok():
             return True
     except FileNotFoundError:
         pass
+    # Tear down a partial / wrong-MIME body before retrying with curl
+    if filepath.exists() and not _ok():
+        try:
+            filepath.unlink()
+        except OSError:
+            pass
 
     try:
         result = subprocess.run(
-            ["curl", "-sL", "-o", str(filepath), url],
+            ["curl", "-fsL", "-o", str(filepath), url],
             capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300,
         )
-        if result.returncode == 0 and filepath.exists() and filepath.stat().st_size > 0:
+        if result.returncode == 0 and _ok():
             return True
     except FileNotFoundError:
         pass
 
+    # Last-resort cleanup so the next run doesn't see a half-written
+    # file as a valid cache entry.
+    if filepath.exists() and not _ok():
+        try:
+            filepath.unlink()
+        except OSError:
+            pass
     if log:
         log("[red]Download failed[/red]")
     return False
