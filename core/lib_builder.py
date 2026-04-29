@@ -289,7 +289,13 @@ def _do_build(
         return False
 
     downloads_dir.mkdir(parents=True, exist_ok=True)
-    filename = source.split("/")[-1].split("?")[0]
+    # Default filename = last URL segment (e.g. ``curl-8.20.0.tar.gz``).
+    # Recipes can override via ``archive_filename:`` for sources.
+    filename = (
+        variant.get("archive_filename")
+        or lib_defaults.get("archive_filename")
+        or source.split("/")[-1].split("?")[0]
+    )
     filepath = downloads_dir / filename
 
     if source.startswith("file://"):

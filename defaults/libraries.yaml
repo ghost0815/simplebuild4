@@ -203,6 +203,7 @@ libraries:
     pc_file: libdvbcsa.pc
     version_check: github:oe-mirrors/libdvbcsa
     source: https://github.com/oe-mirrors/libdvbcsa/archive/refs/heads/master.zip
+    archive_filename: libdvbcsa-master.zip
     pre_configure: "autoreconf -i"
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ $OPTIMIZATION"
     make: "make -j@CPUS@"
