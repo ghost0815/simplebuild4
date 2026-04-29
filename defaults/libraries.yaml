@@ -104,7 +104,7 @@ libraries:
       - version: "8.20.0"
         label: "8.x (current, needs OpenSSL 3)"
         requires: "c11"
-        source: https://github.com/curl/curl/releases/download/curl-8_19_0/curl-@VERSION@.tar.gz
+        source: https://github.com/curl/curl/releases/download/curl-8_20_0/curl-@VERSION@.tar.gz
       - version: "7.88.1"
         label: "7.88 (works with OpenSSL 1.x/0.9.8)"
         source: https://github.com/curl/curl/releases/download/curl-7_88_1/curl-@VERSION@.tar.gz
