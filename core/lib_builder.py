@@ -552,7 +552,8 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
     if trait == "csky" and "csky" in prefix_lower:
         return True
     if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps",
-                 "fix_wirecheck", "fix_version", "fix_includes"):
+                 "fix_wirecheck", "fix_version", "fix_includes",
+                 "fix_issetugid"):
         return True  # Always run these
     return False
 
