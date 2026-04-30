@@ -567,7 +567,7 @@ def _matches_trait(trait: str, prefix: str, toolchain_dir: Path) -> bool:
         return True
     if trait in ("auto_bitslice", "resolve_libusb", "resolve_deps",
                  "fix_wirecheck", "fix_version", "fix_includes",
-                 "fix_issetugid"):
+                 "fix_issetugid", "fix_librt"):
         return True  # Always run these
     return False
 

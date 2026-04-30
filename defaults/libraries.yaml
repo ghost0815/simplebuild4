@@ -189,7 +189,10 @@ libraries:
     extra:
       "post:csky": 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
-      android: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0"'
+      # ccid uses clock_gettime which old glibc (<2.17) keeps in librt; add -lrt only when librt actually exists in the sysroot (musl toolchains don't ship it).
+      fix_librt: 'if ls @PREFIX@/lib/librt.* >/dev/null 2>&1; then export LDFLAGS="$LDFLAGS -lrt"; fi'
+      # ccid 1.7.x has the same issetugid() (glibc 2.34+) issue as pcsclite.
+      fix_issetugid: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --sysconfdir=@PREFIX@/etc --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"
