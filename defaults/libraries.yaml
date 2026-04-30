@@ -22,6 +22,9 @@ libraries:
 
   - name: OpenSSL
     pc_file: openssl.pc
+    removal:
+      extra_basenames: [ssl, crypto]
+      include_dirs: [openssl]
     version_check: github:openssl/openssl
     source: https://github.com/openssl/openssl/releases/download/openssl-@VERSION@/openssl-@VERSION@.tar.gz
     configure: "./Configure linux-generic32 --prefix=@PREFIX@ shared no-tests no-threads"
@@ -95,6 +98,8 @@ libraries:
 
   - name: libcurl
     pc_file: libcurl.pc
+    removal:
+      include_dirs: [curl]
     version_check: github:curl/curl
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --with-openssl --without-libpsl --disable-manual --disable-docs"
     make: "make -j@CPUS@"
@@ -112,6 +117,8 @@ libraries:
 
   - name: libusb
     pc_file: libusb-1.0.pc
+    removal:
+      include_dirs: [libusb-1.0]
     version_check: github:libusb/libusb
     source: https://github.com/libusb/libusb/releases/download/v@VERSION@/libusb-@VERSION@.tar.bz2
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-udev"
@@ -138,6 +145,10 @@ libraries:
     pc_file: libpcsclite.pc
     export:
       extra_files: ["libpcscspy.so*", "pcsc_scan"]
+    removal:
+      extra_basenames: [pcsclite_real]
+      extra_files: ["libpcscspy.so*", "libpcscspy.a", "libpcscspy.la", "pcsc_scan"]
+      include_dirs: [PCSC]
     version_check: url:https://pcsclite.apdu.fr/files/
     pre_configure: "./bootstrap"
     extra:
@@ -207,6 +218,8 @@ libraries:
 
   - name: libdvbcsa
     pc_file: libdvbcsa.pc
+    removal:
+      include_dirs: [dvbcsa]
     version_check: github:oe-mirrors/libdvbcsa
     source: https://github.com/oe-mirrors/libdvbcsa/archive/refs/heads/master.zip
     archive_filename: libdvbcsa-master.zip

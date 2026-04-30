@@ -1290,14 +1290,17 @@ class ToolchainsScreen(Screen):
             cands = [t_ for t_ in templates if t_.name == name]
         return cands[0] if cands else None
 
-    def _update_libraries(self, built_libs: "set[str] | None" = None) -> None:
+    def _update_libraries(self, built_libs: "set[str] | None" = None,
+                          removed_libs: "set[str] | None" = None) -> None:
         """Scan libraries and update pre-created rows with options.
 
         When built_libs is None, the dropdowns are reset to their fresh
         defaults (toolchain switch). When a set is supplied, only the libs
         in that set are reset; everything else preserves its current
         Select.value (so an F9 update doesn't blow away unrelated picks
-        the user just made).
+        the user just made). removed_libs forces just-removed entries to
+        "skip" instead of auto-suggesting a reinstall of what was just
+        deleted.
         """
         if self._building:
             return  # Don't refresh while building — preserves status display
@@ -1401,8 +1404,13 @@ class ToolchainsScreen(Screen):
 
                 options: list[tuple[str, str]] = []
 
-                # Remove is only available for locally built libs (not system-provided)
-                _is_local_lib = lib.pc_file and lib.pc_file != "system"
+                # Remove is only available for locally built libs (not system-provided).
+                # ``pc_file == "system"`` marks a native-host lib detected via
+                # the host pkg-config — never remove those. Empty pc_file on a
+                # cross toolchain just means the .pc was lost (broken /
+                # quarantined / stripped by the vendor) but the actual .so is
+                # still in the sysroot and ought to be removable.
+                _is_local_lib = lib.found and lib.pc_file != "system"
 
                 if lib.found and lib.up_to_date:
                     options.append((t("lib_skip_uptodate"), "skip"))
@@ -1453,8 +1461,11 @@ class ToolchainsScreen(Screen):
                 # Default: only suggest an update for libraries that already
                 # exist in the toolchain. Missing libraries default to skip
                 # so we don't push users to integrate libs they never asked
-                # for.
-                if lib.found and not lib.up_to_date and lib.update_version:
+                # for. Just-removed libs always go to skip — otherwise the
+                # row immediately suggests reinstalling what was deleted.
+                if removed_libs and lib.name in removed_libs:
+                    fresh_default = "skip"
+                elif lib.found and not lib.up_to_date and lib.update_version:
                     fresh_default = f"update:{lib.update_version}"
                 else:
                     fresh_default = "skip"
@@ -1771,6 +1782,7 @@ class ToolchainsScreen(Screen):
                 pass
 
         built_libs: set[str] = set()
+        removed_libs: set[str] = set()
 
         def do_build():
             try:
@@ -1798,6 +1810,7 @@ class ToolchainsScreen(Screen):
                         )
                         if success:
                             built_libs.add(lib_name)
+                            removed_libs.add(lib_name)
                             _set_lib_status(lib_name, f"[bold green]{lib_name:<15s}[/bold green] [green]removed[/green]")
                             # Keep the persistent libraries record in sync
                             try:
@@ -1890,8 +1903,10 @@ class ToolchainsScreen(Screen):
                 self.app.call_from_thread(self._update_footer_state)
                 # Refresh library info (stay on Libraries tab)
                 # Pass built_libs so unrelated picks the user made
-                # before pressing F9 are preserved.
-                self.app.call_from_thread(self._update_libraries, built_libs)
+                # before pressing F9 are preserved. removed_libs forces
+                # those rows back to "skip" rather than auto-suggesting
+                # a fresh install of the lib the user just removed.
+                self.app.call_from_thread(self._update_libraries, built_libs, removed_libs)
 
         thread = threading.Thread(target=do_build, daemon=True)
         thread.start()

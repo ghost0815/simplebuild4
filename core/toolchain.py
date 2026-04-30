@@ -410,11 +410,15 @@ def remove_library(install_dir: Path, sysroot: str, lib_name: str,
     def _delete(path: Path, label: str = ""):
         nonlocal removed_count
         try:
-            if path.is_dir():
+            # is_symlink() catches dangling symlinks too (path.exists()
+            # follows the link and returns False for those, leaving
+            # broken symlinks behind when the target was deleted in
+            # an earlier loop iteration).
+            if path.is_dir() and not path.is_symlink():
                 shutil.rmtree(path)
                 log(f"  Removed dir:  {label or path}")
                 removed_count += 1
-            elif path.exists():
+            elif path.exists() or path.is_symlink():
                 path.unlink()
                 log(f"  Removed file: {label or path}")
                 removed_count += 1
@@ -431,6 +435,21 @@ def remove_library(install_dir: Path, sysroot: str, lib_name: str,
         lib_names.extend(_parse_pc_libs(pc))
         if not include_dir:
             include_dir = _parse_pc_include_dir(pc)
+
+    # Fallback when the .pc was already lost (orphan / failed earlier
+    # remove): derive the base name from pc_name so the glob still
+    # has something to chew on. ``libcurl.pc`` → ``curl``.
+    if not lib_names:
+        fallback = pc_name[:-3] if pc_name.endswith(".pc") else pc_name
+        if fallback.startswith("lib"):
+            fallback = fallback[3:]
+        if fallback:
+            lib_names.append(fallback)
+    # Recipe-level hint for libs that ship multiple .so basenames not
+    # listed in .pc (e.g. pcsclite installs libpcsclite + libpcsclite_real).
+    for extra in removal_config.get("extra_basenames", []):
+        if extra not in lib_names:
+            lib_names.append(extra)
 
     # Delete .pc files
     for pc in pc_files:
@@ -450,9 +469,20 @@ def remove_library(install_dir: Path, sysroot: str, lib_name: str,
         for f in install_dir.glob(f"**/lib{ln}.a"):
             _delete(f, f"lib{ln}.a")
 
-    # Delete dynamic libraries (.so*)
+    # Delete dynamic libraries (.so*) and libtool archives (.la)
     for ln in lib_names:
         for f in install_dir.glob(f"**/lib{ln}.so*"):
+            _delete(f, f.name)
+        for f in install_dir.glob(f"**/lib{ln}.la"):
+            _delete(f, f.name)
+        # Aclocal macro files (e.g. share/aclocal/libcurl.m4)
+        for f in install_dir.glob(f"**/aclocal/lib{ln}.m4"):
+            _delete(f, f"aclocal/{f.name}")
+
+    # Recipe-level extra glob patterns (e.g. pcsclite installs
+    # libpcscspy.so* + pcsc_scan binary that aren't in .pc Libs).
+    for pattern in removal_config.get("extra_files", []):
+        for f in install_dir.glob(f"**/{pattern}"):
             _delete(f, f.name)
 
     # Delete include directory (from Cflags -I)
@@ -466,6 +496,13 @@ def remove_library(install_dir: Path, sysroot: str, lib_name: str,
                 log(f"  [yellow]Skipped: {inc_path} (top-level include dir)[/yellow]")
             else:
                 _delete(inc_path, f"include/{inc_path.name}/")
+
+    # Recipe-level include subdirs (curl/, openssl/, libusb-1.0/, …)
+    # — needed when the .pc Cflags points at the top-level include dir
+    # but the lib actually owns a named subfolder under it.
+    for inc_sub in removal_config.get("include_dirs", []):
+        for d in install_dir.glob(f"**/include/{inc_sub}"):
+            _delete(d, f"include/{inc_sub}/")
 
     # Delete individual include files from removal config
     for inc_file in removal_config.get("include_files", []):
