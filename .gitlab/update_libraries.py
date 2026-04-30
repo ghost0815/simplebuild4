@@ -18,8 +18,6 @@ import yaml
 
 LIBRARIES_YAML = Path(__file__).resolve().parent.parent / "defaults" / "libraries.yaml"
 PRERELEASE_TAGS = ("alpha", "beta", "preview", "rc", "dev", "pre")
-# OpenSSL is the only library where we add alpha/beta versions
-PRERELEASE_ALLOWED = {"OpenSSL"}
 
 
 def fetch_json(url: str) -> list | dict:
@@ -214,7 +212,7 @@ def find_updates(lib: dict, all_versions: list[dict]) -> list[tuple[str, str]]:
     if not variants:
         return []
 
-    allow_prerelease = lib_name in PRERELEASE_ALLOWED
+    allow_prerelease = True
     updates = []
     all_variant_versions = {v.get("version", "") for v in variants}
 
@@ -240,8 +238,10 @@ def find_updates(lib: dict, all_versions: list[dict]) -> list[tuple[str, str]]:
                 continue
             if av["prerelease"] and not allow_prerelease:
                 continue
-            if av["prerelease"] and not is_pre and not allow_prerelease:
-                continue
+            if av["prerelease"] and not is_pre:
+                continue  # never bump stable → pre
+            if not av["prerelease"] and is_pre:
+                continue  # never promote pre → stable (handled by removal)
             candidates.append(av)
 
         if not candidates:
@@ -256,27 +256,57 @@ def find_updates(lib: dict, all_versions: list[dict]) -> list[tuple[str, str]]:
     return updates
 
 
+def _release_form(version: str) -> str:
+    """``1.0.30-rc1`` → ``1.0.30``; ``4.1.0-beta1`` → ``4.1.0``."""
+    return re.sub(
+        r'[-_.]?(rc|beta|alpha|preview|dev|pre|a|b)\d*.*$',
+        '', version, flags=re.IGNORECASE,
+    )
+
+
+def find_obsolete_prereleases(lib: dict, all_versions: list[dict]) -> list[str]:
+    """Pre-release variants whose stable equivalent now exists upstream."""
+    upstream_stable = {av["version"] for av in all_versions if not av["prerelease"]}
+    obsolete = []
+    for v in lib.get("variants", []):
+        ver = v.get("version", "")
+        if not is_prerelease(ver):
+            continue
+        if _release_form(ver) in upstream_stable:
+            obsolete.append(ver)
+    return obsolete
+
+
 def find_new_versions(lib: dict, all_versions: list[dict]) -> list[str]:
-    """Find new pre-release versions to add (OpenSSL only).
-
-    Returns list of new version strings.
-    """
-    lib_name = lib["name"]
-    if lib_name not in PRERELEASE_ALLOWED:
-        return []
-
+    """Add pre-releases when no stable variant in the same branch
+    already supersedes them."""
     variants = lib.get("variants", [])
     existing_versions = {v.get("version", "") for v in variants}
-    existing_branches = {get_branch(v.get("version", "")) for v in variants
-                        if v.get("version") not in ("auto", "master", "custom")}
+    branch_max: dict[str, tuple] = {}
+    for v in variants:
+        ver = v.get("version", "")
+        if ver in ("auto", "master", "custom") or is_prerelease(ver):
+            continue
+        b = get_branch(ver)
+        pv = parse_version(ver)
+        if pv > branch_max.get(b, ()):
+            branch_max[b] = pv
+
     new_versions = []
+    seen_branches: set[str] = set()
 
     for av in all_versions:
-        if av["prerelease"]:
-            branch = get_branch(av["version"])
-            if branch not in existing_branches and av["version"] not in existing_versions:
-                new_versions.append(av["version"])
-                existing_branches.add(branch)
+        if not av["prerelease"]:
+            continue
+        if av["version"] in existing_versions:
+            continue
+        b = get_branch(_release_form(av["version"]))
+        if b in seen_branches:
+            continue  # one pre per branch is enough
+        if parse_version(av["version"]) <= branch_max.get(b, ()):
+            continue  # superseded by existing stable
+        new_versions.append(av["version"])
+        seen_branches.add(b)
 
     return new_versions
 
@@ -369,6 +399,29 @@ def apply_updates(content: str, updates: list[tuple[str, str]], lib_name: str) -
     return content, changes
 
 
+def apply_removals(content: str, removals: list[str], lib_name: str) -> tuple[str, list[str]]:
+    """Strip variant blocks for each version in ``removals``."""
+    changes = []
+    for ver in removals:
+        marker = f'- version: "{ver}"'
+        marker_pos = content.find(marker)
+        if marker_pos < 0:
+            marker = f'- version: {ver}'
+            marker_pos = content.find(marker)
+        if marker_pos < 0:
+            continue
+        line_start = content.rfind("\n", 0, marker_pos) + 1
+        next_var = content.find("\n      - version:", marker_pos)
+        next_lib = content.find("\n  - name:", marker_pos)
+        end = len(content)
+        for cand in (next_var, next_lib):
+            if 0 <= cand < end:
+                end = cand + 1
+        content = content[:line_start] + content[end:]
+        changes.append(f"{lib_name}: REMOVE {ver} (superseded by stable)")
+    return content, changes
+
+
 def apply_new_versions(content: str, new_versions: list[str], lib_name: str) -> tuple[str, list[str]]:
     """Insert new pre-release variants into YAML content.
 
@@ -437,13 +490,18 @@ def main():
         # Find updates
         updates = find_updates(lib, versions)
         new_vers = find_new_versions(lib, versions)
+        obsolete = find_obsolete_prereleases(lib, versions)
 
-        if updates or new_vers:
+        if updates or new_vers or obsolete:
             if not dry_run:
+                content, rem_changes = apply_removals(content, obsolete, name)
                 content, changes = apply_updates(content, updates, name)
                 content, new_changes = apply_new_versions(content, new_vers, name)
-                all_changes.extend(changes + new_changes)
+                all_changes.extend(rem_changes + changes + new_changes)
             else:
+                for ov in obsolete:
+                    print(f"    {name}: REMOVE {ov} (superseded by stable)")
+                    all_changes.append(f"{name}: REMOVE {ov} (superseded by stable)")
                 for old_v, new_v in updates:
                     print(f"    {name}: {old_v} → {new_v}")
                     all_changes.append(f"{name}: {old_v} → {new_v}")
