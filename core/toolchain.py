@@ -717,11 +717,13 @@ def check_library_updates(
             lib.up_to_date = True
             continue
 
-        # Find update within same branch
+        # Find update within same branch — only stable variants. A
+        # pre-release sitting at the top of the variants list (e.g.
+        # libusb 1.0.30-rc1) must never be auto-recommended.
         installed_branch = _get_version_branch(lib.version)
 
         best_in_branch = ""
-        for v in available:
+        for v in stable:
             v_version = v.get("version", "")
             if v_version in ("auto", "master"):
                 continue
