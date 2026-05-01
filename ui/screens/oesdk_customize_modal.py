@@ -140,10 +140,14 @@ class OeSdkCustomizeModal(ModalScreen[Optional[OeSdkConfig]]):
             # 4. Build Directory + browse
             _base = self._oesdk_base
             _default_build = f"{_base}/{self._auto_name()}" if cfg.repo_branch else _base
+            _initial_build = cfg.build_dir or _default_build
+            # Remember what we auto-set so a later toolchain-name change
+            # can tell whether the user has customised the field.
+            self._last_auto_build_dir = _default_build if not cfg.build_dir else ""
             with Horizontal(classes="oesdk-row"):
                 yield Static("Build Directory", classes="oesdk-label")
                 yield Input(
-                    value=cfg.build_dir or _default_build,
+                    value=_initial_build,
                     placeholder=_default_build,
                     id="oesdk-build-dir",
                 )
@@ -528,14 +532,29 @@ class OeSdkCustomizeModal(ModalScreen[Optional[OeSdkConfig]]):
         btn.label = t("update") if (repo_path / ".git").is_dir() else t("clone")
 
     def _update_build_dir(self, tc_name: str) -> None:
-        """Keep build dir in sync if it looks auto-generated."""
+        """Keep build dir in sync if it still holds an auto-generated value.
+
+        Only overwrite the field when it is empty or exactly equals
+        the value we last auto-set ourselves. The previous heuristic
+        ``cur.startswith(base + "/")`` was too broad — it treated any
+        path under ``oesdk_dir`` as auto, so a user-supplied directory
+        like ``/home/x/oe-alliance/oatv-8.0`` got mangled into
+        ``…/oatv-8.0/<toolchain_name>`` whenever the toolchain name
+        was rebuilt.
+        """
         try:
             bd = self.query_one("#oesdk-build-dir", Input)
             cur = bd.value.strip()
             base = self._oesdk_base
-            if not cur or cur == base or cur.startswith(base + "/"):
-                bd.value = f"{base}/{tc_name}" if tc_name else base
+            previous_auto = getattr(self, "_last_auto_build_dir", "")
+            new_value = f"{base}/{tc_name}" if tc_name else base
+            if cur and cur != previous_auto and cur != base:
+                # User-edited — leave it alone.
                 self._update_clone_button()
+                return
+            bd.value = new_value
+            self._last_auto_build_dir = new_value
+            self._update_clone_button()
         except Exception:
             pass
 
