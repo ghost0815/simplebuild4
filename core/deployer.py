@@ -39,7 +39,7 @@ class Deployer:
         # Build SSH/SCP base commands for remote
         if not self.is_local:
             self._ssh_base = ["ssh", "-p", str(config.port)] + SSH_OPTS
-            self._scp_base = ["scp", "-P", str(config.port)] + SSH_OPTS
+            self._scp_base = ["scp", "-p", "-P", str(config.port)] + SSH_OPTS
             if config.key:
                 self._ssh_base += ["-i", config.key]
                 self._scp_base += ["-i", config.key]
