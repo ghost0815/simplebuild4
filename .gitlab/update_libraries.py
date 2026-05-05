@@ -277,15 +277,33 @@ def find_obsolete_prereleases(lib: dict, all_versions: list[dict]) -> list[str]:
     return obsolete
 
 
-def find_new_versions(lib: dict, all_versions: list[dict]) -> list[str]:
+def find_new_versions(lib: dict, all_versions: list[dict],
+                      updates: list[tuple[str, str]] | None = None) -> list[str]:
     """Add pre-releases when no stable variant in the same branch
-    already supersedes them."""
+    already supersedes them.
+
+    ``updates`` is the output of ``find_updates`` for the same lib —
+    we apply it conceptually so that a version about to be bumped in
+    the YAML isn't proposed again as a new variant (otherwise the
+    pipeline both rewrites rc1→rc2 *and* inserts a fresh rc2 → dup).
+    """
     variants = lib.get("variants", [])
     existing_versions = {v.get("version", "") for v in variants}
+    # Apply pending updates conceptually so the dedup matches the
+    # post-pipeline state.
+    for old, new in updates or []:
+        existing_versions.discard(old)
+        existing_versions.add(new)
+
     branch_max: dict[str, tuple] = {}
-    for v in variants:
-        ver = v.get("version", "")
-        if ver in ("auto", "master", "custom") or is_prerelease(ver):
+    seen_branches: set[str] = set()
+    for ver in existing_versions:
+        if ver in ("auto", "master", "custom"):
+            continue
+        if is_prerelease(ver):
+            # A pre-release variant already represents this branch —
+            # don't add a second pre for the same branch.
+            seen_branches.add(get_branch(_release_form(ver)))
             continue
         b = get_branch(ver)
         pv = parse_version(ver)
@@ -293,7 +311,6 @@ def find_new_versions(lib: dict, all_versions: list[dict]) -> list[str]:
             branch_max[b] = pv
 
     new_versions = []
-    seen_branches: set[str] = set()
 
     for av in all_versions:
         if not av["prerelease"]:
@@ -489,7 +506,7 @@ def main():
 
         # Find updates
         updates = find_updates(lib, versions)
-        new_vers = find_new_versions(lib, versions)
+        new_vers = find_new_versions(lib, versions, updates=updates)
         obsolete = find_obsolete_prereleases(lib, versions)
 
         if updates or new_vers or obsolete:

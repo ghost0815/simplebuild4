@@ -127,12 +127,6 @@ libraries:
     extra:
       csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
     variants:
-      - version: "1.0.30-rc1"
-        label: "1.0.30 rc1 (experimental)"
-        requires: "c11"
-      - version: "1.0.30-rc2"
-        label: "1.0.30 rc2 (experimental)"
-        requires: "c11"
       - version: "1.0.30-rc2"
         label: "1.0.30 rc2 (experimental)"
         requires: "c11"
