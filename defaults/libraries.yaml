@@ -127,14 +127,11 @@ libraries:
     extra:
       csky: 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
     variants:
-      - version: "1.0.30-rc2"
-        label: "1.0.30 rc2 (experimental)"
-        requires: "c11"
-      - version: "1.0.29"
+      - version: "1.0.30"
         label: "1.0.x (current)"
         requires: "c11"
-      - version: "1.0.23"
-        label: "1.0.23 (no C11 needed)"
+      - version: "1.0.30"
+        label: "1.0.30 (no C11 needed)"
       - version: "0.1.12"
         label: "0.1.x (legacy API)"
         pc_file: libusb.pc
