@@ -252,6 +252,13 @@ def find_updates(lib: dict, all_versions: list[dict]) -> list[tuple[str, str]]:
 
         if newest != v and parse_version(newest) > parse_version(v) and newest not in all_variant_versions:
             updates.append((v, newest))
+            # Mark the target as taken so a second variant in the same
+            # branch (e.g. a deliberate "no C11 needed" anchor pinned
+            # to an older version) doesn't get bumped to the same
+            # version on a later iteration — that would duplicate the
+            # entry and erase the anchor.
+            all_variant_versions.add(newest)
+            all_variant_versions.discard(v)
 
     return updates
 

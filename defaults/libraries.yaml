@@ -130,8 +130,8 @@ libraries:
       - version: "1.0.30"
         label: "1.0.x (current)"
         requires: "c11"
-      - version: "1.0.30"
-        label: "1.0.30 (no C11 needed)"
+      - version: "1.0.23"
+        label: "1.0.23 (no C11 needed)"
       - version: "0.1.12"
         label: "0.1.x (legacy API)"
         pc_file: libusb.pc
