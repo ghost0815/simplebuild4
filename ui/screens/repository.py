@@ -84,7 +84,13 @@ class RepositoryScreen(Screen):
             with Vertical(id="repo-box"):
                 with Horizontal(classes="repo-actions-row"):
                     repo_names = [(r.name, r.name) for r in self._repos]
-                    yield Select(options=repo_names, value=self._repos[0].name if self._repos else None, id="repo-select", prompt=t("select_prompt"))
+                    yield Select(
+                        options=repo_names,
+                        value=self._repos[0].name if self._repos else Select.BLANK,
+                        allow_blank=True,
+                        id="repo-select",
+                        prompt=t("select_prompt"),
+                    )
                     first = self._repos[0] if self._repos else None
                     excl_chk = Checkbox("Exclude from automation", value=first.exclude_from_automation if first else False, id="chk-excl-auto")
                     yield excl_chk
@@ -584,6 +590,8 @@ class RepositoryScreen(Screen):
             sel.value = select_name
         elif self._repos:
             sel.value = self._repos[0].name
+        else:
+            sel.value = Select.BLANK
 
     def _refresh_status(self) -> None:
         try:
