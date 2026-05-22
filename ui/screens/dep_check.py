@@ -118,6 +118,25 @@ class DependencyCheckModal(ModalScreen[None]):
         self._log_widget.write(f"[bold]{t('dep_checking')}[/bold]")
         threading.Thread(target=self._do_check, daemon=True).start()
 
+    def _detect_wsl(self) -> str:
+        """Return ``WSL 2``, ``WSL 1`` or ``""``.
+
+        WSL 2 ships a real Linux kernel and tags itself in
+        ``/proc/sys/kernel/osrelease`` (suffix ``-WSL2`` or
+        ``microsoft-standard-WSL2``). WSL 1 only adds ``Microsoft``
+        to the kernel string.
+        """
+        try:
+            with open("/proc/sys/kernel/osrelease", "r", encoding="utf-8") as f:
+                osrel = f.read().lower()
+        except OSError:
+            return ""
+        if "wsl2" in osrel:
+            return "WSL 2"
+        if "microsoft" in osrel:
+            return "WSL 1"
+        return ""
+
     def _do_check(self) -> None:
         try:
             from core.dep_checker import DependencyChecker
@@ -125,9 +144,21 @@ class DependencyCheckModal(ModalScreen[None]):
             checker = DependencyChecker(self._deps_yaml, log=self._log)
             pkg_mgr = checker.detect_distro()
             _pyver = ".".join(str(x) for x in _sys.version_info[:3])
-            self._log(f"System: {checker._distro_name or checker._distro_id or 'unknown'}")
+            sys_label = checker._distro_name or checker._distro_id or "unknown"
+            wsl = self._detect_wsl()
+            if wsl:
+                sys_label += f" ({wsl})"
+            self._log(f"System: {sys_label}")
             self._log(f"Python: {_pyver} at {_sys.executable}")
             self._log(f"Package manager: {pkg_mgr or 'not detected'}")
+            if wsl == "WSL 1":
+                self._log(
+                    "[yellow]Warning: WSL 1 detected — many cross-compile flows "
+                    "(file watches, mount perms, networking) misbehave. Switch "
+                    "to WSL 2:[/yellow]\n"
+                    "  [dim]PowerShell (admin): [/dim]wsl --set-version <DistroName> 2\n"
+                    "  [dim]Verify:            [/dim]wsl -l -v"
+                )
             self._log("")
 
             result = checker.check_all()
