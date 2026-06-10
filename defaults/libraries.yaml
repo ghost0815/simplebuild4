@@ -165,6 +165,10 @@ libraries:
         label: "2.x (current)"
         requires: "c11"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
+        pre_configure: ""
+        configure: meson setup build --cross-file=@MESON_CROSS@ --prefix=@PREFIX@ --buildtype=plain --default-library=both -Dpolkit=false -Dlibsystemd=false -Dlibudev=false -Dlibusb=true -Dusbdropdir=@PREFIX@/lib/pcsc/drivers -Dserialconfdir=@PREFIX@/etc/reader.conf.d
+        make: ninja -C build -j@CPUS@
+        install: ninja -C build install
         post_install: |
           echo "Building pcsc-tools (pcsc_scan)..."
           git clone --depth 1 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src

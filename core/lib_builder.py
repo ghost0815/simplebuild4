@@ -222,7 +222,9 @@ def _do_build(
     ranlib = f"{toolchain_prefix}ranlib"
     cpus = str(max_cpus if max_cpus else os.cpu_count() or 4)
 
-    # Replace placeholders
+    # Replace placeholders. @MESON_CROSS@ is intentionally NOT here —
+    # it's resolved later (once build_dir exists) so we can write the
+    # cross file to a known path and substitute its absolute location.
     replacements = {
         "@VERSION@": actual_version,
         "@PREFIX@": str(prefix),
@@ -355,6 +357,21 @@ def _do_build(
         if log:
             log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
         return False
+
+    # Generate a Meson cross-file if any command references @MESON_CROSS@.
+    # The file lives in build_dir and the placeholder is replaced with its
+    # absolute path. Recipes that don't use Meson skip this entirely.
+    if any("@MESON_CROSS@" in s for s in (pre_configure, configure, make_cmd, install_cmd, post_install)):
+        cross_path = build_dir / "_s4_meson_cross.ini"
+        _write_meson_cross(cross_path, cc, toolchain_prefix, target)
+        replacements["@MESON_CROSS@"] = str(cross_path)
+        pre_configure = _replace(pre_configure, replacements)
+        configure     = _replace(configure,     replacements)
+        make_cmd      = _replace(make_cmd,      replacements)
+        install_cmd   = _replace(install_cmd,   replacements)
+        post_install  = _replace(post_install,  replacements)
+        if log:
+            log(f"Generated Meson cross file: {cross_path.name}")
 
     # Prepare environment — put /usr/bin BEFORE toolchain bin so host pkg-config is found first
     env = os.environ.copy()
@@ -545,6 +562,45 @@ def _get_target(toolchain_dir: Path, prefix: str) -> str:
         pass
     # Fallback: strip trailing dash from prefix
     return prefix.rstrip("-")
+
+
+_MESON_CPU_FAMILY = {
+    "arm": "arm", "armv5": "arm", "armv6": "arm", "armv7": "arm",
+    "armv7a": "arm", "armv7ahf": "arm", "armv7ve": "arm", "armv8": "arm",
+    "aarch64": "aarch64", "arm64": "aarch64",
+    "mipsel": "mips", "mips32el": "mips", "mips": "mips", "mips64": "mips64",
+    "powerpc": "ppc", "ppc": "ppc", "powerpc64": "ppc64", "ppc64": "ppc64",
+    "sh4": "sh4", "i386": "x86", "i486": "x86", "i586": "x86", "i686": "x86",
+    "x86_64": "x86_64", "amd64": "x86_64",
+    "riscv32": "riscv32", "riscv64": "riscv64", "csky": "csky",
+}
+_MESON_BIG_ENDIAN = {"mips", "powerpc", "ppc", "powerpc64", "ppc64", "sh4eb"}
+
+
+def _write_meson_cross(path: Path, cc: str, toolchain_prefix: str, target: str) -> None:
+    """Generate a Meson cross-file describing the toolchain.
+
+    Derives ``cpu_family`` from the first segment of the toolchain
+    triple (``arm-buildroot-…`` → ``arm``). Falls back to little-endian
+    for unknowns — Meson accepts unknown cpu_family with a warning.
+    """
+    arch = target.split("-", 1)[0] if target else ""
+    cpu_family = _MESON_CPU_FAMILY.get(arch, arch or "unknown")
+    endian = "big" if arch in _MESON_BIG_ENDIAN else "little"
+    path.write_text(
+        f"[binaries]\n"
+        f"c = '{cc}'\n"
+        f"ar = '{toolchain_prefix}ar'\n"
+        f"strip = '{toolchain_prefix}strip'\n"
+        f"pkg-config = '/usr/bin/pkg-config'\n"
+        f"\n"
+        f"[host_machine]\n"
+        f"system = 'linux'\n"
+        f"cpu_family = '{cpu_family}'\n"
+        f"cpu = '{arch}'\n"
+        f"endian = '{endian}'\n",
+        encoding="utf-8",
+    )
 
 
 def _replace(text: str, replacements: dict) -> str:

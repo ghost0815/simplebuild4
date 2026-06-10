@@ -19,6 +19,13 @@ meta:
 # Required binaries
 binaries:
   - name: cmake
+  - name: meson
+  - name: ninja
+    package:
+      apt: ninja-build
+      dnf: ninja-build
+      pacman: ninja
+      zypper: ninja
   - name: git
   - name: svn
     package:
