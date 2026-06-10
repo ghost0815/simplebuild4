@@ -162,7 +162,7 @@ libraries:
     depends: [libusb, zlib]
     variants:
       - version: "2.4.1"
-        label: "2.4.x (current)"
+        label: "2.x (current)"
         requires: "c11"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
         post_install: |
