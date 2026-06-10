@@ -161,7 +161,7 @@ libraries:
     install: "make install"
     depends: [libusb, zlib]
     variants:
-      - version: "2.5.0"
+      - version: "2.5.1"
         label: "2.x (current)"
         requires: "c11"
         source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
