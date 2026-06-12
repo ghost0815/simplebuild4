@@ -210,9 +210,16 @@ libraries:
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"
     depends: [pcsclite, libusb, zlib]
     variants:
-      - version: "1.7.1"
-        label: "1.7.x (current)"
+      - version: "1.8.1"
+        label: "1.x (current)"
         requires: "c11"
+        pre_configure: ""
+        configure: meson setup build --cross-file=@MESON_CROSS@ --prefix=@PREFIX@ --buildtype=plain --default-library=both -Dpcsclite=true -Dserial=true -Dudev-rules=false -Dclass=false
+        make: ninja -C build -j@CPUS@
+        install: |
+          ninja -C build install
+          mkdir -p @PREFIX@/lib/pkgconfig
+          printf 'prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\n' > @PREFIX@/lib/pkgconfig/libccid.pc
       - version: "1.4.36"
         label: "1.4.x (no C11 needed)"
         source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.bz2
