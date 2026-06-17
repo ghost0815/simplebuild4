@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.sysroot import read_linux_version
 from core.target import Target, SourceConfig, ToolchainConfig
 
 
@@ -465,6 +466,23 @@ class BuildEngine:
         except Exception as e:
             self._log(f"[red]TEST -------> ERROR: {e}[/red]")
 
+    def _qemu_uname_env(self, sysroot: str) -> dict[str, str] | None:
+        """Build an environment dict with ``QEMU_UNAME`` set to the
+        sysroot's kernel version, or ``None`` if it could not be
+        determined (caller falls back to the inherited environment).
+
+        Works around qemu-user's hardcoded ``uname()`` kernel version
+        which can be older than what the sysroot's glibc was built to
+        expect; without the override, target binaries abort with
+        ``FATAL: kernel too old`` even on a recent host kernel.
+        """
+        kernelv = read_linux_version(Path(sysroot.rstrip("/")))
+        if not kernelv:
+            return None
+        env = os.environ.copy()
+        env["QEMU_UNAME"] = kernelv
+        return env
+
     def _qemu_smoke_test(self, bin_path: Path, cross: str, sysroot: str, tc_dir: Path | None = None) -> None:
         """Run a QEMU smoke test on a cross-compiled binary (like s3).
 
@@ -564,12 +582,17 @@ class BuildEngine:
         self._log(f"[cyan]{label} -------> [/cyan]testing {bin_path.name} ([dark_orange]{timeout}s timeout[/dark_orange])")
         self._log(f"[dim]          $ {' '.join(cmd)}[/dim]")
 
+        qemu_env = None if same_arch else self._qemu_uname_env(sysroot)
+        if qemu_env:
+            self._log(f"[dim]          $ QEMU_UNAME={qemu_env['QEMU_UNAME']}[/dim]")
+
         try:
             proc = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
                 preexec_fn=os.setsid,
+                env=qemu_env,
             )
 
             found = False
@@ -740,7 +763,7 @@ class BuildEngine:
             if extra_lib_dirs:
                 cmd += ["-E", f"LD_LIBRARY_PATH={':'.join(extra_lib_dirs)}"]
             cmd.append(str(tests_bin))
-            env = None
+            env = self._qemu_uname_env(sysroot)
             run_label = "QEMU-TESTS"
 
         self._log(f"[cyan]{run_label} -> [/cyan]executing {tests_bin.name}")
@@ -755,7 +778,7 @@ class BuildEngine:
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
                 preexec_fn=os.setsid,
-                env=env if is_native else None,
+                env=env,
             )
             done = False
 

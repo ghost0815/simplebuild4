@@ -17,6 +17,7 @@ from textual.widgets import Static, Input, Button, Collapsible, DataTable, Selec
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.coordinate import Coordinate
 
+from core.sysroot import read_linux_version
 from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_library_recipes, check_library_updates, KNOWN_LIBS, rmtree_force, ensure_writable_dirs
 from core.lib_builder import build_library, sort_by_dependencies
 from translation import t
@@ -3726,35 +3727,13 @@ class ToolchainsScreen(Screen):
         log(f"  {'=' * 40}")
 
         # Linux headers
-        linux_h = None
-        for candidate in [
-            sysroot_path / "usr" / "include" / "linux" / "version.h",
-            sysroot_path / "include" / "linux" / "version.h",
-        ]:
-            if candidate.exists():
-                linux_h = candidate
-                break
-        if linux_h:
-            try:
-                content = linux_h.read_text(errors="replace")
-                linux_ver = ""
-                for line in content.splitlines():
-                    if "LINUX_VERSION_CODE" in line and "#define" in line:
-                        try:
-                            code = int(line.split()[-1])
-                            major = code >> 16
-                            minor = (code >> 8) & 0xFF
-                            patch = code & 0xFF
-                            linux_ver = f"{major}.{minor}.{patch}"
-                        except (ValueError, IndexError):
-                            linux_ver = line.strip()
-                        break
-                    elif "UTS_RELEASE" in line:
-                        linux_ver = line.strip()
-                        break
-                log(fmt_ok("Linux", "version.h", linux_ver or "found"))
-            except Exception:
-                log(fmt_ok("Linux", "version.h"))
+        linux_h_exists = any(
+            (sysroot_path / p).exists()
+            for p in ("usr/include/linux/version.h", "include/linux/version.h")
+        )
+        if linux_h_exists:
+            linux_ver = read_linux_version(sysroot_path)
+            log(fmt_ok("Linux", "version.h", linux_ver or "found"))
         else:
             log(fmt_fail("Linux", "version.h not found"))
 
