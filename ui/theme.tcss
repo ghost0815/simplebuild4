@@ -540,11 +540,12 @@ Switch.-on .switch--slider {
 
 #tc-installed-box {
     height: auto;
-    max-height: 26;
+    max-height: 50%;
     margin: 1 1 0 1;
     border: solid #444444;
     border-title-color: $text;
     padding: 1 1;
+    overflow-y: auto;
 }
 
 #tc-installed-box:focus-within {
@@ -553,7 +554,7 @@ Switch.-on .switch--slider {
 }
 
 #tbl-installed {
-    height: 1fr;
+    height: auto;
     scrollbar-gutter: stable;
 }
 
