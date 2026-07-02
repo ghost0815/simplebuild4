@@ -224,10 +224,25 @@ def find_updates(lib: dict, all_versions: list[dict]) -> list[tuple[str, str]]:
         if re.match(r'^\d+\.\d+\.\d+-\d+$', v):
             continue
 
-        # Determine branch from label or version
+        # Determine branch from label or version.
+        # Convention:
+        #   "X.Y.x (...)" — auto-bump within X.Y branch
+        #   "X.Y.Z (...)" where X.Y.Z equals the variant's version —
+        #                 pinned anchor, no bumps (used e.g. to hold the
+        #                 last pre-C11 pcsclite release even though newer
+        #                 patches exist in the same 1.9 branch).
+        #   "X.Y.Z (...)" where X.Y.Z differs from the variant's version —
+        #                 branch marker only (OpenSSL "1.1.1" label on
+        #                 variant "1.1.1w"); fall through to get_branch().
         label = variant.get("label", "")
         label_branch = re.match(r'^([\d.]+)\.x', label)
-        branch = label_branch.group(1) if label_branch else get_branch(v)
+        if label_branch:
+            branch = label_branch.group(1)
+        else:
+            label_exact = re.match(r'^([\d.]+)', label)
+            if label_exact and label_exact.group(1) == v:
+                continue
+            branch = get_branch(v)
         is_pre = is_prerelease(v)
 
         # Find best version in same branch

@@ -146,7 +146,8 @@ libraries:
       extra_basenames: [pcsclite_real]
       extra_files: ["libpcscspy.so*", "libpcscspy.a", "libpcscspy.la", "pcsc_scan"]
       include_dirs: [PCSC]
-    version_check: url:https://pcsclite.apdu.fr/files/
+    version_check: github:LudovicRousseau/PCSC
+    source: https://github.com/LudovicRousseau/PCSC/archive/refs/tags/@VERSION@.tar.gz
     pre_configure: "./bootstrap"
     extra:
       "post:csky": 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
@@ -164,7 +165,6 @@ libraries:
       - version: "2.5.1"
         label: "2.x (current)"
         requires: "c11"
-        source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.xz
         pre_configure: ""
         configure: meson setup build --cross-file=@MESON_CROSS@ --prefix=@PREFIX@ --buildtype=plain --default-library=both -Dpolkit=false -Dlibsystemd=false -Dlibudev=false -Dlibusb=true -Dusbdropdir=@PREFIX@/lib/pcsc/drivers -Dserialconfdir=@PREFIX@/etc/reader.conf.d
         make: ninja -C build -j@CPUS@
@@ -178,8 +178,7 @@ libraries:
           make -j@CPUS@
           make install
       - version: "1.9.5"
-        label: "1.9.x (no C11 needed)"
-        source: https://pcsclite.apdu.fr/files/pcsc-lite-@VERSION@.tar.bz2
+        label: "1.9.5 (no C11 needed)"
         post_install: |
           echo "Building pcsc-tools 1.5.8 (pcsc_scan, no C11)..."
           git clone --depth 1 --branch 1.5.8 https://github.com/LudovicRousseau/pcsc-tools.git pcsc-tools-src
@@ -195,8 +194,8 @@ libraries:
       extra_files: ["libccid.so", "libccidtwin.so", "Info.plist"]
     removal:
       extra_dirs: [lib/pcsc, etc/reader.conf.d]
-    version_check: url:https://ccid.apdu.fr/files/
-    source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.xz
+    version_check: github:LudovicRousseau/CCID
+    source: https://github.com/LudovicRousseau/CCID/archive/refs/tags/@VERSION@.tar.gz
     pre_configure: "./bootstrap"
     extra:
       "post:csky": 'for f in $(find . -name config.sub); do grep -q "csky" "$f" || sed -i "s/| mcore | mep | metag /| mcore | mep | metag | csky /;s/| mcore-\* | metag-\* /| mcore-* | metag-* | csky-* /" "$f"; done'
@@ -222,7 +221,11 @@ libraries:
           printf 'prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\n' > @PREFIX@/lib/pkgconfig/libccid.pc
       - version: "1.4.36"
         label: "1.4.x (no C11 needed)"
-        source: https://ccid.apdu.fr/files/ccid-@VERSION@.tar.bz2
+        pre_configure: |
+          mkdir -p PCSC PCSC-contrib
+          curl -sL https://github.com/LudovicRousseau/PCSC/archive/refs/tags/pcsc-1.9.0.tar.gz | tar -xz --strip-components=1 -C PCSC
+          curl -sL https://github.com/LudovicRousseau/PCSC-contrib/archive/refs/heads/master.tar.gz | tar -xz --strip-components=1 -C PCSC-contrib
+          ./bootstrap
 
   - name: libdvbcsa
     pc_file: libdvbcsa.pc
