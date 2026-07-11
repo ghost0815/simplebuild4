@@ -154,8 +154,12 @@ libraries:
       resolve_libusb: 'export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
       fix_version: 'find . -name "configure.ac" -type f -exec sed -i "s/[0-9]\.[0-9]\.[0-9]/@VERSION@/g" {} \;'
       fix_wirecheck: 'find . -name "pcsc-wirecheck-main.c" -type f -exec sed -i "s/pcsc_assert_wire_constants ()/0/g" {} \;'
-      # pcsclite 2.4.x calls issetugid() (glibc 2.34+); stub it to 0, so older cross toolchains link.
-      fix_issetugid: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0"'
+      # pcsclite 2.4.x calls issetugid() (glibc 2.34+); stub it to 0, so older cross toolchains
+      # without it can link. Newer toolchains (e.g. uClibc-ng) already declare issetugid() in
+      # unistd.h, so unconditionally stubbing it redefines the macro against that declaration
+      # and breaks the build ("macro issetugid passed 1 arguments, but takes just 0"). Probe the
+      # actual cross compiler first and only stub when issetugid() is really missing.
+      fix_issetugid: 'if ! printf "int main(void){issetugid();return 0;}" | @CC@ -xc - -o /tmp/.issetugid_test_$$ >/dev/null 2>&1; then export CFLAGS="$CFLAGS -Dissetugid\(\)=0"; fi; rm -f /tmp/.issetugid_test_$$'
       android: 'export CFLAGS="$CFLAGS -Dpthread_cancel\(t\)=0"'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --enable-shared --enable-static --disable-polkit --disable-libsystemd --disable-libudev --with-systemdsystemunitdir=@PREFIX@/lib/systemd/system --enable-libusb --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
@@ -202,8 +206,10 @@ libraries:
       resolve_deps: 'export PCSC_CFLAGS="$(pkg-config --cflags libpcsclite)"; export PCSC_LIBS="$(pkg-config --libs libpcsclite)"; export LIBUSB_CFLAGS="$(pkg-config --cflags libusb-1.0)"; export LIBUSB_LIBS="$(pkg-config --libs libusb-1.0)"'
       # ccid uses clock_gettime which old glibc (<2.17) keeps in librt; add -lrt only when librt actually exists in the sysroot (musl toolchains don't ship it).
       fix_librt: 'if ls @PREFIX@/lib/librt.* >/dev/null 2>&1; then export LDFLAGS="$LDFLAGS -lrt"; fi'
-      # ccid 1.7.x has the same issetugid() (glibc 2.34+) issue as pcsclite.
-      fix_issetugid: 'export CFLAGS="$CFLAGS -Dissetugid\(\)=0"'
+      # ccid 1.7.x has the same issetugid() (glibc 2.34+) issue as pcsclite. Probe the actual
+      # cross compiler first and only stub issetugid() when it's really missing (see pcsclite's
+      # fix_issetugid above for the full rationale).
+      fix_issetugid: 'if ! printf "int main(void){issetugid();return 0;}" | @CC@ -xc - -o /tmp/.issetugid_test_$$ >/dev/null 2>&1; then export CFLAGS="$CFLAGS -Dissetugid\(\)=0"; fi; rm -f /tmp/.issetugid_test_$$'
     configure: "./configure --host=@TARGET@ --prefix=@PREFIX@ --sysconfdir=@PREFIX@/etc --enable-static --enable-twinserial --enable-usbdropdir=@PREFIX@/lib/pcsc/drivers --enable-serialconfdir=@PREFIX@/etc/reader.conf.d"
     make: "make -j@CPUS@"
     install: "make install && mkdir -p @PREFIX@/lib/pkgconfig && echo -e \"prefix=@PREFIX@\nexec_prefix=@PREFIX@\nlibdir=@PREFIX@/lib\nusbdropdir=@PREFIX@/lib/pcsc/drivers\nserialconfdir=@PREFIX@/etc/reader.conf.d\n\nName: CCID IFD Handler\nDescription: Generic USB CCID and ICCD driver\nVersion: @VERSION@\nRequires: libusb-1.0 libpcsclite\" > @PREFIX@/lib/pkgconfig/libccid.pc"
