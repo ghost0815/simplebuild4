@@ -66,6 +66,14 @@ if [ "$1" == "update" ]; then
         new_rev=$(git rev-list HEAD --count)
         new_commit=$(git log HEAD -n1 --oneline)
         echo -e "\n  \033[1;32mUpdated to r$new_rev: $new_commit\033[0m"
+
+        # Container mode: persist HEAD SHA in the data volume so the
+        # entrypoint re-applies it after `docker rm && docker run`.
+        # See docker/entrypoint.py::_sync_to_target_sha.
+        if [ "$S4_IN_CONTAINER" = "1" ] && [ -d data ]; then
+            git rev-parse HEAD > data/s4-target-sha 2>/dev/null && \
+                echo "  Container: this update will persist across container restarts."
+        fi
     else
         # --- No git repo: clone to temp, copy files over (like s3) ---
         S4_URL="https://git.streamboard.tv/common/simplebuild4.git"

@@ -1,0 +1,59 @@
+# ---------------------------------------------------------------------
+# build-image
+#
+# Runs ONLY on git tag pushes. Each tag becomes two image tags on ghcr:
+#   :<tag>       — the exact release (e.g. v1.2.3), immutable
+#   :latest      — moving alias, only updated when this tag is the
+#                  highest sortable tag on the repo (git tag -l | sort -V).
+#                  Guards against a late hotfix on an older branch
+#                  accidentally overwriting :latest.
+#
+# Auth to ghcr.io is set up by writing $DOCKER_CONFIG/config.json
+# directly (instead of `docker login`), which sidesteps the
+# "password stored unencrypted in ~/.docker" warning and keeps the
+# token out of the runner user's home dir. after_script wipes the file.
+#
+# Runner requirements (shell executor, srv-streamboard2):
+#   - docker installed and the gitlab-runner user is in the docker group
+#   - /etc/docker/daemon.json: bip 172.16.0.1/24 + default-address-pools
+#     172.16.0.0/16 (already provisioned; requires wg0 to route around it)
+#
+# CI variables (Settings → CI/CD → Variables, both protected):
+#   GHCR_USER   GitHub username with write:packages on WXbet-org
+#   GHCR_TOKEN  Classic PAT with write:packages scope
+# ---------------------------------------------------------------------
+
+variables:
+  DOCKER_IMAGE: ghcr.io/wxbet-org/simplebuild4
+  # Fetch all history so `git tag -l | sort -V` sees every tag, not
+  # just the tip. Default GIT_DEPTH=20 would hide older tags.
+  GIT_DEPTH: "0"
+  # Job-scoped docker config so `docker login` doesn't have to run and
+  # the token never lands in the runner user's home dir.
+  DOCKER_CONFIG: "${CI_PROJECT_DIR}/.docker-cfg"
+
+build-image:
+  stage: build
+  tags: [build]
+  rules:
+    - if: '$CI_COMMIT_TAG'
+  script:
+    - mkdir -p "$DOCKER_CONFIG"
+    - |
+      auth=$(printf '%s:%s' "$GHCR_USER" "$GHCR_TOKEN" | base64 -w0)
+      printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
+    - docker build --network host
+        --build-arg "IMAGE_COMMIT=$CI_COMMIT_SHA"
+        -t "$DOCKER_IMAGE:$CI_COMMIT_TAG" .
+    - docker push "$DOCKER_IMAGE:$CI_COMMIT_TAG"
+    - |
+      HIGHEST=$(git tag -l | sort -V | tail -1)
+      if [ "$CI_COMMIT_TAG" = "$HIGHEST" ]; then
+        echo "This tag ($CI_COMMIT_TAG) is the highest — updating :latest"
+        docker tag "$DOCKER_IMAGE:$CI_COMMIT_TAG" "$DOCKER_IMAGE:latest"
+        docker push "$DOCKER_IMAGE:latest"
+      else
+        echo "This tag ($CI_COMMIT_TAG) is not the highest (highest: $HIGHEST) — skipping :latest"
+      fi
+  after_script:
+    - rm -rf "${CI_PROJECT_DIR}/.docker-cfg" 2>/dev/null || true

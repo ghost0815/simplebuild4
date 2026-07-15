@@ -181,6 +181,7 @@ mcp_svc_container_hint: "Container-Modus: Änderung gespeichert. `docker restart
 mcp_svc_container_btn_tt: "Container-Modus: nicht verfügbar. Nutze den 'Aktiviert'-Switch oben oder `docker restart`."
 enable_mcpservice_container: "Aktiviert"
 tt_mcp_container: "Aktiviert den MCP-Dienst beim Container-Start.\n`docker restart` zum Übernehmen."
+s4_update_container_pinned: "Container: Update-Version bleibt auch nach Neustart des Containers erhalten."
 
 section_builders: "Toolchain-Builder"
 ctng_dir: "crosstool-ng Verzeichnis"

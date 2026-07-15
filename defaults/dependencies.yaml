@@ -37,6 +37,8 @@ binaries:
   - name: curl
   - name: sshpass
   - name: upx
+    package:
+      apt: upx-ucl
   - name: autoreconf
     package:
       apt: autoconf

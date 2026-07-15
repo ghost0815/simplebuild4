@@ -1,5 +1,9 @@
 stages:
   - update
+  - build
+
+include:
+  - local: .gitlab/docker-ci.yml
 
 update-libraries:
   stage: update

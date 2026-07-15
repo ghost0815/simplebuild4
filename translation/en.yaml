@@ -181,6 +181,7 @@ mcp_svc_container_hint: "Container mode: change saved. `docker restart` to apply
 mcp_svc_container_btn_tt: "Container mode: not available. Use the 'Enabled' switch above or `docker restart`."
 enable_mcpservice_container: "Enabled"
 tt_mcp_container: "Starts the MCP service on container start.\n`docker restart` to apply."
+s4_update_container_pinned: "Container: this update will persist across container restarts."
 
 section_builders: "Toolchain Builders"
 ctng_dir: "crosstool-ng directory"

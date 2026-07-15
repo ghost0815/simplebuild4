@@ -1249,6 +1249,23 @@ class S4App(App):
                     ).stdout.strip()
                     _log(f"[green]Updated to r{new_rev}: {new_commit}[/green]")
                     updated_ok = True
+
+                    # Container: persist HEAD SHA to the data volume so
+                    # docker/entrypoint.py::_sync_to_target_sha re-applies
+                    # it after `docker rm && docker run` (writable layer
+                    # would otherwise reset to the image state).
+                    from core.env import is_running_in_container
+                    if is_running_in_container():
+                        try:
+                            new_sha = subprocess.run(
+                                ["git", "rev-parse", "HEAD"], cwd=str(root),
+                                capture_output=True, text=True, timeout=5,
+                            ).stdout.strip()
+                            pin = root / "data" / "s4-target-sha"
+                            pin.write_text(new_sha + "\n", encoding="utf-8")
+                            _log(f"[green]{t('s4_update_container_pinned')}[/green]")
+                        except Exception as e:
+                            _log(f"[yellow]Could not persist SHA to volume: {e}[/yellow]")
                 else:
                     _log(f"[red]Update failed: {result.stderr.strip()}[/red]")
 
