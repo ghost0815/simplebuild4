@@ -10,6 +10,7 @@ from ui.icons import icon
 from textual.containers import Horizontal, VerticalScroll
 
 from translation import t, available_languages
+from core.env import is_running_in_container
 from ui.header import S4Header
 from ui.footer import S4Footer
 
@@ -235,10 +236,17 @@ class SettingsScreen(Screen):
                     return s_
                 # Row 1: Enable/Test toggle | HTTPS toggle
                 with Grid(classes="web-grid"):
+                    _container = is_running_in_container()
                     _web_toggle = Switch(value=s.web_enabled, id="set-web-enabled")
-                    _web_toggle.tooltip = t("tt_web_embedded")
+                    _web_toggle.tooltip = t(
+                        "tt_web_container" if _container else "tt_web_embedded"
+                    )
+                    _web_label = t(
+                        "enable_webservice_container" if _container
+                        else "enable_webservice"
+                    )
                     yield Horizontal(
-                        Static(f" {t('enable_webservice')}", classes="s-label"),
+                        Static(f" {_web_label}", classes="s-label"),
                         _web_toggle,
                         Static("", id="web-embedded-status"),
                         classes="s-toggle",
@@ -317,10 +325,17 @@ class SettingsScreen(Screen):
 
                 # Row 1: Embedded toggle | HTTPS (SSL) toggle
                 with Grid(classes="web-grid"):
+                    _mcp_container = is_running_in_container()
                     _mcp_toggle = Switch(value=s.mcp_enabled, id="set-mcp-enabled")
-                    _mcp_toggle.tooltip = t("tt_mcp_embedded")
+                    _mcp_toggle.tooltip = t(
+                        "tt_mcp_container" if _mcp_container else "tt_mcp_embedded"
+                    )
+                    _mcp_label = t(
+                        "enable_mcpservice_container" if _mcp_container
+                        else "enable_mcpservice"
+                    )
                     yield Horizontal(
-                        Static(f" {t('enable_mcpservice')}", classes="s-label"),
+                        Static(f" {_mcp_label}", classes="s-label"),
                         _mcp_toggle,
                         Static("", id="mcp-embedded-status"),
                         classes="s-toggle",
@@ -463,6 +478,27 @@ class SettingsScreen(Screen):
         sid = event.switch.id or ""
         if sid == "set-web-enabled":
             mgr = self._get_web_svc_mgr()
+            if mgr.container_mode():
+                # Container: persist to settings only; entrypoint spawns on restart.
+                s = self.app.settings
+                s.web_enabled = event.value
+                try:
+                    s.web_host = self.query_one("#set-web-host", Input).value
+                    s.web_port = int(self.query_one("#set-web-port", Input).value)
+                except (ValueError, Exception):
+                    pass
+                if event.value:
+                    from core.web_service import validate_port
+                    err = validate_port(s.web_port)
+                    if err:
+                        self.notify(err, severity="error", timeout=5)
+                        event.switch.value = False
+                        self._refresh_web_svc_status()
+                        return
+                s.save(self.app.settings_path)
+                self.notify(t("web_svc_container_hint"), timeout=5)
+                self._refresh_web_svc_status()
+                return
             svc_running = mgr.systemd_available() and mgr.is_installed() and mgr.is_running()
             if not svc_running:
                 # Save host/port from current inputs before starting
@@ -490,6 +526,28 @@ class SettingsScreen(Screen):
             self._refresh_web_svc_status()
         if sid == "set-mcp-enabled":
             mgr = self._get_mcp_svc_mgr()
+            if mgr.container_mode():
+                s = self.app.settings
+                s.mcp_enabled = event.value
+                try:
+                    s.mcp_host = self.query_one("#set-mcp-host", Input).value
+                    s.mcp_port = int(self.query_one("#set-mcp-port", Input).value)
+                    s.mcp_token = self.query_one("#set-mcp-token", Input).value
+                    s.mcp_allow_actions = self.query_one("#set-mcp-allow-actions", Switch).value
+                except (ValueError, Exception):
+                    pass
+                if event.value:
+                    from core.mcp_service import validate_port
+                    err = validate_port(s.mcp_port)
+                    if err:
+                        self.notify(err, severity="error", timeout=5)
+                        event.switch.value = False
+                        self._refresh_mcp_svc_status()
+                        return
+                s.save(self.app.settings_path)
+                self.notify(t("mcp_svc_container_hint"), timeout=5)
+                self._refresh_mcp_svc_status()
+                return
             svc_running = mgr.systemd_available() and mgr.is_installed() and mgr.is_running()
             if not svc_running:
                 s = self.app.settings
@@ -583,7 +641,8 @@ class SettingsScreen(Screen):
     def _refresh_web_svc_status(self) -> None:
         """Update service status label and button states."""
         mgr = self._get_web_svc_mgr()
-        available = mgr.systemd_available()
+        container = mgr.container_mode()
+        available = mgr.systemd_available() or container
         installed = mgr.is_installed() if available else False
         running = mgr.is_running() if installed else False
 
@@ -591,11 +650,19 @@ class SettingsScreen(Screen):
             toggle = self.query_one("#set-web-enabled", Switch)
             toggle_on = toggle.value
 
-            # Service running → lock the embedded toggle off
-            if running and toggle_on:
-                toggle.value = False
-                toggle_on = False
-            toggle.disabled = running
+            if container:
+                # In container the toggle IS the enable-flag; sync from settings.
+                enabled = bool(self.app.settings.web_enabled)
+                if toggle_on != enabled:
+                    toggle.value = enabled
+                    toggle_on = enabled
+                toggle.disabled = False
+            else:
+                # Systemd service running → lock the embedded toggle off
+                if running and toggle_on:
+                    toggle.value = False
+                    toggle_on = False
+                toggle.disabled = running
 
             # Build status text
             embedded_running = (
@@ -623,9 +690,17 @@ class SettingsScreen(Screen):
             # Start/Restart combined button
             start_btn = self.query_one("#btn-web-start", Button)
             start_btn.label = t("web_restart") if running else t("web_start")
-            start_btn.disabled = (not installed or toggle_on)
-            self.query_one("#btn-web-stop", Button).disabled = (
-                not installed or not running)
+            stop_btn = self.query_one("#btn-web-stop", Button)
+            if container:
+                # Container: toggle above IS the enable-switch. Buttons make
+                # no sense here — disable them and explain via tooltip.
+                start_btn.disabled = True
+                stop_btn.disabled = True
+                start_btn.tooltip = t("web_svc_container_btn_tt")
+                stop_btn.tooltip = t("web_svc_container_btn_tt")
+            else:
+                start_btn.disabled = (not installed or toggle_on)
+                stop_btn.disabled = (not installed or not running)
             # URL preview in the collapsible title — visible even when
             # the section is collapsed, and shows the exact URL a client
             # should connect to.
@@ -690,17 +765,25 @@ class SettingsScreen(Screen):
 
     def _refresh_mcp_svc_status(self) -> None:
         mgr = self._get_mcp_svc_mgr()
-        available = mgr.systemd_available()
+        container = mgr.container_mode()
+        available = mgr.systemd_available() or container
         installed = mgr.is_installed() if available else False
         running = mgr.is_running() if installed else False
 
         try:
             toggle = self.query_one("#set-mcp-enabled", Switch)
             toggle_on = toggle.value
-            if running and toggle_on:
-                toggle.value = False
-                toggle_on = False
-            toggle.disabled = running
+            if container:
+                enabled = bool(self.app.settings.mcp_enabled)
+                if toggle_on != enabled:
+                    toggle.value = enabled
+                    toggle_on = enabled
+                toggle.disabled = False
+            else:
+                if running and toggle_on:
+                    toggle.value = False
+                    toggle_on = False
+                toggle.disabled = running
 
             embedded_running = (
                 self.app._mcp_proc is not None
@@ -725,9 +808,15 @@ class SettingsScreen(Screen):
 
             start_btn = self.query_one("#btn-mcp-start", Button)
             start_btn.label = t("mcp_restart") if running else t("mcp_start")
-            start_btn.disabled = (not installed or toggle_on)
-            self.query_one("#btn-mcp-stop", Button).disabled = (
-                not installed or not running)
+            stop_btn = self.query_one("#btn-mcp-stop", Button)
+            if container:
+                start_btn.disabled = True
+                stop_btn.disabled = True
+                start_btn.tooltip = t("mcp_svc_container_btn_tt")
+                stop_btn.tooltip = t("mcp_svc_container_btn_tt")
+            else:
+                start_btn.disabled = (not installed or toggle_on)
+                stop_btn.disabled = (not installed or not running)
             # Test button: only useful when the service is actually up.
             try:
                 self.query_one("#btn-mcp-test", Button).disabled = (

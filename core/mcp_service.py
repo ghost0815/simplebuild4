@@ -24,6 +24,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.env import is_running_in_container, probe_port
+
 
 _UNIT_DIR = Path("/etc/systemd/system")
 
@@ -176,10 +178,33 @@ class McpServiceManager:
         except Exception:
             return False
 
+    @staticmethod
+    def container_mode() -> bool:
+        """True when running inside a container — no systemd management."""
+        return is_running_in_container()
+
+    def _load_settings(self):
+        from core.settings import Settings
+        return Settings.load(self.root / "data" / "settings.yaml")
+
+    def _save_settings(self, settings) -> None:
+        settings.save(self.root / "data" / "settings.yaml")
+
     def is_installed(self) -> bool:
+        if self.container_mode():
+            try:
+                return bool(self._load_settings().mcp_enabled)
+            except Exception:
+                return False
         return self._unit_path.exists()
 
     def is_running(self) -> bool:
+        if self.container_mode():
+            try:
+                s = self._load_settings()
+            except Exception:
+                return False
+            return probe_port(s.mcp_host or "0.0.0.0", s.mcp_port or 8181)
         if not self.is_installed():
             return False
         try:
@@ -192,6 +217,12 @@ class McpServiceManager:
             return False
 
     def status_text(self) -> str:
+        if self.container_mode():
+            return (
+                "mcp_svc_container_running"
+                if self.is_running()
+                else "mcp_svc_container_stopped"
+            )
         if not self.systemd_available():
             return "mcp_svc_not_available"
         if not self.is_installed():
@@ -312,6 +343,29 @@ class McpServiceManager:
     ) -> bool:
         """Install the systemd unit + sudoers entry."""
         _log = log or (lambda m: None)
+
+        if self.container_mode():
+            try:
+                st = self._load_settings()
+                st.mcp_enabled = True
+                st.mcp_host = host
+                st.mcp_port = port
+                st.mcp_dns_name = dns_name
+                st.mcp_token = token or generate_token()
+                st.mcp_allow_actions = allow_actions
+                st.mcp_ssl = ssl
+                st.mcp_ssl_cert = ssl_cert
+                st.mcp_ssl_key = ssl_key
+                st.mcp_transport = _normalize_transport(transport)
+                st.mcp_transport_explicit = True
+                st.mcp_root_path = root_path
+                self._save_settings(st)
+            except Exception as e:
+                _log(f"[red]Failed to persist settings: {e}[/red]")
+                return False
+            _log("[green]Settings saved. Restart the container to apply.[/green]")
+            return True
+
         python = sys.executable
         s4 = str(self.root / "s4")
         user = os.environ.get("USER", os.environ.get("LOGNAME", "root"))
@@ -424,9 +478,14 @@ class McpServiceManager:
         log: Optional[Callable[[str], None]] = None,
     ) -> bool:
         """Rewrite the unit + env-file with current settings (preserves token)."""
+        _log = log or (lambda m: None)
+
+        if self.container_mode():
+            # Settings are persisted by the caller; nothing to update on disk.
+            return True
+
         if not self.is_installed():
             return False
-        _log = log or (lambda m: None)
         python = sys.executable
         s4 = str(self.root / "s4")
         user = os.environ.get("USER", os.environ.get("LOGNAME", "root"))
@@ -496,6 +555,18 @@ class McpServiceManager:
         log: Optional[Callable[[str], None]] = None,
     ) -> bool:
         _log = log or (lambda m: None)
+
+        if self.container_mode():
+            try:
+                st = self._load_settings()
+                st.mcp_enabled = False
+                self._save_settings(st)
+            except Exception as e:
+                _log(f"[red]Failed to persist settings: {e}[/red]")
+                return False
+            _log("[green]Disabled. Restart the container to apply.[/green]")
+            return True
+
         cmds = (
             f"systemctl stop {self.service} ; "
             f"systemctl disable {self.service} ; "
@@ -514,6 +585,8 @@ class McpServiceManager:
 
     def start(self, log: Optional[Callable[[str], None]] = None) -> bool:
         _log = log or (lambda m: None)
+        if self.container_mode():
+            return self._container_toggle(True, _log)
         if self._sudo_systemctl("start", _log):
             _log("[green]Service started[/green]")
             return True
@@ -521,6 +594,8 @@ class McpServiceManager:
 
     def stop(self, log: Optional[Callable[[str], None]] = None) -> bool:
         _log = log or (lambda m: None)
+        if self.container_mode():
+            return self._container_toggle(False, _log)
         if self._sudo_systemctl("stop", _log):
             _log("[green]Service stopped[/green]")
             return True
@@ -528,7 +603,22 @@ class McpServiceManager:
 
     def restart(self, log: Optional[Callable[[str], None]] = None) -> bool:
         _log = log or (lambda m: None)
+        if self.container_mode():
+            _log("[green]Restart the container to apply settings.[/green]")
+            return True
         if self._sudo_systemctl("restart", _log):
             _log("[green]Service restarted[/green]")
             return True
         return False
+
+    def _container_toggle(self, enabled: bool, log: Callable[[str], None]) -> bool:
+        try:
+            st = self._load_settings()
+            st.mcp_enabled = enabled
+            self._save_settings(st)
+        except Exception as e:
+            log(f"[red]Failed to persist settings: {e}[/red]")
+            return False
+        state = "enabled" if enabled else "disabled"
+        log(f"[green]{state.capitalize()}. Restart the container to apply.[/green]")
+        return True

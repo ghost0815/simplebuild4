@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.env import is_running_in_container, probe_port
+
 def _ensure_web_packages(python: str, log: Callable[[str], None]) -> bool:
     """Install textual-serve if not already present.
 
@@ -268,10 +270,33 @@ class WebServiceManager:
         except Exception:
             return False
 
+    @staticmethod
+    def container_mode() -> bool:
+        """True when running inside a container — no systemd management."""
+        return is_running_in_container()
+
+    def _load_settings(self):
+        from core.settings import Settings
+        return Settings.load(self.root / "data" / "settings.yaml")
+
+    def _save_settings(self, settings) -> None:
+        settings.save(self.root / "data" / "settings.yaml")
+
     def is_installed(self) -> bool:
+        if self.container_mode():
+            try:
+                return bool(self._load_settings().web_enabled)
+            except Exception:
+                return False
         return self._unit_path.exists()
 
     def is_running(self) -> bool:
+        if self.container_mode():
+            try:
+                s = self._load_settings()
+            except Exception:
+                return False
+            return probe_port(s.web_host or "0.0.0.0", s.web_port or 8080)
         if not self.is_installed():
             return False
         try:
@@ -285,6 +310,12 @@ class WebServiceManager:
 
     def status_text(self) -> str:
         """Return a human-readable status key for translation."""
+        if self.container_mode():
+            return (
+                "web_svc_container_running"
+                if self.is_running()
+                else "web_svc_container_stopped"
+            )
         if not self.systemd_available():
             return "web_svc_not_available"
         if not self.is_installed():
@@ -312,6 +343,26 @@ class WebServiceManager:
     ) -> bool:
         """Write unit file + sudoers, reload daemon, enable and start."""
         _log = log or (lambda m: None)
+
+        if self.container_mode():
+            try:
+                s = self._load_settings()
+                s.web_enabled = True
+                s.web_host = host
+                s.web_port = port
+                s.web_dns_name = dns_name
+                s.web_ssl = ssl
+                s.web_ssl_cert = ssl_cert
+                s.web_ssl_key = ssl_key
+                s.web_auth_user = auth_user
+                s.web_auth_password = auth_password
+                self._save_settings(s)
+            except Exception as e:
+                _log(f"[red]Failed to persist settings: {e}[/red]")
+                return False
+            _log("[green]Settings saved. Restart the container to apply.[/green]")
+            return True
+
         python = sys.executable
         app_py = str(self.root / "app.py")
         templates = str(self.root / "ui" / "web" / "templates")
@@ -442,6 +493,18 @@ class WebServiceManager:
     ) -> bool:
         """Stop, disable, remove unit file and sudoers entry."""
         _log = log or (lambda m: None)
+
+        if self.container_mode():
+            try:
+                s = self._load_settings()
+                s.web_enabled = False
+                self._save_settings(s)
+            except Exception as e:
+                _log(f"[red]Failed to persist settings: {e}[/red]")
+                return False
+            _log("[green]Disabled. Restart the container to apply.[/green]")
+            return True
+
         cmds = (
             f"systemctl stop {self.service} ; "
             f"systemctl disable {self.service} ; "
@@ -473,6 +536,11 @@ class WebServiceManager:
         Uses the existing sudoers entry to overwrite the unit file.
         """
         _log = log or (lambda m: None)
+
+        if self.container_mode():
+            # Settings are persisted by the caller; nothing to update on disk.
+            return True
+
         if not self.is_installed():
             return False
 
@@ -535,6 +603,8 @@ class WebServiceManager:
     def start(self, log: Optional[Callable[[str], None]] = None) -> bool:
         """Start the service (uses passwordless sudo via sudoers)."""
         _log = log or (lambda m: None)
+        if self.container_mode():
+            return self._container_toggle(True, _log)
         if self._sudo_systemctl("start", _log):
             _log("[green]Service started[/green]")
             return True
@@ -542,6 +612,8 @@ class WebServiceManager:
 
     def stop(self, log: Optional[Callable[[str], None]] = None) -> bool:
         _log = log or (lambda m: None)
+        if self.container_mode():
+            return self._container_toggle(False, _log)
         if self._sudo_systemctl("stop", _log):
             _log("[green]Service stopped[/green]")
             return True
@@ -549,10 +621,25 @@ class WebServiceManager:
 
     def restart(self, log: Optional[Callable[[str], None]] = None) -> bool:
         _log = log or (lambda m: None)
+        if self.container_mode():
+            _log("[green]Restart the container to apply settings.[/green]")
+            return True
         if self._sudo_systemctl("restart", _log):
             _log("[green]Service restarted[/green]")
             return True
         return False
+
+    def _container_toggle(self, enabled: bool, log: Callable[[str], None]) -> bool:
+        try:
+            s = self._load_settings()
+            s.web_enabled = enabled
+            self._save_settings(s)
+        except Exception as e:
+            log(f"[red]Failed to persist settings: {e}[/red]")
+            return False
+        state = "enabled" if enabled else "disabled"
+        log(f"[green]{state.capitalize()}. Restart the container to apply.[/green]")
+        return True
 
     # --------------------------------------------------------- helpers
 

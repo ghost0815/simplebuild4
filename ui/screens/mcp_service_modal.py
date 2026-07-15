@@ -122,18 +122,21 @@ class McpServiceSetupModal(ModalScreen[None]):
         from core.mcp_service import McpServiceManager
         mgr = McpServiceManager(self.app.paths.root)
 
+        container = mgr.container_mode()
         available = mgr.systemd_available()
         installed = mgr.is_installed()
 
         self._log_widget.write(
             f"[bold]{t('mcp_svc_current_status')}:[/bold] {t(mgr.status_text())}"
         )
-        if installed:
+        if installed and not container:
             self._log_widget.write(f"  Service: {mgr.service}")
             self._log_widget.write(f"  Unit: {mgr._unit_path}")
             self._log_widget.write(f"  Env:  {mgr._env_file}")
 
-        if not available:
+        if container:
+            self._log_widget.write(f"\n[yellow]{t('mcp_svc_container_hint')}[/yellow]")
+        elif not available:
             self._log_widget.write("\n[yellow]systemd is not running as PID 1[/yellow]")
 
         s = self.app.settings
@@ -165,7 +168,7 @@ class McpServiceSetupModal(ModalScreen[None]):
         self._log_widget.write(f"  transport:     {_t_label}")
 
         try:
-            self.query_one("#mcp-install", Button).disabled = not available
+            self.query_one("#mcp-install", Button).disabled = not (available or container)
             self.query_one("#mcp-remove", Button).disabled = not installed
         except Exception:
             pass

@@ -1316,11 +1316,14 @@ class S4App(App):
         """Restart s4 in-place via os.execv()."""
         import os
         import sys
-        # Restart systemd web service if it's running (picks up new code)
+        # Restart systemd web service if it's running (picks up new code).
+        # In container mode the manager's restart() is a no-op with a hint —
+        # the s4 self-restart doesn't restart entrypoint-spawned services.
         try:
             from core.web_service import WebServiceManager
             mgr = WebServiceManager(self.paths.root)
-            if mgr.systemd_available() and mgr.is_installed() and mgr.is_running():
+            if (mgr.systemd_available() or mgr.container_mode()) \
+                    and mgr.is_installed() and mgr.is_running():
                 mgr.restart()
         except Exception:
             pass
@@ -1328,7 +1331,8 @@ class S4App(App):
         try:
             from core.mcp_service import McpServiceManager
             mcp_mgr = McpServiceManager(self.paths.root)
-            if mcp_mgr.systemd_available() and mcp_mgr.is_installed() and mcp_mgr.is_running():
+            if (mcp_mgr.systemd_available() or mcp_mgr.container_mode()) \
+                    and mcp_mgr.is_installed() and mcp_mgr.is_running():
                 mcp_mgr.restart()
         except Exception:
             pass

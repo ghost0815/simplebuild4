@@ -93,17 +93,20 @@ class WebServiceSetupModal(ModalScreen[None]):
         from core.web_service import WebServiceManager
         mgr = WebServiceManager(self.app.paths.root)
 
+        container = mgr.container_mode()
         available = mgr.systemd_available()
         installed = mgr.is_installed()
         running = mgr.is_running() if installed else False
 
         self._log_widget.write(f"[bold]{t('web_svc_current_status')}:[/bold] {t(mgr.status_text())}")
-        if installed:
+        if installed and not container:
             self._log_widget.write(f"  Service: {mgr.service}")
             self._log_widget.write(f"  Unit: {mgr._unit_path}")
 
-        wsl_pre_systemd = not available and mgr._is_wsl()
-        if not available:
+        wsl_pre_systemd = not available and not container and mgr._is_wsl()
+        if container:
+            self._log_widget.write(f"\n[yellow]{t('web_svc_container_hint')}[/yellow]")
+        elif not available:
             self._log_widget.write(f"\n[yellow]systemd is not running as PID 1[/yellow]")
             if wsl_pre_systemd:
                 self._log_widget.write(
@@ -112,7 +115,8 @@ class WebServiceSetupModal(ModalScreen[None]):
 
         # For WSL without systemd: allow install (it will configure wsl.conf
         # and guide the user to restart WSL before the full install).
-        install_enabled = available or wsl_pre_systemd
+        # In container: install/remove act on settings.yaml.
+        install_enabled = available or wsl_pre_systemd or container
         try:
             self.query_one("#ws-install", Button).disabled = not install_enabled
             self.query_one("#ws-remove", Button).disabled = not installed
