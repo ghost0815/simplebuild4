@@ -251,6 +251,66 @@ def _spawn_mcp(settings) -> subprocess.Popen | None:
     return subprocess.Popen(args, cwd=str(APP_ROOT))
 
 
+def _maybe_drop_root() -> None:
+    """Drop from root to the volume-owner's uid if a bind mount was used.
+
+    When the user runs the container with ``-v ~/s4-data:/app/data``, the
+    mount point inherits the host user's uid/gid. We detect that (owner
+    != 0) and:
+
+      1. ``chown -R /app`` to that uid so git operations, s4 update, etc.
+         can write.
+      2. Re-exec ourselves via ``gosu`` as that uid so every subsequent
+         process (web, mcp, TUI, subshells) creates files owned by the
+         user on the host — no more "root owns my ~/s4-data" surprise.
+
+    Skipped when:
+      - We're already non-root (user passed ``--user`` explicitly)
+      - ``/app/data`` is root-owned (Named Volume or no ``-v`` at all —
+        keep the legacy root-in-container behaviour)
+      - ``S4_KEEP_ROOT=1`` (explicit opt-out)
+    """
+    if os.geteuid() != 0:
+        return
+    if os.environ.get("S4_DROP_ROOT_DONE") == "1":
+        return  # already exec'd once, avoid loop
+    if os.environ.get("S4_KEEP_ROOT") == "1":
+        return
+
+    data = APP_ROOT / "data"
+    try:
+        st = data.stat()
+    except FileNotFoundError:
+        data.mkdir(parents=True, exist_ok=True)
+        st = data.stat()
+
+    uid, gid = st.st_uid, st.st_gid
+    if uid == 0 and gid == 0:
+        return  # no host user detected on the mount
+
+    _log(f"data volume owned by uid={uid} gid={gid} — dropping root")
+    try:
+        if APP_ROOT.stat().st_uid != uid:
+            subprocess.run(
+                ["chown", "-R", f"{uid}:{gid}", str(APP_ROOT)],
+                check=True, timeout=120,
+            )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+        _log(f"[warn] chown /app failed: {e} — proceeding as root")
+        return
+
+    os.environ["S4_DROP_ROOT_DONE"] = "1"
+    try:
+        os.execvp(
+            "gosu",
+            ["gosu", f"{uid}:{gid}", sys.executable, str(Path(__file__).resolve())]
+            + sys.argv[1:],
+        )
+    except FileNotFoundError:
+        _log("[warn] gosu not installed — proceeding as root")
+        os.environ.pop("S4_DROP_ROOT_DONE", None)
+
+
 def _pass_through() -> int:
     """Exec whatever CMD the user supplied verbatim."""
     args = sys.argv[1:]
@@ -308,6 +368,7 @@ def _launcher() -> int:
 
 
 def main() -> int:
+    _maybe_drop_root()
     if len(sys.argv) > 1:
         return _pass_through()
     return _launcher()

@@ -22,7 +22,7 @@ COPY docker/deps-to-apt.py docker/deps-to-pip.py /tmp/
 # then a second apt-get pulls the dynamic list derived from deps.yaml.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       ca-certificates dumb-init tzdata openssl \
+       ca-certificates dumb-init gosu tzdata openssl \
        python3 python3-pip python3-yaml \
     && apt-get install -y --no-install-recommends \
        $(python3 /tmp/deps-to-apt.py /tmp/deps.yaml) \
@@ -65,7 +65,9 @@ ARG IMAGE_COMMIT=""
 ENV S4_IMAGE_COMMIT=$IMAGE_COMMIT
 
 # Persistent state: settings.yaml, downloads/, toolchains/, targets/,
-# logs/, patches/, binaries/. Mount with `-v s4-data:/app/data`.
+# logs/, patches/, binaries/. Mount with `-v ~/s4-data:/app/data`.
+# The mount point must exist for entrypoint.py's uid-detect to stat it.
+RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
 # Web (textual-serve) + MCP (Streamable HTTP or SSE)
