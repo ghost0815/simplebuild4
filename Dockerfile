@@ -1,16 +1,6 @@
 # syntax=docker/dockerfile:1.6
 FROM ubuntu:26.04
 
-# --- OCI image labels -------------------------------------------------
-# Overrides the labels inherited from ubuntu:26.04 so the GHCR package
-# page shows our metadata instead of Canonical's Ubuntu description.
-LABEL org.opencontainers.image.title="simplebuild4" \
-      org.opencontainers.image.description="SimpleBuild4 (s4) — cross-compilation build system for oscam. Ships web-TUI on port 8080 and MCP server on port 8181." \
-      org.opencontainers.image.source="https://git.streamboard.tv/common/simplebuild4" \
-      org.opencontainers.image.url="https://git.streamboard.tv/common/simplebuild4" \
-      org.opencontainers.image.documentation="https://git.streamboard.tv/common/simplebuild4/-/wikis/getting-started/docker" \
-      org.opencontainers.image.vendor="WXbet"
-
 # --- Environment (stable — cached across builds) ----------------------
 ENV DEBIAN_FRONTEND=noninteractive \
     S4_IN_CONTAINER=1 \
@@ -75,6 +65,18 @@ RUN git config --system --add safe.directory /app
 # not fire — pin is honored blindly).
 ARG IMAGE_COMMIT=""
 ENV S4_IMAGE_COMMIT=$IMAGE_COMMIT
+
+# --- OCI image labels -------------------------------------------------
+# Overrides the labels inherited from ubuntu:26.04 so the GHCR package
+# page shows our metadata instead of Canonical's Ubuntu description.
+# Kept AT THE END so tweaks to these strings don't invalidate the
+# apt/pip layers above.
+LABEL org.opencontainers.image.title="simplebuild4" \
+      org.opencontainers.image.description="SimpleBuild4 (s4) — cross-compilation build system for oscam. Ships web-TUI on port 8080 and MCP server on port 8181. Docs: https://git.streamboard.tv/common/simplebuild4/-/wikis/getting-started/docker" \
+      org.opencontainers.image.source="https://git.streamboard.tv/common/simplebuild4" \
+      org.opencontainers.image.url="https://git.streamboard.tv/common/simplebuild4" \
+      org.opencontainers.image.documentation="https://git.streamboard.tv/common/simplebuild4/-/wikis/getting-started/docker" \
+      org.opencontainers.image.vendor="WXbet"
 
 # Persistent state: settings.yaml, downloads/, toolchains/, targets/,
 # logs/, patches/, binaries/. Mount with `-v ~/s4-data:/app/data`.
