@@ -324,8 +324,6 @@ def _pass_through() -> int:
 
 
 def _launcher() -> int:
-    _handle_image_change()
-    _sync_to_target_sha()
     settings = _load_settings()
     procs: list[subprocess.Popen] = []
     for spawn in (_spawn_web, _spawn_mcp):
@@ -369,6 +367,8 @@ def _launcher() -> int:
 
 def main() -> int:
     _maybe_drop_root()
+    _handle_image_change()
+    _sync_to_target_sha()
     if len(sys.argv) > 1:
         return _pass_through()
     return _launcher()
