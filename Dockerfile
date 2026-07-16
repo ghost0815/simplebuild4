@@ -26,6 +26,8 @@ RUN apt-get update \
        python3 python3-pip python3-yaml \
     && apt-get install -y --no-install-recommends \
        $(python3 /tmp/deps-to-apt.py /tmp/deps.yaml) \
+    && apt-get install -y --no-install-recommends \
+       nodejs npm \
     && rm -rf /var/lib/apt/lists/*
 
 # --- Python packages --------------------------------------------------
