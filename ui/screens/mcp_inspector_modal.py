@@ -30,6 +30,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button
 
 from translation import t
+from core.env import is_running_in_container
 from core.node_bootstrap import (
     find_npx, node_bin_dir, install_node as _install_node,
 )
@@ -257,21 +258,43 @@ class McpInspectorModal(ModalScreen[None]):
         bd = node_bin_dir()
         if bd:
             env["PATH"] = f"{bd}:{env.get('PATH', '')}"
-        # Intentionally do NOT set HOST=0.0.0.0 — the inspector has
-        # built-in DNS rebinding protection that only accepts requests
-        # whose Origin header matches the bind host. 0.0.0.0 is not a
-        # real target address, so any browser connecting via 127.0.0.1
-        # or a LAN IP gets rejected with "Invalid origin". We bind to
-        # localhost (the default) and document SSH port forwarding for
-        # remote access, which is both secure and actually functional.
+        # Bind host + origin policy: on a native install we default to
+        # localhost + the built-in DNS-rebinding protection (which pins
+        # accepted Origins to the bind host); remote access is via SSH
+        # port forwarding, secure and simple.
+        #
+        # In the container everything is different: the inspector process
+        # sits inside the container's netns, so binding to 127.0.0.1
+        # means it is only reachable from *inside* the container —
+        # `docker run -p 6274:6274` can't forward traffic to a socket
+        # that isn't on the container's bridge interface. So container
+        # mode forces HOST=0.0.0.0.
+        #
+        # That in turn breaks the rebinding guard, which defaults to
+        # "only Origin == bind host" — 0.0.0.0 is never a real Origin.
+        # ALLOWED_ORIGINS is documented as a comma-separated list of
+        # exact URLs, NOT a wildcard-capable pattern ("*" is treated
+        # as the literal string "*" and matches nothing). So we ship
+        # sensible defaults for the typical local case and let the
+        # user extend via S4_INSPECTOR_ORIGINS for LAN/DNS access.
+        if is_running_in_container():
+            env["HOST"] = "0.0.0.0"
+            origins = ["http://localhost:6274", "http://127.0.0.1:6274"]
+            extra = os.environ.get("S4_INSPECTOR_ORIGINS", "").strip()
+            if extra:
+                origins.extend(o.strip() for o in extra.split(",") if o.strip())
+            env["ALLOWED_ORIGINS"] = ",".join(origins)
         if mode == "web":
             # Suppress the inspector's own "auto-open browser" — we
             # expose an explicit [Open in browser] button in the modal.
             env["MCP_AUTO_OPEN_ENABLED"] = "false"
             self._log_widget.write("")
-            self._log_widget.write(
-                f"[dim]{t('mcp_inspector_ssh_hint')}[/dim]"
+            hint_key = (
+                "mcp_inspector_container_hint"
+                if is_running_in_container()
+                else "mcp_inspector_ssh_hint"
             )
+            self._log_widget.write(f"[dim]{t(hint_key)}[/dim]")
 
         self._log_widget.write(f"[dim]$ {' '.join(cmd)}[/dim]")
         self._log_widget.write("")
@@ -309,6 +332,14 @@ class McpInspectorModal(ModalScreen[None]):
                     m = _URL_RE.search(line)
                     if m:
                         url = m.group(0)
+                        # Inspector prints its literal bind host in the
+                        # URL; in container mode that's "0.0.0.0", which
+                        # no browser can meaningfully open (and its
+                        # Origin header wouldn't match anything). Swap
+                        # for "localhost", which is in our ALLOWED_ORIGINS
+                        # default. The user still needs to substitute
+                        # the server hostname manually for remote access.
+                        url = url.replace("//0.0.0.0:", "//localhost:")
                         self._url_found = url
                         self.app.call_from_thread(self._show_url, url)
         except Exception:

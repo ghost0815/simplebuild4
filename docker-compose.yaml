@@ -23,6 +23,8 @@ services:
     ports:
       - "8080:8080"    # Web-TUI (textual-serve)
       - "8181:8181"    # MCP (streamable HTTP)
+      - "6274:6274"    # MCP Inspector — client UI (only while running)
+      - "6277:6277"    # MCP Inspector — proxy server
     volumes:
       - "${HOME}/s4-data:/app/data"
     # Propagate host terminal capabilities so Textual gets 256/truecolor

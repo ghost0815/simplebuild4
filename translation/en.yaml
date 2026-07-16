@@ -637,4 +637,5 @@ mcp_inspector_need_node: "Node.js is not installed. Click [Install] for a user-l
 mcp_inspector_node_ready: "Node is ready — you can now launch the inspector."
 mcp_inspector_install_failed: "Node install failed — see log above."
 mcp_inspector_ssh_hint: "If s4 runs on a remote host, forward the inspector ports: ssh -L 6274:localhost:6274 -L 6277:localhost:6277 <host>  — then open the localhost URL on your laptop."
+mcp_inspector_container_hint: "Container mode: open the URL in your browser with the server's hostname instead of 'localhost'. Ports 6274/6277 must be mapped via 'docker run -p …' or in docker-compose.yaml."
 mcp_inspector_open_failed: "No browser available on this host — copy the URL and open it locally."

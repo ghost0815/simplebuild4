@@ -85,7 +85,7 @@ RUN mkdir -p /app/data
 VOLUME ["/app/data"]
 
 # Web (textual-serve) + MCP (Streamable HTTP or SSE)
-EXPOSE 8080 8181
+EXPOSE 8080 8181 6274 6277
 
 # dumb-init is PID 1 → reaps zombies, forwards signals cleanly.
 # entrypoint.py either launches web+mcp per settings.yaml or execs a
