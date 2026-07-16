@@ -1,6 +1,16 @@
 # syntax=docker/dockerfile:1.6
 FROM ubuntu:26.04
 
+# --- OCI image labels -------------------------------------------------
+# Overrides the labels inherited from ubuntu:26.04 so the GHCR package
+# page shows our metadata instead of Canonical's Ubuntu description.
+LABEL org.opencontainers.image.title="simplebuild4" \
+      org.opencontainers.image.description="SimpleBuild4 (s4) — cross-compilation build system for oscam. Ships web-TUI on port 8080 and MCP server on port 8181." \
+      org.opencontainers.image.source="https://git.streamboard.tv/common/simplebuild4" \
+      org.opencontainers.image.url="https://git.streamboard.tv/common/simplebuild4" \
+      org.opencontainers.image.documentation="https://git.streamboard.tv/common/simplebuild4/-/wikis/getting-started/docker" \
+      org.opencontainers.image.vendor="WXbet"
+
 # --- Environment (stable — cached across builds) ----------------------
 ENV DEBIAN_FRONTEND=noninteractive \
     S4_IN_CONTAINER=1 \
