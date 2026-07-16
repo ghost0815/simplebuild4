@@ -35,6 +35,9 @@ variables:
   # Job-scoped docker config so `docker login` doesn't have to run and
   # the token never lands in the runner user's home dir.
   DOCKER_CONFIG: "${CI_PROJECT_DIR}/.docker-cfg"
+  # Force BuildKit. Without it, `--cache-from` is silently ignored on
+  # the classic builder → every tag rebuilds apt/pip from scratch.
+  DOCKER_BUILDKIT: "1"
 
 build-image:
   stage: build
@@ -46,7 +49,14 @@ build-image:
     - |
       auth=$(printf '%s:%s' "$GHCR_USER" "$GHCR_TOKEN" | base64 -w0)
       printf '{"auths":{"ghcr.io":{"auth":"%s"}}}' "$auth" > "$DOCKER_CONFIG/config.json"
+    # Prime the layer cache from the last :latest so we don't rebuild
+    # apt/pip from scratch every tag. `docker pull` is cheap when the
+    # digest hasn't moved (all layers cached), and --cache-from is
+    # digest-based so it works even after Docker garbage-collected the
+    # classic builder's intermediate images.
+    - docker pull "$DOCKER_IMAGE:latest" || true
     - docker build --network host
+        --cache-from "$DOCKER_IMAGE:latest"
         --build-arg "IMAGE_COMMIT=$CI_COMMIT_SHA"
         -t "$DOCKER_IMAGE:$CI_COMMIT_TAG" .
     - docker push "$DOCKER_IMAGE:$CI_COMMIT_TAG"
@@ -76,10 +86,11 @@ build-image:
           done
   after_script:
     - rm -rf "${CI_PROJECT_DIR}/.docker-cfg" 2>/dev/null || true
-    # Keep only :latest and the just-built tag locally on the runner. Older
-    # SHA tags stay available on ghcr for rollback but don't need runner
-    # disk. The apt/pip cache layers survive because they're still
-    # referenced by the kept tags — no rebuild penalty next round.
+    # Keep only :latest and the just-built tag locally. Older SHA tags
+    # stay available on ghcr for rollback but don't need runner disk.
+    # Layer cache for the next build comes from `docker pull :latest`
+    # + `--cache-from` in the build step above, so it's independent of
+    # what's left over locally here.
     - |
       docker images --format '{{.Repository}}:{{.Tag}}' "$DOCKER_IMAGE" \
         | grep -v -e ":${CI_COMMIT_TAG}$" -e ':latest$' \
