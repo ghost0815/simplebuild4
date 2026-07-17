@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button, Input
+from ui.widgets.artifact_richlog import ArtifactRichLog
 
 from translation import t
 from ui.icons import icon
@@ -72,7 +73,7 @@ class DependencyCheckModal(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="dep-box"):
             yield Static(f"[bold]{t('dep_check_title')}[/bold]", id="dep-title")
-            log = RichLog(id="dep-log", highlight=False, markup=True, wrap=True)
+            log = ArtifactRichLog(id="dep-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             _eye_btn = Button(icon("eye"), id="dep-eye", classes="tc-reset-btn")

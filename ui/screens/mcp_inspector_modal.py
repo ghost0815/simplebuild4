@@ -28,6 +28,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button
+from ui.widgets.artifact_richlog import ArtifactRichLog
 
 from translation import t
 from core.env import is_running_in_container
@@ -140,7 +141,7 @@ class McpInspectorModal(ModalScreen[None]):
                 with Horizontal(id="insp-url-btns"):
                     yield Button(t("mcp_inspector_open"), id="insp-open", variant="success")
                     yield Button(t("mcp_inspector_copy"), id="insp-copy", variant="primary")
-            log = RichLog(id="insp-log", highlight=False, markup=True, wrap=True)
+            log = ArtifactRichLog(id="insp-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             with Horizontal(id="insp-buttons"):

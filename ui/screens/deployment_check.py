@@ -12,6 +12,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button, Select
+from ui.widgets.artifact_richlog import ArtifactRichLog
 
 from core.target import DeploymentConfig
 from core.deployer import Deployer
@@ -106,7 +107,7 @@ class DeploymentCheckModal(ModalScreen[None]):
             with Horizontal(id="check-select-row"):
                 yield Static(f" {t('dc_binary')}", classes="s-label-tall")
                 yield Select(options=bin_options, value="dry-run", id="check-binary", allow_blank=False)
-            log = RichLog(id="check-log", highlight=False, markup=True, wrap=True)
+            log = ArtifactRichLog(id="check-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             with Horizontal(id="check-buttons"):

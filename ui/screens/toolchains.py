@@ -14,6 +14,7 @@ from rich.text import Text
 from textual.app import ComposeResult
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree, TextArea
+from ui.widgets.artifact_richlog import ArtifactRichLog
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.coordinate import Coordinate
 
@@ -537,7 +538,7 @@ class ToolchainsScreen(Screen):
                 yield TextArea("", id="tc-editor", language="yaml", show_line_numbers=True)
 
                 # Output
-                yield RichLog(highlight=False, markup=True, id="tc-output", wrap=True)
+                yield ArtifactRichLog(highlight=False, markup=True, id="tc-output", wrap=True)
 
         yield S4Footer(active_screen="toolchains")
 
@@ -2996,7 +2997,8 @@ class ToolchainsScreen(Screen):
                 elapsed = self.app.build_timer_format()
                 if elapsed:
                     blog(f"[bold]Elapsed:[/bold] {elapsed}")
-                blog(f"Log: {log_path}")
+                from core.env import deliver_link as _dl
+                blog(f"Log: {_dl(log_path)}")
                 log_file.close()
                 try:
                     from core.log_cleanup import run_retention

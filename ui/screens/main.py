@@ -5,24 +5,30 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Static, Select, Button, RichLog, Input
-from textual.containers import Horizontal, Vertical
+from textual.widgets import Static, Select, Button, RichLog, Input, Collapsible, DataTable
+from textual.containers import Horizontal, Vertical, VerticalScroll
 
 from core.target import Target
 from core.repo import RepoState
 from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
+from ui.widgets.artifact_richlog import ArtifactRichLog
+from ui.screens.toolchains import S4DataTable
 
 
 class MainScreen(Screen):
     BINDINGS = [
         Binding("s", "tab_compact", "Summary", show=False),
+        Binding("f", "tab_artifacts", show=False),
         Binding("o", "tab_log", "Output", show=False),
     ]
 
     def action_tab_compact(self) -> None:
         self._show_tab("compact")
+
+    def action_tab_artifacts(self) -> None:
+        self._show_tab("artifacts")
 
     def action_tab_log(self) -> None:
         self._show_tab("log")
@@ -50,6 +56,7 @@ class MainScreen(Screen):
             # Tabs
             with Horizontal(id="main-tab-bar"):
                 yield Static(" [b]S[/b]ummary ", id="main-tab-compact", classes="tab-active")
+                yield Static(" [b]F[/b]iles ", id="main-tab-artifacts", classes="tab-inactive")
                 yield Static(" [b]O[/b]utput ", id="main-tab-log", classes="tab-inactive")
 
             # Info panel (hidden in Log tab)
@@ -62,13 +69,24 @@ class MainScreen(Screen):
             info.border_title = t("settings_title")
             yield info
 
-            # Output log (always visible, grows to fill space)
-            yield RichLog(id="output", highlight=False, markup=True, wrap=True)
+            artifacts_box = VerticalScroll(id="artifacts")
+            artifacts_box.can_focus = True
+            artifacts_box.display = False
+            with artifacts_box:
+                with Collapsible(title=f"{t('artifacts_binaries')} (0)", collapsed=False, id="art-bin-coll"):
+                    yield S4DataTable(id="tbl-art-bin", cursor_type="row", zebra_stripes=True)
+                with Collapsible(title=f"{t('artifacts_logs')} (0)", collapsed=False, id="art-log-coll"):
+                    yield S4DataTable(id="tbl-art-log", cursor_type="row", zebra_stripes=True)
+                with Collapsible(title=f"{t('artifacts_libs')} (0)", collapsed=False, id="art-lib-coll"):
+                    yield S4DataTable(id="tbl-art-lib", cursor_type="row", zebra_stripes=True)
+
+            yield ArtifactRichLog(id="output", highlight=False, markup=True, wrap=True)
 
         yield S4Footer(active_screen="main")
 
     def on_mount(self) -> None:
         self.query_one("#output", RichLog).border_title = t("output_title")
+        self.query_one("#artifacts").border_title = t("artifacts_border")
         # Restore last selected target
         last = self.app.settings.last_target
         if last:
@@ -86,25 +104,55 @@ class MainScreen(Screen):
         self.query_one("#output", RichLog).write(msg)
 
     def _show_tab(self, tab: str) -> None:
-        """Switch between Compact and Log tabs."""
-        # Compact: show info panel; Log: hide info panel (output fills the space)
+        """Switch between Summary / Artifacts / Log tabs."""
         self.query_one("#info", Static).display = (tab == "compact")
+        self.query_one("#artifacts").display = (tab == "artifacts")
+        self.query_one("#output").display = (tab != "artifacts")
         self.query_one("#main-tab-compact").set_classes("tab-active" if tab == "compact" else "tab-inactive")
+        self.query_one("#main-tab-artifacts").set_classes("tab-active" if tab == "artifacts" else "tab-inactive")
         self.query_one("#main-tab-log").set_classes("tab-active" if tab == "log" else "tab-inactive")
-        # Focus first widget on new tab
-        fid = "#info" if tab == "compact" else "#output"
+        if tab == "artifacts":
+            self._refresh_artifacts()
+        fid = {"compact": "#info", "artifacts": "#artifacts", "log": "#output"}[tab]
         try:
             self.query_one(fid).focus()
         except Exception:
             pass
 
     def on_click(self, event) -> None:
-        """Handle tab clicks."""
+        """Tab-bar clicks + single-click download on artifact tables."""
         widget = event.widget
+        if isinstance(widget, DataTable) and widget.id and widget.id.startswith("tbl-art-"):
+            header_h = getattr(widget, "header_height", 1)
+            if event.y < header_h:
+                return
+            row = int(widget.scroll_offset.y) + event.y - header_h
+            if row < 0 or row >= widget.row_count:
+                return
+            try:
+                from textual.coordinate import Coordinate
+                key = widget.coordinate_to_cell_key(Coordinate(row, 0)).row_key
+            except Exception:
+                return
+            if key and key.value:
+                self.app.action_deliver(key.value)
+            return
         if widget.id == "main-tab-compact":
             self._show_tab("compact")
+        elif widget.id == "main-tab-artifacts":
+            self._show_tab("artifacts")
         elif widget.id == "main-tab-log":
             self._show_tab("log")
+
+    def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
+        tbl = event.data_table
+        if isinstance(tbl, S4DataTable):
+            tbl.sort_by_column(event.column_index)
+
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        tbl = event.data_table
+        if isinstance(tbl, S4DataTable) and tbl.id and tbl.id.startswith("tbl-art-"):
+            tbl.mark_row(event.cursor_row)
 
     def _load_targets(self) -> list[tuple[str, str]]:
         """Load available targets from disk."""
@@ -305,6 +353,11 @@ class MainScreen(Screen):
             from pathlib import Path
             target = Target.load(Path(event.value))
             self._update_info(target)
+            try:
+                if self.query_one("#artifacts").display:
+                    self._refresh_artifacts()
+            except Exception:
+                pass
             # Warn if target has undecryptable passwords (skip during startup,
             # the app timer handles that)
             if getattr(self.app, '_decrypt_check_done', False):
@@ -316,6 +369,71 @@ class MainScreen(Screen):
             # Remember last target
             self.app.settings.last_target = event.value
             self.app.settings.save(self.app.settings_path)
+
+    @staticmethod
+    def _fmt_size(n: int) -> str:
+        for unit in ("B", "KB", "MB", "GB"):
+            if n < 1024:
+                return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+            n /= 1024
+        return f"{n:.1f} TB"
+
+    def _refresh_artifacts(self) -> None:
+        import os
+        from datetime import datetime
+        from core.artifacts import list_target_artifacts
+
+        is_web = os.environ.get("S4_WEB_MODE") == "1"
+        result = self._get_selected_target()
+
+        sections = [
+            ("binary", t("artifacts_binaries"), "#tbl-art-bin", "#art-bin-coll"),
+            ("log",    t("artifacts_logs"),     "#tbl-art-log", "#art-log-coll"),
+            ("lib",    t("artifacts_libs"),     "#tbl-art-lib", "#art-lib-coll"),
+        ]
+        cols_web = ("📥", t("artifacts_col_path"), t("artifacts_col_size"), t("artifacts_col_modified"))
+        cols_native = (t("artifacts_col_path"), t("artifacts_col_size"), t("artifacts_col_modified"))
+
+        for _, _, tbl_id, _ in sections:
+            tbl = self.query_one(tbl_id, DataTable)
+            tbl.clear(columns=True)
+            tbl.add_columns(*(cols_web if is_web else cols_native))
+
+        if not result:
+            for _, title, _, coll_id in sections:
+                self.query_one(coll_id, Collapsible).title = f"{title} (0)"
+            return
+        target, _ = result
+
+        items = list_target_artifacts(
+            target,
+            self.app.paths.binaries_dir,
+            self.app.paths.logs_dir,
+        )
+        by_kind = {"binary": [], "log": [], "lib": []}
+        for a in items:
+            by_kind[a.kind].append(a)
+
+        for kind, title, tbl_id, coll_id in sections:
+            group = by_kind[kind]
+            self.query_one(coll_id, Collapsible).title = f"{title} ({len(group)})"
+            if not group:
+                continue
+            tbl = self.query_one(tbl_id, DataTable)
+            for a in group:
+                mtime = datetime.fromtimestamp(a.mtime).strftime("%Y-%m-%d %H:%M")
+                size = self._fmt_size(a.size)
+                if is_web:
+                    tbl.add_row("📥", str(a.path), size, mtime, key=str(a.path))
+                else:
+                    tbl.add_row(str(a.path), size, mtime, key=str(a.path))
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        if not str(event.data_table.id or "").startswith("tbl-art-"):
+            return
+        key = event.row_key.value if event.row_key else None
+        if key:
+            self.app.action_deliver(key)
 
     def _get_selected_target(self) -> tuple[Target, "Path"] | None:
         """Get currently selected target and its path."""
@@ -489,3 +607,4 @@ class MainScreen(Screen):
                     break
         except Exception:
             pass
+

@@ -10,6 +10,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Static, Input, Button, Select, Switch, RichLog, Collapsible, Checkbox
+from ui.widgets.artifact_richlog import ArtifactRichLog
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
 from core.repo import RepoConfig, RepoManager, RepoState
@@ -68,7 +69,7 @@ class RepositoryScreen(Screen):
             yield info
 
             # Output box
-            yield RichLog(id="repo-output", highlight=False, markup=True, wrap=True)
+            yield ArtifactRichLog(id="repo-output", highlight=False, markup=True, wrap=True)
 
             # Repositories actions
             patch_sources = load_patch_sources(self.app.paths.root / "data" / "patches.yaml")

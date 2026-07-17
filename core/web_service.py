@@ -184,7 +184,8 @@ def _build_server_code(
     """Build the inline Python code for launching the web server."""
     protocol = "https" if ssl else "http"
     parts = [
-        "import sys; sys.path.insert(0, '.');",
+        "import os, sys; sys.path.insert(0, '.');",
+        "os.environ['S4_WEB_MODE'] = '1';",
         "from core.web_server import S4Server;",
         f"S4Server(",
         f"  command='{python} {app_py}',",

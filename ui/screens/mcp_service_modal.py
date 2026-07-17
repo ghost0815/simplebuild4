@@ -14,6 +14,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button, Input, Select
+from ui.widgets.artifact_richlog import ArtifactRichLog
 
 from translation import t
 from ui.icons import icon
@@ -85,7 +86,7 @@ class McpServiceSetupModal(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="mcp-box"):
             yield Static(f"[bold]{t('mcp_svc_setup_title')}[/bold]", id="mcp-title")
-            log = RichLog(id="mcp-log", highlight=False, markup=True, wrap=True)
+            log = ArtifactRichLog(id="mcp-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             # Transport selector: SSE (legacy) vs. Streamable HTTP (current)

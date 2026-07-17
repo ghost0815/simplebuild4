@@ -9,6 +9,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Static, RichLog, Button, Input
+from ui.widgets.artifact_richlog import ArtifactRichLog
 
 from translation import t
 from ui.icons import icon
@@ -70,7 +71,7 @@ class WebServiceSetupModal(ModalScreen[None]):
     def compose(self) -> ComposeResult:
         with Vertical(id="ws-box"):
             yield Static(f"[bold]{t('web_svc_setup_title')}[/bold]", id="ws-title")
-            log = RichLog(id="ws-log", highlight=False, markup=True, wrap=True)
+            log = ArtifactRichLog(id="ws-log", highlight=False, markup=True, wrap=True)
             log.border_title = t("output_title")
             yield log
             _eye_btn = Button(icon("eye"), id="ws-eye", classes="tc-reset-btn")

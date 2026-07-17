@@ -635,4 +635,15 @@ mcp_inspector_node_ready: "Node ist bereit — jetzt kann der Inspector gestarte
 mcp_inspector_install_failed: "Node-Installation fehlgeschlagen — siehe Log oben."
 mcp_inspector_ssh_hint: "Falls s4 auf einem anderen Rechner läuft, Inspector-Ports per SSH forwarden: ssh -L 6274:localhost:6274 -L 6277:localhost:6277 <host>  — dann die localhost-URL im Browser auf dem Laptop öffnen."
 mcp_inspector_container_hint: "Container-Modus: URL im Browser mit dem Server-Hostname statt 'localhost' öffnen. Ports 6274/6277 müssen im 'docker run -p …' bzw. in der docker-compose.yaml gemappt sein."
+
+# Artifacts-Tab (Hauptbildschirm) — Tab-Label selbst ist hartkodiert ("Files")
+artifacts_border: "Artefakte"
+artifacts_binaries: "Binaries"
+artifacts_logs: "Logs"
+artifacts_libs: "Bibliotheken"
+artifacts_col_path: "Pfad"
+artifacts_col_size: "Größe"
+artifacts_col_modified: "Geändert"
+deliver_not_found: "Datei nicht gefunden: {path}"
+deliver_failed: "Download fehlgeschlagen: {error}"
 mcp_inspector_open_failed: "Kein Browser auf diesem Host verfügbar — URL kopieren und lokal öffnen."

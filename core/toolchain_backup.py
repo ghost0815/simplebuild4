@@ -15,6 +15,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
+from core.env import deliver_link
+
 if TYPE_CHECKING:
     from core.paths import Paths
     from core.toolchain import Toolchain, ToolchainRegistry
@@ -134,11 +136,12 @@ def backup_toolchain(
 
         blog("")
         blog(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        blog(f"Backup: {deliver_link(backup_file)}")
         blog(f"Size: {size_mb:.1f} MB")
         if new_checksum:
             blog(f"Checksum: {new_checksum}")
         if log_path is not None:
-            blog(f"Log: {log_path}")
+            blog(f"Log: {deliver_link(log_path)}")
         blog(f"[green]{tc.name} backed up to {backup_file.name}[/green]")
         return True
 

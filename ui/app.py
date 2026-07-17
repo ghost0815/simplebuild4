@@ -59,6 +59,17 @@ class S4App(App):
 
     _UPDATE_NOTIFY_TIMEOUT = 10
 
+    def action_deliver(self, path: str) -> None:
+        from pathlib import Path
+        p = Path(path)
+        if not p.is_file():
+            self.notify(t("deliver_not_found").format(path=path), severity="error", timeout=4)
+            return
+        try:
+            self.deliver_binary(p, save_filename=p.name)
+        except Exception as e:
+            self.notify(t("deliver_failed").format(error=e), severity="error", timeout=5)
+
     def _expire_update_shortcut(self) -> None:
         self._update_available = False
 
@@ -1312,7 +1323,8 @@ class S4App(App):
             _log(f"[red]Update failed: {e}[/red]")
             self.notify(f"Update failed: {e}", severity="error")
         finally:
-            _log(f"Log: {log_path}")
+            from core.env import deliver_link as _dl
+            _log(f"Log: {_dl(log_path)}")
             log_file.close()
             try:
                 from core.log_cleanup import run_retention

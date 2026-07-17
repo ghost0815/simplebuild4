@@ -9,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
 
+from core.env import deliver_link
 from core.sysroot import read_linux_version
 from core.target import Target, SourceConfig, ToolchainConfig
 
@@ -99,6 +100,7 @@ class BuildEngine:
         if self._log_file:
             self._log_file.write(msg + "\n")
             self._log_file.flush()
+
 
     def build(self) -> bool:
         """Run the full build pipeline for all source x toolchain combinations."""
@@ -963,7 +965,7 @@ class BuildEngine:
         """
         if log_path is not None:
             try:
-                self._log(f"Log: {log_path}")
+                self._log(f"Log: {deliver_link(log_path)}")
             except Exception:
                 pass
         # Apply global log retention (per-bucket). Cleans every log
@@ -1627,7 +1629,7 @@ class BuildEngine:
             size_kb = bin_path.stat().st_size / 1024
             self._log("")
             warn_str = f", {self._warning_count} warning{'s' if self._warning_count != 1 else ''}" if self._warning_count else ""
-            self._log(f"[green]OK: {bin_path.name} ({size_kb:.0f} KB) in {elapsed:.0f}s{warn_str}[/green]")
+            self._log(f"[green]OK: {deliver_link(bin_path, bin_path.name)} ({size_kb:.0f} KB) in {elapsed:.0f}s{warn_str}[/green]")
 
             # Post-build: immediately after each build (before distclean of next build)
             self._postbuild_single(bin_path, repo_dir, cross, sysroot, is_native, tc_dir)

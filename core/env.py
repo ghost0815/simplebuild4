@@ -6,6 +6,18 @@ import os
 import socket
 
 
+def deliver_link(path, display=None) -> str:
+    """Markup wrapping ``path`` in an ``@click screen.deliver`` action link
+    when running under the web service (``S4_WEB_MODE=1``); otherwise
+    returns the plain ``display`` (or ``path``) as-is.
+    """
+    text = str(display) if display is not None else str(path)
+    if os.environ.get("S4_WEB_MODE") != "1":
+        return text
+    arg = str(path).replace("\\", "\\\\").replace("'", "\\'")
+    return f"[@click=app.deliver('{arg}')]📥 [u]{text}[/u][/@click]"
+
+
 def probe_port(host: str, port: int, timeout: float = 0.5) -> bool:
     """Return True if a TCP listener is answering on ``host:port``.
 

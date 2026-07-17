@@ -11,6 +11,8 @@ from typing import Callable, Optional
 
 import yaml
 
+from core.env import deliver_link
+
 
 def sort_by_dependencies(
     actions: list[tuple[str, str]],
@@ -141,7 +143,7 @@ def build_library(
         )
         log(f"Finished: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         if log_file:
-            log(f"Log: {log_path}")
+            log(f"Log: {deliver_link(log_path)}")
         return result
     except Exception as e:
         log(f"[red]Build crashed: {e}[/red]")
