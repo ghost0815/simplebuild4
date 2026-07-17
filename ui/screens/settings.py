@@ -167,7 +167,7 @@ class SettingsScreen(Screen):
                 )
                 yield Horizontal(
                     Static(f" {t('max_cpu_threads')}", classes="s-label"),
-                    Input(value=str(s.max_cpus), id="set-max-cpus", type="integer"),
+                    Input(value=str(s._max_cpus), id="set-max-cpus", type="integer"),
                     classes="s-row",
                 )
                 with Grid(classes="s-toggle-grid"):

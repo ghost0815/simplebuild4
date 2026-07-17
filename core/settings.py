@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -31,7 +32,8 @@ class Settings:
 
     # Build
     compiler_opt: str = "-O2 -ggdb -pipe -ffunction-sections -fdata-sections -fomit-frame-pointer -fno-schedule-insns"
-    max_cpus: int = 0
+    # 0 = auto; effective value comes from the max_cpus property below.
+    _max_cpus: int = 0
     patch_webif: bool = True
     delete_debug: bool = True
     save_smargo: bool = False
@@ -109,6 +111,14 @@ class Settings:
     log_max_count: int = 5
     log_max_size_mb: int = 0
 
+    @property
+    def max_cpus(self) -> int:
+        return self._max_cpus if self._max_cpus > 0 else (os.cpu_count() or 4)
+
+    @max_cpus.setter
+    def max_cpus(self, value: int) -> None:
+        self._max_cpus = value
+
     def save(self, path: Path) -> None:
         """Save settings to YAML."""
         data = {
@@ -123,7 +133,7 @@ class Settings:
             "ascii_mode": self.ascii_mode,
             "s4_url": self.s4_url,
             "compiler_opt": self.compiler_opt,
-            "max_cpus": self.max_cpus,
+            "max_cpus": self._max_cpus,
             "patch_webif": self.patch_webif,
             "delete_debug": self.delete_debug,
             "save_smargo": self.save_smargo,
@@ -197,7 +207,7 @@ class Settings:
             ascii_mode=data.get("ascii_mode", False),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
-            max_cpus=data.get("max_cpus", 0),
+            _max_cpus=data.get("max_cpus", 0),
             patch_webif=data.get("patch_webif", True),
             delete_debug=data.get("delete_debug", True),
             save_smargo=data.get("save_smargo", True),
