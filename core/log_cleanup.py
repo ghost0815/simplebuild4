@@ -10,6 +10,7 @@ types:
     lib:<toolchain>       {ts}.{toolchain}.{lib}-{version}.log
     selfbuild:<template>  {ts}.{template}.selfbuild.log
     backup:<toolchain>    {ts}.{toolchain}.backup.log
+    patch:<repo>          {ts}.{repo}.patch.log
     deploy:<target>       {ts}.{target}.{dests}.deployment-check.log
     automation:<job>      {ts}.{job}.automation.log
     webservice            {ts}.webservice.log
@@ -66,6 +67,9 @@ def _classify(name: str) -> Tuple[str, str]:
     if len(rest) >= 2 and rest[-1] == "backup":
         tc = ".".join(rest[:-1])
         return ("backup", f"backup:{tc}")
+    if len(rest) >= 2 and rest[-1] == "patch":
+        repo = ".".join(rest[:-1])
+        return ("patch", f"patch:{repo}")
     if len(rest) >= 2 and rest[-1].startswith("build-"):
         tgt = ".".join(rest[:-1])
         return ("build", f"build:{tgt}")

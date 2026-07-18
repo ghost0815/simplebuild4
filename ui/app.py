@@ -938,6 +938,22 @@ class S4App(App):
         if hasattr(screen, 'action_customize'):
             screen.action_customize()
 
+    def action_patch(self) -> None:
+        """Dispatch F5 Patch to the Repository screen."""
+        if self._footer_disabled("F5"):
+            return
+        screen = self.screen
+        if hasattr(screen, 'action_patch'):
+            screen.action_patch()
+
+    def action_download(self) -> None:
+        """Dispatch F6 Download to the Repository screen."""
+        if self._footer_disabled("F6"):
+            return
+        screen = self.screen
+        if hasattr(screen, 'action_download'):
+            screen.action_download()
+
     _pending_esc_discard: float = 0.0
     _pending_esc_screen_id: int = 0
 
@@ -1200,10 +1216,14 @@ class S4App(App):
         log_file = open(log_path, "w", encoding="utf-8")
 
         def _log(msg: str) -> None:
-            # Write plain to file
+            # Write plain to file (skip when file is closed).
             plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
-            log_file.write(plain + "\n")
-            log_file.flush()
+            if not log_file.closed:
+                try:
+                    log_file.write(plain + "\n")
+                    log_file.flush()
+                except (ValueError, OSError):
+                    pass
             # Write markup to RichLog
             try:
                 from ui.screens.main import MainScreen
@@ -1323,9 +1343,10 @@ class S4App(App):
             _log(f"[red]Update failed: {e}[/red]")
             self.notify(f"Update failed: {e}", severity="error")
         finally:
-            from core.env import deliver_link as _dl
-            _log(f"Log: {_dl(log_path)}")
             log_file.close()
+            from core.env import deliver_link as _dl
+            _log("")
+            _log(f"Log: {_dl(log_path)}")
             try:
                 from core.log_cleanup import run_retention
                 run_retention(self.paths.logs_dir, self.settings, log=_log)

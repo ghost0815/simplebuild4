@@ -45,6 +45,7 @@ def load_repos(path: Path) -> list[RepoConfig]:
             auth_user=entry.get("auth_user", ""),
             auth_pass=decrypt(entry.get("auth_pass", ""), label=lambda n=entry.get("name", "?"): f"{t('re_password')} (Repository '{n}')", persistent=True),
             exclude_from_automation=bool(entry.get("exclude_from_automation", False)),
+            switch_to=entry.get("switch_to", ""),
         ))
     return repos
 
@@ -64,6 +65,7 @@ def save_repos(repos: list[RepoConfig], path: Path) -> None:
                 "auth_user": r.auth_user,
                 "auth_pass": encrypt(r.auth_pass),
                 "exclude_from_automation": r.exclude_from_automation or None,
+                "switch_to": r.switch_to,
             }.items() if v not in ("", 0, None, False)}
             for r in repos
         ]

@@ -2997,9 +2997,10 @@ class ToolchainsScreen(Screen):
                 elapsed = self.app.build_timer_format()
                 if elapsed:
                     blog(f"[bold]Elapsed:[/bold] {elapsed}")
-                from core.env import deliver_link as _dl
-                blog(f"Log: {_dl(log_path)}")
                 log_file.close()
+                from core.env import deliver_link as _dl
+                self._log("")
+                self._log(f"Log: {_dl(log_path)}")
                 try:
                     from core.log_cleanup import run_retention
                     run_retention(self.app.paths.logs_dir, self.app.settings, log=self._log)

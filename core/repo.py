@@ -38,6 +38,9 @@ class RepoConfig:
     auth_pass: str = ""        # encrypted password or token
     # Automation
     exclude_from_automation: bool = False  # hide from F7 dropdowns; skip on "all"
+    # Pin: when set, clone/update leaves the working copy on this commit / tag
+    # / revision instead of following the branch tip. Empty means "latest".
+    switch_to: str = ""
 
 
 @dataclass
@@ -47,17 +50,25 @@ class RepoState:
     path: Path
     exists: bool = False
     vcs: str = ""              # "git" or "svn"
-    branch: str = ""
+    branch: str = ""           # empty when detached
     commit: str = ""
     revision: int = 0
     clean: bool = True
     tag: str = ""              # git tag on current commit (if any)
     patched: bool = False
     has_config_sh: bool = False
+    detached: bool = False     # git: HEAD not pointing at a branch tip
+    contained_in: list[str] = field(default_factory=list)  # branches containing this commit (detached only)
+    default_branch: str = ""   # remote's default branch (git: origin/HEAD → …, svn: "trunk")
 
     @classmethod
-    def detect(cls, repo_path: Path) -> "RepoState":
-        """Detect repository state from a working directory."""
+    def detect(cls, repo_path: Path, preferred_branch: str = "") -> "RepoState":
+        """Detect repository state from a working directory.
+
+        `preferred_branch` no longer influences branch detection — a
+        detached HEAD stays detached and is reported honestly, together
+        with the list of branches whose history contains the commit.
+        """
         state = cls(path=repo_path)
 
         if not repo_path.is_dir():
@@ -70,18 +81,20 @@ class RepoState:
         if (repo_path / ".git").exists():
             state.vcs = "git"
             try:
-                state.branch = _git(repo_path, "rev-parse", "--abbrev-ref", "HEAD")
-                if state.branch == "HEAD":
-                    # Detached HEAD — find the branch whose tip contains HEAD
+                head = _git(repo_path, "rev-parse", "--abbrev-ref", "HEAD")
+                if head == "HEAD":
+                    state.detached = True
+                    state.branch = ""
                     try:
                         refs = _git(repo_path, "branch", "--contains", "HEAD", "--format=%(refname:short)")
                         for line in refs.splitlines():
                             name = line.strip()
                             if name and name != "(HEAD" and not name.startswith("("):
-                                state.branch = name
-                                break
+                                state.contained_in.append(name)
                     except subprocess.CalledProcessError:
                         pass
+                else:
+                    state.branch = head
                 state.commit = _git(repo_path, "rev-parse", "--short", "HEAD")
                 rev = _git(repo_path, "rev-list", "--count", "HEAD")
                 state.revision = int(rev)
@@ -96,12 +109,23 @@ class RepoState:
                         state.tag = desc
                 except subprocess.CalledProcessError:
                     state.tag = ""
+                # Resolve the remote's default branch so status can tell
+                # apart "config = default" from "on some other branch".
+                for candidate in ("origin/HEAD", "origin/master", "origin/main"):
+                    try:
+                        resolved = _git(repo_path, "rev-parse", "--abbrev-ref", candidate)
+                        if resolved and resolved != candidate and resolved.startswith("origin/"):
+                            state.default_branch = resolved[len("origin/"):]
+                            break
+                    except subprocess.CalledProcessError:
+                        continue
             except (subprocess.CalledProcessError, ValueError):
                 pass
 
         # SVN?
         elif (repo_path / ".svn").exists():
             state.vcs = "svn"
+            state.default_branch = "trunk"
             try:
                 info = subprocess.check_output(
                     ["svn", "info"], cwd=repo_path, text=True, stderr=subprocess.DEVNULL,
@@ -125,7 +149,20 @@ class RepoState:
                         except ValueError:
                             pass
                     elif line.startswith("URL:"):
-                        state.branch = line.split(":", 1)[1].strip()
+                        url = line.split(":", 1)[1].strip()
+                        # Strip the repo base off the URL so state.branch is
+                        # the same logical name as repo.branch — otherwise
+                        # a comparison in the status pane can never match.
+                        if url.endswith("/trunk"):
+                            state.branch = "trunk"
+                        else:
+                            for prefix in ("/branches/", "/tags/"):
+                                idx = url.rfind(prefix)
+                                if idx != -1:
+                                    state.branch = prefix.strip("/") + "/" + url[idx + len(prefix):]
+                                    break
+                            else:
+                                state.branch = url
                 state.revision = last_changed or global_rev
             except (subprocess.CalledProcessError, ValueError):
                 pass
@@ -136,6 +173,46 @@ class RepoState:
         state.patched = patch_marker.exists()
 
         return state
+
+
+# ---------------------------------------------------------------------------
+# Filesystem helpers
+# ---------------------------------------------------------------------------
+
+def _rmtree_robust(path: Path) -> None:
+    """``shutil.rmtree`` that copes with common failure modes on repo trees.
+
+    - Read-only files (git objects/pack, some svn pristine copies) get
+      chmod'd and retried.
+    - ``ENOTEMPTY`` on a directory usually means a sibling delete raced
+      or the FS is slow to reflect the emptying (network mounts, some
+      overlay FSes); we retry the whole tree up to 3 times with a small
+      pause before giving up.
+    """
+    import os as _os, stat as _stat, time as _time
+
+    def _on_error(func, p, exc_info):
+        exc = exc_info[1] if isinstance(exc_info, tuple) else None
+        try:
+            _os.chmod(p, _stat.S_IRWXU)
+        except OSError:
+            pass
+        try:
+            func(p)
+        except OSError:
+            # Let the outer retry loop handle stubborn cases.
+            pass
+
+    for attempt in range(3):
+        try:
+            shutil.rmtree(path, onerror=_on_error)
+            return
+        except OSError as e:
+            if attempt == 2:
+                raise
+            if e.errno not in (39, 66):  # ENOTEMPTY (Linux 39, macOS 66)
+                raise
+            _time.sleep(0.2)
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +282,7 @@ class RepoManager:
 
     def state(self) -> RepoState:
         """Get current state of the repository."""
-        return RepoState.detect(self.repo_path)
+        return RepoState.detect(self.repo_path, preferred_branch=self.config.branch)
 
     # -- Clone / Checkout --------------------------------------------------
 
@@ -219,9 +296,15 @@ class RepoManager:
         self.repo_path.parent.mkdir(parents=True, exist_ok=True)
 
         if self.is_git:
-            return self._git_clone(log)
+            ok = self._git_clone(log)
         else:
-            return self._svn_checkout(log)
+            ok = self._svn_checkout(log)
+        # Apply the pin (if any) after the initial clone/checkout so the
+        # working copy ends up on the exact revision the user configured.
+        pin = (self.config.switch_to or "").strip()
+        if ok and pin:
+            return self.switch_revision(pin, log=log)
+        return ok
 
     def _git_clone(self, log: Optional[Callable[[str], None]] = None) -> bool:
         cmd = ["git", "clone"]
@@ -259,26 +342,24 @@ class RepoManager:
         SVN does NOT support credentials in the URL (unlike git).
         Authentication is handled exclusively via --username/--password.
 
-        config.url is treated as the root (typically ending in
-        `/trunk`, `/branches/<x>` or `/tags/<x>`); config.branch
-        overrides which path within the standard layout to use.
+        config.url is treated as the root (with or without a trailing
+        `/trunk`, `/branches/<x>`, `/tags/<x>` — those get stripped);
+        config.branch selects which path within the standard layout
+        to check out. "default" means trunk.
 
-        - empty branch on a standard-layout URL → `<base>/trunk`
-        - empty branch on a non-standard URL    → url as-is
-        - 'trunk'                               → `<base>/trunk`
-        - 'branches/x' / 'tags/x'               → `<base>/<x>`
-        - anything else                         → `<base>/branches/<x>`
+        - empty branch          → `<base>/trunk`
+        - 'trunk'               → `<base>/trunk`
+        - '.'                   → url as-is (non-standard layout escape hatch)
+        - 'branches/x' / 'tags/x' → `<base>/<x>`
+        - anything else         → `<base>/branches/<x>`
         """
         from core.vcs_branches import svn_base_url
         url = self.config.url
         target = (self.config.branch or "").strip()
+        if target == ".":
+            return url.rstrip("/")
         base = svn_base_url(url)
-        # Standard layout is detected when svn_base_url actually stripped
-        # a trunk/branches/tags suffix off the configured URL.
-        is_standard = base.rstrip("/") != url.rstrip("/")
-        if not target:
-            return f"{base}/trunk" if is_standard else url
-        if target == "trunk":
+        if not target or target == "trunk":
             return f"{base}/trunk"
         if target.startswith("branches/") or target.startswith("tags/"):
             return f"{base}/{target}"
@@ -343,10 +424,34 @@ class RepoManager:
     def _git_update(self, log: Optional[Callable[[str], None]] = None) -> bool:
         try:
             self._log_auth(log)
+            # Pinned repo: skip branch tracking / pull entirely; just fetch
+            # everything (so the pinned ref exists locally) and check it out.
+            pin = (self.config.switch_to or "").strip()
+            if pin:
+                if log:
+                    log("$ git fetch --all --tags")
+                self._run_git("fetch", "--all", "--tags")
+                ok = self.switch_revision(pin, log=log)
+                if ok:
+                    self._backup(log)
+                return ok
             # If the config has a branch set and the working copy is on a
             # different branch, fetch + checkout + pull — so that a simple
             # Update also applies a branch change saved in the editor.
             target = (self.config.branch or "").strip()
+            # No branch configured → resolve the remote's default. Without
+            # this a repo left in detached HEAD (e.g. from a previous pin)
+            # would fall straight through to `git pull --ff-only`, which
+            # git rejects because there is no upstream to pull from.
+            if not target:
+                for candidate in ("origin/HEAD", "origin/master", "origin/main"):
+                    try:
+                        resolved = self._run_git("rev-parse", "--abbrev-ref", candidate)
+                        if resolved and resolved != candidate and resolved.startswith("origin/"):
+                            target = resolved[len("origin/"):]
+                            break
+                    except subprocess.CalledProcessError:
+                        continue
             if target:
                 try:
                     current = self._run_git("rev-parse", "--abbrev-ref", "HEAD")
@@ -410,6 +515,14 @@ class RepoManager:
                 self._svn_cmd(["svn", "revert", "-R", "."]),
                 cwd=self.repo_path, capture_output=True, text=True, timeout=120,
             )
+            # Pinned repo: skip the branch-switch dance and update straight
+            # to the pinned revision.
+            pin = (self.config.switch_to or "").strip()
+            if pin:
+                ok = self.switch_revision(pin, log=log)
+                if ok:
+                    self._backup(log)
+                return ok
             target = (self.config.branch or "").strip()
             if target:
                 try:
@@ -651,7 +764,7 @@ class RepoManager:
 
         # Remove existing checkout
         if self.repo_path.exists():
-            shutil.rmtree(self.repo_path)
+            _rmtree_robust(self.repo_path)
 
         # Remove patch marker
         patch_marker = self.repo_path.parent / f"{self.repo_path.name}-IS-PATCHED"
@@ -700,7 +813,7 @@ class RepoManager:
         if self.repo_path.exists():
             if log:
                 log(f"Removing {self.repo_path}")
-            shutil.rmtree(self.repo_path)
+            _rmtree_robust(self.repo_path)
         patch_marker = self.repo_path.parent / f"{self.repo_path.name}-IS-PATCHED"
         if patch_marker.exists():
             patch_marker.unlink()

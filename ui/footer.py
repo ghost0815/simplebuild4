@@ -184,6 +184,17 @@ class S4Footer(Horizontal):
         for key, label_key, action, available_on in FOOTER_LEFT:
             is_active = SCREEN_MAP.get(key) == self._active_screen
             is_available = available_on is None or self._active_screen in available_on
+            # Repository screen re-purposes F5/F6 for Patch/Download actions;
+            # enabled state is managed live by the screen based on tab + config.
+            if self._active_screen == "repository":
+                if key == "F5":
+                    label_key = "patch"
+                    action = "action_patch"
+                    is_available = True
+                elif key == "F6":
+                    label_key = "download"
+                    action = "action_download"
+                    is_available = True
             yield FooterItem(
                 key=key,
                 label=t(label_key),
@@ -215,7 +226,7 @@ class S4Footer(Horizontal):
         yield FooterItem(key="F11", label=t("remove"), action="action_remove", disabled=remove_disabled)
 
         # Right: Save
-        save_screens = {"settings", "repository", "target_edit", "automation"}
+        save_screens = {"settings", "repository_edit", "target_edit", "automation"}
         save_disabled = self._active_screen not in save_screens
         yield FooterItem(key="F12", label=t("save"), action="action_save_action", disabled=save_disabled)
 

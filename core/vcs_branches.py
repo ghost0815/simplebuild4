@@ -22,7 +22,8 @@ def detect_vcs(url: str, clone_path: Optional[Path] = None) -> str:
     """Return 'git' or 'svn' for the given URL.
 
     If a local clone path is provided and exists, that wins. Otherwise
-    fall back to URL heuristics.
+    fall back to URL heuristics: strong git markers first, then a broader
+    net for SVN (host prefix, layout hints), git as final default.
     """
     if clone_path is not None and clone_path.is_dir():
         if (clone_path / ".git").exists():
@@ -30,9 +31,21 @@ def detect_vcs(url: str, clone_path: Optional[Path] = None) -> str:
         if (clone_path / ".svn").exists():
             return "svn"
     u = (url or "").strip()
-    if u.startswith("git@") or u.endswith(".git"):
+    lower = u.lower()
+    # Git-specific: ssh-style URL or an explicit ".git" suffix.
+    if u.startswith("git@") or lower.endswith(".git"):
         return "git"
-    if "/svn/" in u or u.endswith("/trunk") or "/trunk/" in u:
+    # SVN heuristics (in order of strength):
+    #  - dedicated svn subdomain (svn.apache.org, svn.code.sourceforge.net, …)
+    #  - explicit /svn/ path segment
+    #  - standard-layout markers anywhere in the path
+    if (
+        "://svn." in lower
+        or "/svn/" in lower
+        or "/trunk" in lower
+        or "/branches/" in lower
+        or "/tags/" in lower
+    ):
         return "svn"
     return "git"
 
@@ -59,13 +72,15 @@ def _cache_key(url: str, vcs: str) -> str:
     return url
 
 
-def list_branches(url: str, vcs: str, force_refresh: bool = False, timeout: int = 10,
-                  auth_env: dict | None = None, svn_auth_args: list | None = None) -> list[str]:
+def list_branches(url: str, vcs: str, force_refresh: bool = False, timeout: int = 30,
+                  auth_env: dict | None = None, svn_auth_args: list | None = None,
+                  on_error=None) -> list[str]:
     """Return the list of branches for a repo URL.
 
     Uses a session-lived in-memory cache. Git keys on the full URL,
     SVN on the base URL. Pass force_refresh=True to bypass. Network
-    failures return an empty list.
+    failures return an empty list; when `on_error` is given it is
+    called with a short human-readable reason so callers can surface it.
     """
     if not url:
         return []
@@ -78,20 +93,34 @@ def list_branches(url: str, vcs: str, force_refresh: bool = False, timeout: int 
         if vcs == "git":
             branches = _list_git_branches(url, timeout=timeout, env=auth_env)
         elif vcs == "svn":
-            branches = _list_svn_branches(url, timeout=timeout, extra_args=svn_auth_args)
-    except Exception:
-        branches = []
+            branches = _list_svn_branches(
+                url, timeout=timeout, extra_args=svn_auth_args, on_error=on_error,
+            )
+    except subprocess.TimeoutExpired:
+        if on_error:
+            on_error(f"timeout after {timeout}s")
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or "").strip().splitlines()[-1:] if e.stderr else []
+        msg = detail[0] if detail else f"exit {e.returncode}"
+        if on_error:
+            on_error(msg)
+    except FileNotFoundError as e:
+        if on_error:
+            on_error(f"{e.filename} not found")
+    except Exception as e:
+        if on_error:
+            on_error(f"{type(e).__name__}: {e}")
 
     if branches:
         _cache[key] = list(branches)
     return list(branches)
 
 
-def _list_git_branches(url: str, timeout: int = 10, env: dict | None = None) -> list[str]:
+def _list_git_branches(url: str, timeout: int = 30, env: dict | None = None) -> list[str]:
     """`git ls-remote --symref --heads <url>` → list of branches + default."""
     out = subprocess.check_output(
         ["git", "ls-remote", "--symref", url, "HEAD", "refs/heads/*"],
-        text=True, stderr=subprocess.DEVNULL, timeout=timeout,
+        text=True, stderr=subprocess.PIPE, timeout=timeout,
         env=env,
     )
     branches: list[str] = []
@@ -115,8 +144,15 @@ def _list_git_branches(url: str, timeout: int = 10, env: dict | None = None) -> 
     return branches
 
 
-def _list_svn_branches(url: str, timeout: int = 10, extra_args: list | None = None) -> list[str]:
-    """`svn list <base>/branches/` → list starting with 'trunk'."""
+def _list_svn_branches(url: str, timeout: int = 30, extra_args: list | None = None,
+                       on_error=None) -> list[str]:
+    """`svn list <base>/branches/` → list starting with 'trunk'.
+
+    When the ``branches/`` subdir is missing (repos that don't follow the
+    standard trunk/branches/tags layout, or a URL that already points into
+    a subproject) `on_error` is called with a short reason so the caller
+    can tell the user why only ``trunk`` came back.
+    """
     base = svn_base_url(url)
     result: list[str] = ["trunk"]
     _default_cache[base] = "trunk"
@@ -124,14 +160,23 @@ def _list_svn_branches(url: str, timeout: int = 10, extra_args: list | None = No
         cmd = ["svn", "list", "--non-interactive", f"{base}/branches/"] + (extra_args or [])
         out = subprocess.check_output(
             cmd,
-            text=True, stderr=subprocess.DEVNULL, timeout=timeout,
+            text=True, stderr=subprocess.PIPE, timeout=timeout,
         )
         for line in out.splitlines():
             name = line.strip().rstrip("/")
             if name:
                 result.append(f"branches/{name}")
-    except Exception:
-        pass
+    except subprocess.CalledProcessError as e:
+        detail = (e.stderr or "").strip().splitlines()[-1:] if e.stderr else []
+        msg = detail[0] if detail else f"exit {e.returncode}"
+        if on_error:
+            on_error(f"{base}/branches/: {msg}")
+    except subprocess.TimeoutExpired:
+        if on_error:
+            on_error(f"{base}/branches/: timeout after {timeout}s")
+    except Exception as e:
+        if on_error:
+            on_error(f"{base}/branches/: {type(e).__name__}: {e}")
     return result
 
 

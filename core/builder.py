@@ -121,8 +121,12 @@ class BuildEngine:
             def _log_both(msg: str):
                 # Strip Rich markup for file
                 plain = re.sub(r'\[/?[a-z_ #0-9]+\]', '', msg)
-                self._log_file.write(plain + "\n")
-                self._log_file.flush()
+                if self._log_file is not None:
+                    try:
+                        self._log_file.write(plain + "\n")
+                        self._log_file.flush()
+                    except (ValueError, OSError):
+                        pass
                 original_log(msg)
 
             self._log = _log_both
@@ -955,23 +959,26 @@ class BuildEngine:
             )
 
     def _close_log(self, log_path: Optional[Path]) -> None:
-        """Show the log path, apply retention, then close the log file.
+        """Close the log file first, then show the log path + retention.
 
-        Retention must run *before* the file is closed so the
-        "Log retention: removed …" message still reaches both the
-        GUI *and* the freshly written log file (the wrapped self._log
-        writes to both). When no per-build log file was opened
-        (``write_log_file=False``), the path message is skipped.
+        Log-related summary lines (``Log:`` and ``Log retention:``) are
+        intentionally kept out of the persisted log file — they only
+        reach the GUI. Closing the file first makes ``_log_both``'s
+        None-check drop the file write; the wrapped callback still
+        forwards to the original widget log.
         """
+        if self._log_file is not None:
+            try:
+                self._log_file.close()
+            except Exception:
+                pass
+            self._log_file = None
         if log_path is not None:
             try:
+                self._log("")
                 self._log(f"Log: {deliver_link(log_path)}")
             except Exception:
                 pass
-        # Apply global log retention (per-bucket). Cleans every log
-        # type (build, library, selfbuild, backup, s4-update) within
-        # its own group. The current log is the newest of its bucket
-        # and is always protected.
         try:
             from core.log_cleanup import cleanup_logs
             removed, freed = cleanup_logs(
@@ -985,11 +992,6 @@ class BuildEngine:
                 self._log(f"Log retention: removed {removed} old log(s), freed {mb:.2f} MB")
         except Exception:
             pass
-        if self._log_file is not None:
-            try:
-                self._log_file.close()
-            except Exception:
-                pass
 
 
     # -------------------------------------------------------------------------

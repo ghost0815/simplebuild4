@@ -75,7 +75,7 @@ Screen {
     border: heavy $accent;
 }
 
-#main-tab-bar {
+#main-tab-bar, #repo-tab-bar {
     height: 1;
     margin: 1 2 0 2;
 }
@@ -412,12 +412,28 @@ Collapsible:focus-within > CollapsibleTitle {
 }
 
 /* Repository screen */
-#repo-scroll {
-    padding: 0 1;
+#repo-scroll, #repo-patches-scroll {
+    padding: 0;
+}
+
+#patches-box {
+    margin: 1 0;
+    padding: 1 1;
+    height: auto;
+    max-height: 50%;
+    background: $boost;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
+    overflow-y: auto;
+}
+
+#patches-box:focus {
+    border: heavy $primary;
 }
 
 #repo-info {
-    margin: 0 1;
+    margin: 1 0;
     padding: 1 1;
     height: auto;
     background: $boost;
@@ -431,12 +447,13 @@ Collapsible:focus-within > CollapsibleTitle {
 }
 
 #repo-output {
-    margin: 0 1;
+    margin: 1 0;
     height: 10;
     background: $boost;
     border: solid $accent;
     border-title-color: $text;
     border-title-style: bold;
+    padding: 0 1;
     overflow-y: auto;
 }
 
@@ -465,6 +482,40 @@ Collapsible:focus-within > CollapsibleTitle {
 
 #col-edit {
     margin: 1 1;
+}
+
+#re-box {
+    margin: 1 0;
+    padding: 1 1;
+    height: 1fr;
+    background: $boost;
+    border: solid $primary;
+    border-title-color: $text;
+    border-title-style: bold;
+    scrollbar-gutter: stable;
+}
+
+#re-box:focus {
+    border: heavy $primary;
+}
+
+#repo-bar {
+    height: 3;
+    padding: 0;
+}
+
+#repo-bar .label {
+    width: 13;
+    padding: 1 0;
+}
+
+#repo-select {
+    width: 30%;
+}
+
+#repo-bar Button {
+    min-width: 12;
+    margin: 0 0 0 1;
 }
 
 .repo-actions-row {
@@ -519,7 +570,14 @@ Switch.-on .switch--slider {
 }
 
 #patch-grid {
-    grid-size: 2;
+    grid-size: 3;
+    grid-gutter: 0 2;
+    height: auto;
+    padding: 0 1;
+}
+
+.patch-toggle-row {
+    grid-size: 3;
     grid-gutter: 0 2;
     height: auto;
     padding: 0 1;
@@ -765,21 +823,7 @@ TextArea#tc-editor:focus {
     border: heavy $accent;
 }
 
-.repo-row {
-    height: 3;
-    margin: 0 1;
-}
-
-.repo-label {
-    width: 25;
-    padding: 1 0;
-}
-
-.repo-row Input {
-    width: 1fr;
-}
-
-.repo-row Select {
+#edit-repo-branch {
     width: 1fr;
 }
 

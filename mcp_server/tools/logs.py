@@ -16,7 +16,7 @@ from core import jobs
 from mcp_server.context import McpContext
 
 
-_VALID_TYPES = {"build", "selfbuild", "lib", "deploy", "backup", "automation", "repo", "s4", "other"}
+_VALID_TYPES = {"build", "selfbuild", "lib", "deploy", "backup", "patch", "automation", "repo", "s4", "other"}
 
 
 def _list_recent_builds_impl(

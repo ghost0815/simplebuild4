@@ -9,7 +9,7 @@ import threading
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
-from textual.widgets import Static, Input, Button, Select, Switch, RichLog, Collapsible, Checkbox
+from textual.widgets import Static, Input, Button, Select, Switch, RichLog
 from ui.widgets.artifact_richlog import ArtifactRichLog
 from textual.containers import Horizontal, Vertical, VerticalScroll, Grid
 
@@ -20,6 +20,7 @@ from core.patches import load_patch_sources, download_patches
 from translation import t
 from ui.header import S4Header
 from ui.footer import S4Footer
+from ui.screens.target_edit import _column_major
 
 
 def _safe_id(name: str) -> str:
@@ -36,15 +37,124 @@ def _safe_id(name: str) -> str:
 
 
 class RepositoryScreen(Screen):
-    BINDINGS = []
+    BINDINGS = [
+        Binding("s", "tab_summary", "Summary", show=False),
+        Binding("p", "tab_patches", "Patches", show=False),
+        Binding("o", "tab_output", "Output", show=False),
+    ]
+
+    def action_tab_summary(self) -> None:
+        self._show_tab("summary")
+
+    def action_tab_patches(self) -> None:
+        self._show_tab("patches")
+
+    def action_tab_output(self) -> None:
+        self._show_tab("output")
+
+    def action_patch(self) -> None:
+        repo = self._get_selected_repo()
+        if not repo:
+            self.notify(t("no_repo_selected"), severity="warning")
+            return
+        selected = self._get_selected_patches()
+        if not selected:
+            self.notify("No patches selected", severity="warning")
+            return
+
+        import re
+        from datetime import datetime
+        from core.log_cleanup import resolve_log_dir, run_retention
+        from core.env import deliver_link
+        _log_dir = resolve_log_dir(
+            self.app.paths.logs_dir, "patch", self.app.settings.organize_logs,
+        )
+        timestamp = datetime.now().strftime("%Y-%m-%d.%H-%M-%S")
+        log_path = _log_dir / f"{timestamp}.{repo.name}.patch.log"
+        log_file = open(log_path, "w", encoding="utf-8")
+
+        def _log_both(msg: str) -> None:
+            plain = re.sub(r"\[/?[a-z_ #0-9]+\]", "", msg)
+            log_file.write(plain + "\n")
+            log_file.flush()
+            self._log(msg)
+
+        self._log_sync(f"[bold]Applying {len(selected)} patches to {repo.name}...[/bold]")
+        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+
+        def do_patch():
+            try:
+                patches_dir = self.app.paths.patches_dir
+                success = mgr.apply_patches(
+                    patches_dir, log=_log_both, selected_patches=selected,
+                )
+                if success and self.app.settings.patch_webif:
+                    mgr.patch_webif(log=_log_both)
+            finally:
+                log_file.close()
+                self._log("")
+                self._log(f"Log: {deliver_link(log_path)}")
+                try:
+                    run_retention(
+                        self.app.paths.logs_dir, self.app.settings, log=self._log,
+                    )
+                except Exception:
+                    pass
+
+        self._run_in_thread(do_patch)
+
+    def action_download(self) -> None:
+        patches_yaml = self.app.paths.root / "data" / "patches.yaml"
+        sources = load_patch_sources(patches_yaml)
+        if not sources:
+            self.notify("No patch URLs configured in data/patches.yaml", severity="warning")
+            return
+        self._log_sync(f"[bold]Downloading {len(sources)} patches...[/bold]")
+
+        def do_download():
+            count = download_patches(sources, self.app.paths.patches_dir, log=self._log)
+            self._log(f"[green]Downloaded {count}/{len(sources)} patches[/green]")
+
+        self._run_in_thread(do_download)
+
+    def _update_footer_state(self, tab: str) -> None:
+        try:
+            from ui.footer import FooterItem
+        except Exception:
+            return
+        patches_yaml = self.app.paths.root / "data" / "patches.yaml"
+        sources = load_patch_sources(patches_yaml) if patches_yaml.exists() else []
+        if sources:
+            f6_tt = f"{len(sources)} patch URL(s) configured in patches.yaml"
+        elif patches_yaml.exists():
+            f6_tt = "No patch URLs configured in data/patches.yaml"
+        else:
+            f6_tt = "No patches.yaml found"
+        any_patch_on = bool(self._get_selected_patches())
+        def _set(item: "FooterItem", disabled: bool, label: str) -> None:
+            item._disabled = disabled
+            item._label = label
+            if disabled:
+                item.add_class("disabled")
+            else:
+                item.remove_class("disabled")
+            item.refresh(layout=True)
+
+        for item in self.query(FooterItem):
+            if item._key == "F5":
+                _set(item, (tab != "patches") or not any_patch_on, t("patch"))
+            elif item._key == "F6":
+                _set(item, (tab != "patches") or not sources, t("download"))
+                item.tooltip = f6_tt
 
     # Class-level state shared across screen instances
     _log_history: list[str] = []
     _patch_states: dict[str, bool] = {}  # patch stem -> enabled
-    _patches_collapsed: bool = True
-    _edit_collapsed: bool = True
     _last_focus_id: str = ""
-    _adding_new: bool = False
+    # Tracks the repo whose output is currently in `_log_history`. When the
+    # user switches the dropdown to a different repo, the output is cleared
+    # so lines from different repos don't get mixed in one panel.
+    _last_output_repo: str = ""
 
     def __init__(self) -> None:
         super().__init__()
@@ -55,151 +165,137 @@ class RepositoryScreen(Screen):
 
         yield S4Header()
 
-        with VerticalScroll(id="repo-scroll"):
-            # Status box
-            status_lines = []
-            for repo in self._repos:
-                mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-                state = mgr.state()
-                status_lines.append(self._format_status(repo, state))
-            status_text = "\n".join(status_lines)
-            info = Static(status_text, id="repo-info")
-            info.can_focus = True
-            info.border_title = t("re_status")
-            yield info
+        with Vertical(id="content"):
+            # Repository selector + actions (top bar, no border — analog F2)
+            with Horizontal(id="repo-bar"):
+                yield Static("  Repository:", classes="label")
+                repo_names = [(r.name, r.name) for r in self._repos]
+                yield Select(
+                    options=repo_names,
+                    value=self._repos[0].name if self._repos else Select.BLANK,
+                    allow_blank=True,
+                    id="repo-select",
+                    prompt=t("select_prompt"),
+                )
+                repo = self._get_selected_repo_from_list()
+                clone_label = t("clone") if (not repo or RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir).is_git) else t("checkout")
+                clone_btn = Button(clone_label, id="btn-clone", variant="primary")
+                clone_btn.tooltip = "Clone/checkout the selected repository from its URL"
+                yield clone_btn
+                update_btn = Button(t("update"), id="btn-update")
+                update_btn.tooltip = "Pull latest changes from remote (git pull / svn update)"
+                yield update_btn
+                restore_btn = Button(t("restore"), id="btn-restore")
+                restore_btn.tooltip = "Restore repository from last backup (removes patches)"
+                yield restore_btn
+                clean_btn = Button(t("remove"), id="btn-clean", variant="error")
+                clean_btn.tooltip = "Remove the checked-out repository from disk"
+                yield clean_btn
+                yield Static("", classes="spacer")
+                yield Button(t("edit"), id="btn-edit")
+                yield Button(t("duplicate"), id="btn-dup")
 
-            # Output box
-            yield ArtifactRichLog(id="repo-output", highlight=False, markup=True, wrap=True)
+            # Tab bar
+            with Horizontal(id="repo-tab-bar"):
+                yield Static(" [b]S[/b]ummary ", id="repo-tab-summary", classes="tab-active")
+                yield Static(" [b]P[/b]atches ", id="repo-tab-patches", classes="tab-inactive")
+                yield Static(" [b]O[/b]utput ", id="repo-tab-output", classes="tab-inactive")
 
-            # Repositories actions
-            patch_sources = load_patch_sources(self.app.paths.root / "data" / "patches.yaml")
-            has_sources = len(patch_sources) > 0
-            patches_yaml = self.app.paths.root / "data" / "patches.yaml"
-            if has_sources:
-                dl_tooltip = f"{len(patch_sources)} patch URL(s) configured in patches.yaml"
-            elif patches_yaml.exists():
-                dl_tooltip = "No patch URLs configured in data/patches.yaml"
-            else:
-                dl_tooltip = "No patches.yaml found"
+            with VerticalScroll(id="repo-scroll"):
+                # Status box — populated by _refresh_status() from on_mount /
+                # on_select_changed. Only shows the currently selected repo.
+                info = Static(f"  [dim]{t('re_no_repo_selected')}[/dim]", id="repo-info")
+                info.can_focus = True
+                info.border_title = t("re_status")
+                yield info
 
-            with Vertical(id="repo-box"):
-                with Horizontal(classes="repo-actions-row"):
-                    repo_names = [(r.name, r.name) for r in self._repos]
-                    yield Select(
-                        options=repo_names,
-                        value=self._repos[0].name if self._repos else Select.BLANK,
-                        allow_blank=True,
-                        id="repo-select",
-                        prompt=t("select_prompt"),
-                    )
-                    first = self._repos[0] if self._repos else None
-                    excl_chk = Checkbox("Exclude from automation", value=first.exclude_from_automation if first else False, id="chk-excl-auto")
-                    yield excl_chk
-                    yield Static("", classes="spacer")
-                    # Dynamic label: Clone for git, Checkout for svn
-                    repo = self._get_selected_repo_from_list()
-                    clone_label = t("clone") if (not repo or RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir).is_git) else t("checkout")
-                    clone_btn = Button(clone_label, id="btn-clone", variant="primary")
-                    clone_btn.tooltip = "Clone/checkout the selected repository from its URL"
-                    yield clone_btn
-                    update_btn = Button(t("update"), id="btn-update")
-                    update_btn.tooltip = "Pull latest changes from remote (git pull / svn update)"
-                    yield update_btn
-                    patch_btn = Button(t("patch"), id="btn-patch", variant="success")
-                    patch_btn.tooltip = "Apply selected patches to the repository"
-                    yield patch_btn
-                    dl_btn = Button(t("download"), id="btn-download", variant="success")
-                    dl_btn.tooltip = dl_tooltip
-                    yield dl_btn
-                    restore_btn = Button(t("restore"), id="btn-restore")
-                    restore_btn.tooltip = "Restore repository from last backup (removes patches)"
-                    yield restore_btn
-                    clean_btn = Button(t("clean"), id="btn-clean", variant="error")
-                    clean_btn.tooltip = "Delete the checked-out repository from disk"
-                    yield clean_btn
+                # Patches box (shown on Patches tab; hidden on Summary/Output)
+                patches_dir = self.app.paths.patches_dir
+                available = sorted(patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
+                patches_box = Vertical(id="patches-box")
+                patches_box.can_focus = True
+                patches_box.border_title = f"Patches ({len(available)})" if available else "Patches"
+                with patches_box:
+                    if available:
+                        any_on = any(RepositoryScreen._patch_states.get(p.stem, False) for p in available)
+                        all_on = all(RepositoryScreen._patch_states.get(p.stem, False) for p in available)
+                        sw_classes = "section-switch all-on" if all_on else "section-switch"
+                        yield Grid(
+                            Horizontal(
+                                Switch(value=any_on, id="patch-toggle-all", classes=sw_classes),
+                                Static(
+                                    f" [b]{t('te_section_toggle_tip', section='Patches')}[/b]",
+                                    classes="sc-label",
+                                ),
+                                classes="s-compact",
+                            ),
+                            classes="mod-grid patch-toggle-row",
+                        )
+                        with Grid(id="patch-grid"):
+                            for p in _column_major(available, 3):
+                                if p is None:
+                                    yield Static("", classes="patch-item")
+                                else:
+                                    enabled = RepositoryScreen._patch_states.get(p.stem, False)
+                                    yield Horizontal(
+                                        Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
+                                        Static(f" {p.name}", classes="patch-name"),
+                                        classes="patch-item",
+                                    )
+                    else:
+                        yield Static(f"  [dim]no .patch files in {patches_dir}[/dim]", classes="patch-info")
 
-            # Patches
-            patches_dir = self.app.paths.patches_dir
-            available = sorted(patches_dir.glob("*.patch")) if patches_dir.is_dir() else []
-            patch_label = f"Patches ({len(available)})" if available else "Patches"
-            with Collapsible(title=patch_label, collapsed=RepositoryScreen._patches_collapsed, id="col-patches"):
-                if available:
-                    with Grid(id="patch-grid"):
-                        for p in available:
-                            enabled = RepositoryScreen._patch_states.get(p.stem, False)
-                            yield Horizontal(
-                                Switch(value=enabled, id=f"patch-{_safe_id(p.stem)}"),
-                                Static(f" {p.name}", classes="patch-name"),
-                                classes="patch-item",
-                            )
-                else:
-                    yield Static(f"  [dim]no .patch files in {patches_dir}[/dim]", classes="patch-info")
-
-            # Edit / Add
-            with Collapsible(title=t("re_edit_add"), collapsed=RepositoryScreen._edit_collapsed, id="col-edit"):
-                with Horizontal(classes="repo-row"):
-                    yield Static(f" {t('re_name')}", classes="repo-label")
-                    yield Input(placeholder=t("ph_repo_name"), id="edit-repo-name")
-                    yield Static("", classes="repo-row-spacer")
-
-                # Auth + URL in one row
-                log_btn = Button(icon("log"), id="btn-repo-log", classes="tc-reset-btn")
-                log_btn.tooltip = t("tt_repo_log")
-                with Horizontal(classes="repo-row"):
-                    yield Static(f" {t('re_auth_url')}", classes="repo-label")
-                    yield Select(
-                        options=[
-                            (t("re_auth_none"), ""),
-                            (t("re_auth_ssh_key"), "ssh_key"),
-                            (t("re_auth_userpass"), "userpass"),
-                        ],
-                        value="",
-                        id="edit-repo-auth",
-                        allow_blank=False,
-                        classes="repo-auth-select",
-                    )
-                    yield Input(placeholder=t("ph_repo_url"), id="edit-repo-url")
-                    yield log_btn
-
-                # SSH Key (shown when auth == ssh_key)
-                ssh_browse = Button(icon("browse"), id="btn-ssh-browse", classes="tc-reset-btn")
-                ssh_browse.tooltip = t("ph_browse_file")
-                with Horizontal(classes="repo-row", id="auth-ssh-row"):
-                    yield Static(f" {t('re_ssh_key')}", classes="repo-label")
-                    yield Input(placeholder=t("ph_ssh_key_path"), id="edit-repo-ssh-key")
-                    yield ssh_browse
-
-                # Username + Password/Token (shown when auth == userpass)
-                show_pw_btn = Button(icon("eye"), id="btn-toggle-pw", classes="tc-reset-btn")
-                show_pw_btn.tooltip = t("tt_show_password")
-                with Horizontal(classes="repo-row", id="auth-user-row"):
-                    yield Static(f" {t('re_username')}", classes="repo-label")
-                    yield Input(placeholder=t("ph_username"), id="edit-repo-user")
-                    yield Static(f" {t('re_password')}", classes="repo-label-short")
-                    yield Input(placeholder=t("ph_password_token"), id="edit-repo-pass", password=True)
-                    yield show_pw_btn
-
-                with Horizontal(classes="repo-row"):
-                    yield Static(f" {t('re_branch')}", classes="repo-label")
-                    yield Select(
-                        options=[(t("ph_repo_branch"), "")],
-                        id="edit-repo-branch",
-                        allow_blank=False,
-                        prompt=t("ph_repo_branch"),
-                    )
-                    refresh_btn = Button(icon("refresh"), id="btn-branch-refresh", classes="tc-reset-btn")
-                    refresh_btn.tooltip = t("tt_branch_refresh")
-                    yield refresh_btn
-
-                with Horizontal(classes="repo-row"):
-                    yield Static(f" {t('re_switch_to')}", classes="repo-label")
-                    yield Input(placeholder=t("ph_repo_switch"), id="edit-repo-switch")
-                    yield Static("", classes="repo-row-spacer")
+                # Output box
+                yield ArtifactRichLog(id="repo-output", highlight=False, markup=True, wrap=True)
 
         yield S4Footer(active_screen="repository")
 
+    _current_tab: str = "summary"
+
+    def _show_tab(self, tab: str) -> None:
+        RepositoryScreen._current_tab = tab
+        self.query_one("#repo-info").display = (tab == "summary")
+        self.query_one("#patches-box").display = (tab == "patches")
+        output = self.query_one("#repo-output")
+        output.styles.height = "1fr"
+        self.query_one("#repo-tab-summary").set_classes("tab-active" if tab == "summary" else "tab-inactive")
+        self.query_one("#repo-tab-patches").set_classes("tab-active" if tab == "patches" else "tab-inactive")
+        self.query_one("#repo-tab-output").set_classes("tab-active" if tab == "output" else "tab-inactive")
+        self._update_footer_state(tab)
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        sid = event.switch.id or ""
+        if sid == "patch-toggle-all":
+            for sw in self.query("#patch-grid Switch"):
+                with sw.prevent(Switch.Changed):
+                    sw.value = event.value
+            (event.switch.add_class if event.value else event.switch.remove_class)("all-on")
+            self._update_footer_state(RepositoryScreen._current_tab)
+            return
+        if sid.startswith("patch-"):
+            try:
+                master = self.query_one("#patch-toggle-all", Switch)
+            except Exception:
+                return
+            values = [sw.value for sw in self.query("#patch-grid Switch")]
+            any_on = any(values)
+            all_on = bool(values) and all(values)
+            with master.prevent(Switch.Changed):
+                master.value = any_on
+            (master.add_class if all_on else master.remove_class)("all-on")
+            self._update_footer_state(RepositoryScreen._current_tab)
+
+    def on_click(self, event) -> None:
+        widget_id = getattr(event.widget, "id", None)
+        if widget_id == "repo-tab-summary":
+            self._show_tab("summary")
+        elif widget_id == "repo-tab-patches":
+            self._show_tab("patches")
+        elif widget_id == "repo-tab-output":
+            self._show_tab("output")
+
     def on_mount(self) -> None:
-        """Fill edit fields and restore log on mount."""
+        """Restore selection and log on mount."""
         if self._repos:
             target = RepositoryScreen._last_selected or self.app.settings.last_repo
             repo = next((r for r in self._repos if r.name == target), None) or self._repos[0]
@@ -207,18 +303,12 @@ class RepositoryScreen(Screen):
                 self.query_one("#repo-select", Select).value = repo.name
             except Exception:
                 pass
-            self._fill_edit_fields(repo)
-        # Hide auth rows by default if no repo selected
-        if not self._repos:
-            self._update_auth_visibility("")
-        # Set border titles
         self.query_one("#repo-output", RichLog).border_title = t("output_title")
-        try:
-            self.query_one("#patch-grid", Grid).border_title = "Patches"
-        except Exception:
-            pass
-        self.query_one("#repo-box", Vertical).border_title = t("repositories")
-        # edit-box is now a Collapsible — title set in compose
+        # Populate the status box for the initially selected repo (or the
+        # "no repo" placeholder when the list is empty).
+        self._refresh_status()
+        self._refresh_clone_button()
+        self._show_tab(RepositoryScreen._current_tab or "summary")
         # Restore log history
         if RepositoryScreen._log_history:
             self._update_output()
@@ -232,36 +322,186 @@ class RepositoryScreen(Screen):
         else:
             self.query_one("#repo-select", Select).focus()
 
+    def on_screen_resume(self) -> None:
+        """Reload repos when returning from a pushed screen (Edit/Add/Duplicate).
+
+        Without this, actions triggered afterwards would run against the stale
+        config snapshot taken at compose time (old URL / branch / auth / flags).
+        """
+        old_names = [r.name for r in self._repos]
+        try:
+            self._repos = load_repos(self.app.paths.repos_config)
+        except Exception:
+            return
+        new_names = [r.name for r in self._repos]
+        try:
+            sel = self.query_one("#repo-select", Select)
+        except Exception:
+            self._refresh_status()
+            return
+        current_val = sel.value if sel.value is not Select.BLANK else ""
+        # `_last_selected` is only set by the Edit screen on a successful save.
+        # Consume it so a later Edit-then-ESC doesn't reapply a stale name.
+        want = RepositoryScreen._last_selected or current_val
+        RepositoryScreen._last_selected = ""
+        try:
+            if old_names != new_names:
+                sel.set_options([(n, n) for n in new_names])
+            if want and want in new_names:
+                sel.value = want
+            elif new_names and current_val not in new_names:
+                sel.value = new_names[0]
+        except Exception:
+            pass
+        self._refresh_status()
+        self._refresh_clone_button()
+        # A background switch started from the Edit screen may have written
+        # lines into _log_history while F3 was paused — flush them into the
+        # output panel now that we're back.
+        if RepositoryScreen._log_history:
+            try:
+                self._update_output()
+            except Exception:
+                pass
+
     def _format_status(self, repo: RepoConfig, state: RepoState) -> str:
         from rich.markup import escape as _esc
-        safe_url = _esc(repo.url)
-        if not state.exists:
-            return (
-                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
-                f"  Status: [red]not checked out[/red]"
-            )
-        vcs = state.vcs.upper()
-        branch = state.branch or "—"
+        safe_url = _esc(repo.url) if repo.url else "-"
+        pad = 14
+        # Effective VCS for label lookup (state wins once cloned, otherwise
+        # heuristics on the URL / config).
+        if state.vcs:
+            eff_vcs = state.vcs
+        elif repo.vcs:
+            eff_vcs = repo.vcs
+        elif repo.url:
+            from core.vcs_branches import detect_vcs
+            eff_vcs = detect_vcs(repo.url)
+        else:
+            eff_vcs = ""
+        if repo.branch == ".":
+            # SVN escape hatch — show the same label the dropdown uses.
+            cfg_branch = f"[dim]{t('branch_url_as_is')}[/dim]"
+        elif repo.branch:
+            cfg_branch = _esc(repo.branch)
+        else:
+            # (default) on both VCS: git → origin/HEAD, svn → trunk.
+            cfg_branch = f"[dim]{t('re_default_branch')}[/dim]"
+        auth_labels = {
+            "": t("re_auth_none"),
+            "ssh_key": t("re_auth_ssh_key"),
+            "userpass": t("re_auth_userpass"),
+        }
+        auth_val = auth_labels.get(repo.auth_method or "", repo.auth_method or "-")
 
-        # Get applied patch names
+        # Applied patches (empty list if not checked out)
         mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-        applied = mgr.list_applied_patches()
-        if applied:
-            patched = f" [yellow]patched: {', '.join(applied)}[/yellow]"
-        else:
-            patched = ""
+        applied = mgr.list_applied_patches() if state.exists else []
+        n_patches = len(applied)
+        patches_val = ", ".join(_esc(p) for p in applied) if applied else "-"
 
-        if state.vcs == "git":
-            version = state.tag if state.tag else f"r{state.revision}"
-            return (
-                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
-                f"  {vcs}  {version} @ {state.commit} @ {branch}{patched}"
-            )
+        pin_str = (repo.switch_to or "").strip()
+        pinned = bool(pin_str)
+        switch_val = _esc(repo.switch_to) if pinned else f"[dim]{t('re_latest')}[/dim]"
+
+        def _pin_matches_state() -> bool:
+            """Does the current checkout actually satisfy repo.switch_to?"""
+            if not (pinned and state.exists):
+                return False
+            if state.vcs == "svn":
+                return pin_str in (str(state.revision), f"r{state.revision}")
+            # git: pin may be a full sha, short sha, tag, or branch name.
+            # Try cheap string comparisons first.
+            if state.commit and (
+                pin_str == state.commit
+                or state.commit.startswith(pin_str)
+                or pin_str.startswith(state.commit)
+            ):
+                return True
+            if state.tag and pin_str == state.tag:
+                return True
+            # Last resort: ask git to resolve the pin to a sha and
+            # compare with HEAD. Handles branches and full tag refs.
+            try:
+                import subprocess as _sp
+                pin_sha = _sp.check_output(
+                    ["git", "rev-parse", "--verify", "--short", pin_str],
+                    cwd=state.path, text=True, stderr=_sp.DEVNULL, timeout=3,
+                ).strip()
+                head_sha = _sp.check_output(
+                    ["git", "rev-parse", "--verify", "--short", "HEAD"],
+                    cwd=state.path, text=True, stderr=_sp.DEVNULL, timeout=3,
+                ).strip()
+                return bool(pin_sha) and pin_sha == head_sha
+            except Exception:
+                return False
+
+        if not state.exists:
+            header = f"  [bold]{_esc(repo.name)}[/bold] — [red]{t('re_not_checked_out')}[/red]"
+            # Not yet cloned — fall back to the URL-heuristic so the user
+            # can already tell whether this repo will clone or checkout.
+            if repo.vcs:
+                type_val = repo.vcs
+            else:
+                from core.vcs_branches import detect_vcs
+                type_val = detect_vcs(repo.url) if repo.url else "-"
         else:
-            return (
-                f"  [bold]{repo.name}[/bold]  {safe_url}\n"
-                f"  {vcs}  r{state.revision} @ {branch}{patched}"
+            vcs_up = state.vcs.upper()
+            if state.detached:
+                head_label = "detached"
+            else:
+                head_label = state.branch or "—"
+            # Status flag reduces to one message: does the checkout match
+            # what the settings say?
+            #   pinned & matches      → green pinned
+            #   pinned & mismatch     → yellow pending
+            #   not pinned & on branch tip (attached, right branch) → green current
+            #   anything else         → yellow pending
+            # "current" means: attached to exactly the branch settings ask for.
+            # Config-branch empty → the remote's default; otherwise the literal name.
+            expected_branch = repo.branch or state.default_branch
+            on_config_branch = (
+                not state.detached
+                and expected_branch
+                and expected_branch == state.branch
             )
+            flags: list[str] = []
+            if pinned:
+                flags.append(
+                    f"[green]{t('re_pinned')}[/green]"
+                    if _pin_matches_state()
+                    else f"[yellow]{t('re_pending')}[/yellow]"
+                )
+            elif on_config_branch:
+                flags.append(f"[green]{t('re_current')}[/green]")
+            else:
+                flags.append(f"[yellow]{t('re_pending')}[/yellow]")
+            if applied:
+                flags.append(f"[yellow]{t('re_patched')}[/yellow]")
+            flags_str = f" ({', '.join(flags)})" if flags else ""
+            if state.vcs == "git":
+                version = state.tag if state.tag else f"r{state.revision}"
+                header = (
+                    f"  [bold]{_esc(repo.name)} — {vcs_up} {version} "
+                    f"@ {state.commit} @ {head_label}[/bold]{flags_str}"
+                )
+            else:
+                header = (
+                    f"  [bold]{_esc(repo.name)} — {vcs_up} r{state.revision} "
+                    f"@ {head_label}[/bold]{flags_str}"
+                )
+            type_val = state.vcs
+
+        patches_label = f"{t('re_patches_lbl')} ({n_patches}):"
+
+        return "\n".join([
+            header,
+            f"  {t('re_url')+':':<{pad}} {safe_url}",
+            f"  {t('re_type_auth')+':':<{pad}} {type_val} / {auth_val}",
+            f"  {t('re_branch')+':':<{pad}} {cfg_branch}",
+            f"  {t('re_switch_to')+':':<{pad}} {switch_val}",
+            f"  {patches_label:<{pad}} {patches_val}",
+        ])
 
     def _get_selected_repo_from_list(self) -> RepoConfig | None:
         """Get first repo (for use in compose before Select is mounted)."""
@@ -275,147 +515,6 @@ class RepositoryScreen(Screen):
             if r.name == sel.value:
                 return r
         return None
-
-    def _fill_edit_fields(self, repo: RepoConfig) -> None:
-        """Fill edit fields with repo data."""
-        self.query_one("#edit-repo-name", Input).value = repo.name
-        self.query_one("#edit-repo-url", Input).value = repo.url
-        keep = (
-            RepositoryScreen._last_switch_rev
-            if RepositoryScreen._last_selected == repo.name
-            else ""
-        )
-        self.query_one("#edit-repo-switch", Input).value = keep
-        # Auth fields
-        try:
-            self.query_one("#edit-repo-auth", Select).value = repo.auth_method or ""
-            self.query_one("#edit-repo-ssh-key", Input).value = repo.ssh_key
-            self.query_one("#edit-repo-user", Input).value = repo.auth_user
-            self.query_one("#edit-repo-pass", Input).value = repo.auth_pass
-        except Exception:
-            pass
-        try:
-            self.query_one("#chk-excl-auto", Checkbox).value = repo.exclude_from_automation
-        except Exception:
-            pass
-        self._update_auth_visibility(repo.auth_method or "")
-        # Populate the branch dropdown
-        try:
-            from core.vcs_branches import _cache as _branch_cache, _cache_key
-            key = _cache_key(repo.url, self._current_vcs(repo)) if repo.url else ""
-            if key and key in _branch_cache:
-                self._apply_branch_options(_branch_cache[key], repo.branch)
-            else:
-                self._apply_branch_options([], repo.branch)
-        except Exception:
-            pass
-
-    def _update_auth_visibility(self, method: str) -> None:
-        """Show/hide auth-related rows based on the selected method."""
-        try:
-            self.query_one("#auth-ssh-row").display = (method == "ssh_key")
-            self.query_one("#auth-user-row").display = (method == "userpass")
-        except Exception:
-            pass
-
-    def _get_auth_fields(self) -> dict:
-        """Collect auth field values from the UI."""
-        try:
-            auth_sel = self.query_one("#edit-repo-auth", Select)
-            method = str(auth_sel.value) if auth_sel.value and auth_sel.value is not Select.BLANK else ""
-        except Exception:
-            method = ""
-        try:
-            ssh_key = self.query_one("#edit-repo-ssh-key", Input).value.strip()
-        except Exception:
-            ssh_key = ""
-        try:
-            user = self.query_one("#edit-repo-user", Input).value.strip()
-        except Exception:
-            user = ""
-        try:
-            pw = self.query_one("#edit-repo-pass", Input).value
-        except Exception:
-            pw = ""
-        return {"auth_method": method, "ssh_key": ssh_key, "auth_user": user, "auth_pass": pw}
-
-    def _open_ssh_key_picker(self) -> None:
-        """Open file picker for SSH key."""
-        from ui.screens.toolchains import FilePickerScreen
-        from pathlib import Path as _P
-        ssh_dir = _P.home() / ".ssh"
-        start = str(ssh_dir) if ssh_dir.exists() else str(_P.home())
-        self.app.push_screen(
-            FilePickerScreen(start_path=start, title=t("re_ssh_key"), simple=True, select_label=t("select_btn")),
-            callback=self._on_ssh_key_selected,
-        )
-
-    def _on_ssh_key_selected(self, result) -> None:
-        if not result:
-            return
-        path = result[0] if isinstance(result, tuple) else result
-        if path:
-            try:
-                self.query_one("#edit-repo-ssh-key", Input).value = str(path)
-            except Exception:
-                pass
-
-    def _open_commit_log(self) -> None:
-        """Open the commit log modal for the currently selected repo."""
-        repo = self._get_selected_repo()
-        if not repo:
-            return
-        repo_path = self.app.paths.repos_dir / f"oscam-{repo.name}"
-        if not repo_path.exists():
-            self.notify(t("log_not_cloned"), severity="warning")
-            return
-        vcs = self._current_vcs(repo)
-        branch = self._get_branch_value() if vcs == "git" else ""
-        from ui.screens.commit_log import CommitLogModal
-        from core.credentials import build_git_env
-        auth_env = {**os.environ, **build_git_env(repo.auth_method, ssh_key=repo.ssh_key)} if repo.auth_method else None
-        self.app.push_screen(
-            CommitLogModal(repo_path=repo_path, vcs=vcs, branch=branch, auth_env=auth_env),
-            callback=self._on_commit_picked,
-        )
-
-    def _on_commit_picked(self, rev: str | None) -> None:
-        """Callback from the commit log modal.
-
-        Writes the picked SHA/revision into the Switch-to field (so it
-        is visible) and runs the same switch_revision flow that F12
-        save would run — but without the full save+refresh dance which
-        would destroy the current screen before the log messages show.
-        """
-        if not rev:
-            return
-        # The SVN log returns revs as "r12345"; strip the leading 'r' so
-        # the value lands in Switch-to as a plain number and svn's
-        # -r argument stays happy.
-        if rev.startswith("r") and rev[1:].isdigit():
-            rev = rev[1:]
-        RepositoryScreen._last_switch_rev = rev
-        try:
-            self.query_one("#edit-repo-switch", Input).value = rev
-        except Exception:
-            pass
-        repo = self._get_selected_repo()
-        if not repo:
-            return
-        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-        if not mgr.state().exists:
-            self.notify(t("log_not_cloned"), severity="warning")
-            return
-        self._log_sync(f"[bold]Switching to {rev}...[/bold]")
-
-        def do_switch():
-            ok = mgr.switch_revision(rev, log=self._log)
-            if ok:
-                self._log("[green]Switch complete[/green]")
-            else:
-                self._log("[red]Switch failed[/red]")
-
-        self._run_in_thread(do_switch)
 
     def _persist_detected_vcs(self, repo: RepoConfig) -> None:
         """After a successful clone, write the detected vcs back into the config."""
@@ -434,123 +533,6 @@ class RepositoryScreen(Screen):
         except Exception:
             pass
 
-    def _current_vcs(self, repo: RepoConfig) -> str:
-        """Return vcs type: config.vcs wins, then local clone probe, then URL heuristic."""
-        from core.vcs_branches import detect_vcs
-        clone = self.app.paths.repos_dir / f"oscam-{repo.name}"
-        if repo.vcs:
-            return repo.vcs
-        return detect_vcs(repo.url, clone_path=clone)
-
-    def _apply_branch_options(self, branches: list, current: str) -> None:
-        """Populate the branch dropdown.
-
-        Entries:
-          1. "(default branch)" → empty string
-          2. the saved branch if not already in the fetched list (so the
-             current selection survives even before the first fetch)
-          3. every fetched branch (if any)
-
-        The user triggers a (re)fetch via the 🔄 button next to the
-        dropdown; there is no in-list "load" placeholder.
-        """
-        try:
-            sel = self.query_one("#edit-repo-branch", Select)
-            self._suppress_branch_changed = True
-            try:
-                # Merge saved branch into the fetched list (if not already
-                # present) and sort alphabetically. "(default branch)"
-                # stays at the very top.
-                merged = list(branches or [])
-                if current and current not in merged:
-                    merged.append(current)
-                merged.sort(key=str.lower)
-                from core.vcs_branches import get_default_branch
-                from rich.text import Text as _Text
-                repo = self._get_selected_repo()
-                default = get_default_branch(repo.url, self._current_vcs(repo)) if repo else ""
-                opts: list[tuple[object, str]] = [(t("ph_repo_branch"), "")]
-                for b in merged:
-                    label = _Text(b, style="bold") if b == default else b
-                    opts.append((label, b))
-                sel.set_options(opts)
-                sel.value = current if current else ""
-            finally:
-                self._suppress_branch_changed = False
-        except Exception:
-            pass
-
-    _suppress_branch_changed: bool = False
-
-    def _load_branches(self, force: bool = False) -> None:
-        """Fetch the branch list for the currently selected repo and
-        populate the dropdown. Runs the network call in a worker thread.
-        """
-        import threading
-        repo = self._get_selected_repo()
-        if not repo:
-            return
-        if not repo.url:
-            self.notify(t("branch_no_url"), severity="warning")
-            return
-        vcs = self._current_vcs(repo)
-        current_branch = self._get_branch_value()
-        current_url = repo.url
-        # Show a transient "loading…" option while the fetch runs
-        try:
-            sel = self.query_one("#edit-repo-branch", Select)
-            self._suppress_branch_changed = True
-            try:
-                placeholder = [(t("branch_loading"), "__loading__")]
-                if current_branch:
-                    placeholder.insert(0, (current_branch, current_branch))
-                else:
-                    placeholder.insert(0, (t("ph_repo_branch"), ""))
-                sel.set_options(placeholder)
-                sel.value = current_branch if current_branch else ""
-            finally:
-                self._suppress_branch_changed = False
-        except Exception:
-            pass
-
-        def do_fetch():
-            from core.vcs_branches import list_branches
-            from core.credentials import build_git_env, build_svn_auth_args
-            repo = self._get_selected_repo()
-            auth_env = None
-            svn_args = None
-            if repo and repo.auth_method:
-                auth_env = {**os.environ, **build_git_env(repo.auth_method, ssh_key=repo.ssh_key)}
-                svn_args = build_svn_auth_args(repo.auth_method, auth_user=repo.auth_user, auth_pass=repo.auth_pass)
-            branches = list_branches(current_url, vcs, force_refresh=force,
-                                     auth_env=auth_env, svn_auth_args=svn_args)
-            def apply():
-                try:
-                    sel_repo = self._get_selected_repo()
-                    if sel_repo and sel_repo.url == current_url:
-                        self._apply_branch_options(branches, current_branch)
-                        if not branches:
-                            self.notify(t("branch_fetch_failed"), severity="warning")
-                except Exception:
-                    pass
-            self.app.call_from_thread(apply)
-
-        threading.Thread(target=do_fetch, daemon=True).start()
-
-    def _get_branch_value(self) -> str:
-        """Read the current branch from the dropdown, normalising sentinels."""
-        try:
-            sel = self.query_one("#edit-repo-branch", Select)
-            val = sel.value
-            if val in ("__load__", "__loading__") or val is Select.BLANK:
-                return ""
-            return str(val) if val else ""
-        except Exception:
-            return ""
-
-    def on_select_changed(self, event: "Select.Changed") -> None:
-        """No-op: branch dropdown changes are read at save time."""
-        pass
 
     def _get_selected_patches(self) -> list[str]:
         """Get list of selected patch filenames from switches."""
@@ -596,12 +578,14 @@ class RepositoryScreen(Screen):
 
     def _refresh_status(self) -> None:
         try:
-            status_lines = []
-            for repo in self._repos:
+            repo = self._get_selected_repo()
+            if repo is None:
+                text = f"  [dim]{t('re_no_repo_selected')}[/dim]"
+            else:
                 mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
                 state = mgr.state()
-                status_lines.append(self._format_status(repo, state))
-            self.query_one("#repo-info", Static).update("\n".join(status_lines))
+                text = self._format_status(repo, state)
+            self.query_one("#repo-info", Static).update(text)
         except Exception:
             pass
 
@@ -615,17 +599,7 @@ class RepositoryScreen(Screen):
                     RepositoryScreen._patch_states[p.stem] = sw.value
                 except Exception:
                     pass
-        try:
-            RepositoryScreen._patches_collapsed = self.query_one("#col-patches", Collapsible).collapsed
-        except Exception:
-            pass
-        try:
-            RepositoryScreen._edit_collapsed = self.query_one("#col-edit", Collapsible).collapsed
-        except Exception:
-            pass
-
     _last_selected: str = ""
-    _last_switch_rev: str = ""
 
     def _full_refresh(self, select_name: str = "") -> None:
         """Reload the screen by replacing it."""
@@ -668,66 +642,72 @@ class RepositoryScreen(Screen):
         thread = threading.Thread(target=wrapper, daemon=True)
         thread.start()
 
-    def on_checkbox_changed(self, event: Checkbox.Changed) -> None:
-        if event.checkbox.id == "chk-excl-auto":
-            repo = self._get_selected_repo()
-            if repo:
-                repo.exclude_from_automation = event.value
-                save_repos(self._repos, self.app.paths.repos_config)
-                if event.value:
-                    from core.automation import remove_from_jobs
-                    remove_from_jobs(self.app.paths.automation_yaml, repo=repo.name)
-
     def on_select_changed(self, event: Select.Changed) -> None:
-        """Fill edit fields when selecting a different repo or auth method."""
+        """Persist repo-select changes and refresh the status box."""
         if event.select.id == "repo-select":
-            RepositoryScreen._adding_new = False
             repo = self._get_selected_repo()
             if repo:
-                self._fill_edit_fields(repo)
                 self.app.settings.last_repo = repo.name
                 self.app.settings.save(self.app.settings_path)
-        elif event.select.id == "edit-repo-auth":
-            self._update_auth_visibility(str(event.value) if event.value else "")
+                if (
+                    RepositoryScreen._last_output_repo
+                    and RepositoryScreen._last_output_repo != repo.name
+                ):
+                    RepositoryScreen._log_history.clear()
+                    try:
+                        self.query_one("#repo-output", RichLog).clear()
+                    except Exception:
+                        pass
+                RepositoryScreen._last_output_repo = repo.name
+            self._refresh_status()
+            self._refresh_clone_button()
+
+    def _refresh_clone_button(self) -> None:
+        """Adjust the Clone/Checkout button label to match the selected repo's VCS."""
+        repo = self._get_selected_repo()
+        try:
+            btn = self.query_one("#btn-clone", Button)
+        except Exception:
+            return
+        if repo is None:
+            btn.label = t("clone")
+            return
+        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+        btn.label = t("clone") if mgr.is_git else t("checkout")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         btn = event.button.id
 
-        if btn == "btn-branch-refresh":
-            self._load_branches(force=True)
-            return
-
-        if btn == "btn-repo-log":
-            self._open_commit_log()
-            return
-
-        if btn == "btn-toggle-pw":
-            try:
-                pw = self.query_one("#edit-repo-pass", Input)
-                pw.password = not pw.password
-            except Exception:
-                pass
-            return
-
-        if btn == "btn-ssh-browse":
-            self._open_ssh_key_picker()
-            return
-
-        if btn == "btn-download":
-            patches_yaml = self.app.paths.root / "data" / "patches.yaml"
-            sources = load_patch_sources(patches_yaml)
-            if not sources:
-                self.notify("No patch URLs configured in data/patches.yaml", severity="warning")
+        if btn == "btn-edit":
+            repo = self._get_selected_repo()
+            if not repo:
+                self.notify(t("no_repo_selected"), severity="warning")
                 return
-            self._log_sync(f"[bold]Downloading {len(sources)} patches...[/bold]")
+            from ui.screens.repository_edit import RepositoryEditScreen
+            self.app.push_screen(RepositoryEditScreen(repo=repo))
+            return
 
-            def do_download():
-                count = download_patches(sources, self.app.paths.patches_dir, log=self._log)
-                self._log(f"[green]Downloaded {count}/{len(sources)} patches[/green]")
+        if btn == "btn-dup":
+            repo = self._get_selected_repo()
+            if not repo:
+                self.notify(t("no_repo_selected"), severity="warning")
+                return
+            from ui.screens.repository_edit import RepositoryEditScreen
+            copy = RepoConfig(
+                name=f"{repo.name}_copy",
+                url=repo.url,
+                branch=repo.branch,
+                vcs=repo.vcs,
+                auth_method=repo.auth_method,
+                ssh_key=repo.ssh_key,
+                auth_user=repo.auth_user,
+                auth_pass=repo.auth_pass,
+                exclude_from_automation=repo.exclude_from_automation,
+            )
+            self.app.push_screen(RepositoryEditScreen(repo=copy, is_new=True))
+            return
 
-            self._run_in_thread(do_download)
-
-        elif btn == "btn-clone":
+        if btn == "btn-clone":
             repo = self._get_selected_repo()
             if repo:
                 self._log_sync(f"[bold]Cloning {repo.name}...[/bold]")
@@ -775,61 +755,36 @@ class RepositoryScreen(Screen):
 
         elif btn == "btn-clean":
             repo = self._get_selected_repo()
-            if repo:
-                mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-                mgr.clean(log=self._log_sync)
-                self._log_sync(f"[yellow]Cleaned {repo.name}[/yellow]")
-                self._refresh_status()
-
-        elif btn == "btn-patch":
-            repo = self._get_selected_repo()
-            if repo:
-                # Collect selected patches
-                selected = self._get_selected_patches()
-                if not selected:
-                    self.notify("No patches selected", severity="warning")
+            if not repo:
+                return
+            if self.app.settings.confirm_dangerous:
+                import time as _time
+                now = _time.time()
+                if (now - RepositoryScreen._clean_confirm_time < 3
+                        and RepositoryScreen._clean_confirm_name == repo.name):
+                    RepositoryScreen._clean_confirm_time = 0
+                    RepositoryScreen._clean_confirm_name = ""
+                else:
+                    RepositoryScreen._clean_confirm_time = now
+                    RepositoryScreen._clean_confirm_name = repo.name
+                    self.notify(
+                        t("confirm_remove_repo_checkout", name=repo.name),
+                        severity="warning", timeout=3,
+                    )
                     return
-                self._log_sync(f"[bold]Applying {len(selected)} patches to {repo.name}...[/bold]")
-                mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-
-                def do_patch():
-                    patches_dir = self.app.paths.patches_dir
-                    success = mgr.apply_patches(patches_dir, log=self._log, selected_patches=selected)
-                    if success and self.app.settings.patch_webif:
-                        mgr.patch_webif(log=self._log)
-
-                self._run_in_thread(do_patch)
+            mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+            mgr.clean(log=self._log_sync)
+            self._log_sync(f"[yellow]Repository {repo.name} removed[/yellow]")
+            self._refresh_status()
 
     def do_add(self) -> None:
-        """F10 Add — clear fields for a new repo (keep URL), open editor, focus Name."""
-        RepositoryScreen._adding_new = True
-        # Keep the current URL as a convenience starting point
-        try:
-            url = self.query_one("#edit-repo-url", Input).value
-        except Exception:
-            url = ""
-        try:
-            self.query_one("#edit-repo-name", Input).value = ""
-            self.query_one("#edit-repo-url", Input).value = url
-            self.query_one("#edit-repo-switch", Input).value = ""
-            sel = self.query_one("#edit-repo-branch", Select)
-            sel.set_options([(t("ph_repo_branch"), "")])
-            sel.value = ""
-            # Keep auth fields as-is (same credentials for new repo)
-        except Exception:
-            pass
-        # Expand the Edit/Add collapsible and focus the Name field
-        try:
-            col = self.query_one("#col-edit", Collapsible)
-            col.collapsed = False
-        except Exception:
-            pass
-        try:
-            self.query_one("#edit-repo-name", Input).focus()
-        except Exception:
-            pass
+        """F10 Add — open the Repository Edit screen for a new entry."""
+        from ui.screens.repository_edit import RepositoryEditScreen
+        self.app.push_screen(RepositoryEditScreen(is_new=True))
 
     _remove_confirm_time: float = 0
+    _clean_confirm_time: float = 0
+    _clean_confirm_name: str = ""
 
     def do_remove(self) -> None:
         """F11 Remove — remove selected repo (double-press to confirm)."""
@@ -854,179 +809,6 @@ class RepositoryScreen(Screen):
         self._log_sync(f"[yellow]Removed repo '{repo.name}'[/yellow]")
         self.notify(t("repo_removed", name=repo.name), severity="warning")
         self._full_refresh()
-
-    def _handle_save_repo(self, notify=True) -> bool:
-        """Save edits to the currently selected repo. Returns True on success."""
-        repo = self._get_selected_repo()
-        if not repo:
-            self.notify("No repo selected", severity="error")
-            return False
-
-        new_name = self.query_one("#edit-repo-name", Input).value.strip()
-        url = self.query_one("#edit-repo-url", Input).value.strip()
-        branch = self._get_branch_value()
-        switch_rev = self.query_one("#edit-repo-switch", Input).value.strip()
-        # Update the persisted Switch-to echo so _fill_edit_fields on
-        # the next refresh shows whatever the user just typed, not a
-        # stale value from a previous commit pick.
-        RepositoryScreen._last_switch_rev = switch_rev
-
-        if not new_name or not url:
-            self.notify("Name and URL are required", severity="error")
-            return False
-
-        # Check name collision (if renamed)
-        if new_name != repo.name and any(r.name == new_name for r in self._repos):
-            self.notify(f"Repo '{new_name}' already exists", severity="error")
-            return False
-
-        # Rename checkout directory if name changed and repo exists on disk
-        if new_name != repo.name:
-            old_path = self.app.paths.repos_dir / f"oscam-{repo.name}"
-            new_path = self.app.paths.repos_dir / f"oscam-{new_name}"
-            if old_path.exists():
-                old_path.rename(new_path)
-                if notify:
-                    self._log_sync(f"Renamed {old_path.name} → {new_path.name}")
-            old_name = repo.name
-            repo.name = new_name
-            # Update all targets that reference the old name
-            self._update_targets_source(old_name, new_name)
-            if notify:
-                self._log_sync(f"[green]Renamed '{old_name}' → '{new_name}'[/green]")
-
-        # Update config
-        old_branch = repo.branch
-        old_url = repo.url
-        repo.url = url
-        repo.branch = branch
-        # Auth fields
-        auth = self._get_auth_fields()
-        repo.auth_method = auth["auth_method"]
-        repo.ssh_key = auth["ssh_key"]
-        repo.auth_user = auth["auth_user"]
-        repo.auth_pass = auth["auth_pass"]
-        # If the URL changed, drop the persisted vcs type so the next
-        # clone re-detects it from the fresh URL/checkout — otherwise
-        # switching e.g. a git entry to an SVN URL would still try git
-        # clone.
-        if url != old_url:
-            repo.vcs = ""
-        # For SVN: rewrite the URL to reflect the picked branch. SVN has
-        # no separate branch concept — the branch IS the URL. We still
-        # keep config.branch as a human-readable marker.
-        vcs = self._current_vcs(repo)
-        if vcs == "svn":
-            from core.repo import RepoManager as _RM
-            effective = _RM(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)._svn_effective_url()
-            if effective != repo.url:
-                repo.url = effective
-                try:
-                    self.query_one("#edit-repo-url", Input).value = effective
-                except Exception:
-                    pass
-        save_repos(self._repos, self.app.paths.repos_config)
-        from core.credentials import clear_persistent_warnings
-        clear_persistent_warnings()
-        if notify:
-            self._log_sync(f"[green]Saved repo '{repo.name}'[/green]")
-        # If the branch changed and the repo is already cloned, switch
-        # the working copy too so the config and on-disk state stay in
-        # sync. Runs in a worker — branch switch can be slow and may
-        # fail on a dirty working copy.
-        # Any async follow-up (branch switch or switch-to revision) runs
-        # in a single worker so _full_refresh only fires once AFTER the
-        # work is done — otherwise the refresh replaces the screen while
-        # the worker is still updating the on-disk state and the new
-        # instance reads a stale revision.
-        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
-        needs_branch_switch = branch != old_branch and mgr.state().exists
-        needs_rev_switch = bool(switch_rev) and mgr.state().exists
-
-        if needs_branch_switch or needs_rev_switch:
-            if needs_branch_switch:
-                self._log_sync(f"[bold]Switching to branch {branch or '(default)'}...[/bold]")
-            if needs_rev_switch:
-                self._log_sync(f"[bold]Switching to {switch_rev}...[/bold]")
-
-            def do_async():
-                if needs_branch_switch:
-                    if mgr.ensure_config_branch(log=self._log):
-                        self._log("[green]Branch switch complete[/green]")
-                    else:
-                        self._log("[red]Branch switch failed[/red]")
-                if needs_rev_switch:
-                    if mgr.switch_revision(switch_rev, log=self._log):
-                        self._log("[green]Switch complete[/green]")
-                    else:
-                        self._log("[red]Switch failed[/red]")
-
-            self._run_in_thread(do_async)
-            return
-
-        if switch_rev and not mgr.state().exists:
-            self._log_sync("[yellow]Repo not checked out — clone first, then switch[/yellow]")
-
-        self._full_refresh(new_name)
-        self._refresh_status()
-
-    def _handle_add_repo(self) -> None:
-        """Add a new repo from edit fields."""
-        name = self.query_one("#edit-repo-name", Input).value.strip()
-        url = self.query_one("#edit-repo-url", Input).value.strip()
-        branch = self._get_branch_value()
-
-        if not name or not url:
-            self.notify("Name and URL are required", severity="error")
-            return
-        if any(r.name == name for r in self._repos):
-            self.notify(f"Repo '{name}' already exists", severity="error")
-            return
-
-        auth = self._get_auth_fields()
-        new_repo = RepoConfig(name=name, url=url, branch=branch,
-                              auth_method=auth["auth_method"], ssh_key=auth["ssh_key"],
-                              auth_user=auth["auth_user"], auth_pass=auth["auth_pass"])
-        self._repos.append(new_repo)
-        save_repos(self._repos, self.app.paths.repos_config)
-        self._log_sync(f"[green]Added repo '{name}'[/green]")
-        self._full_refresh(name)
-
-    def is_dirty(self) -> bool:
-        """True if the edit form differs from the selected repo entry."""
-        try:
-            repo = self._get_selected_repo()
-            if not repo:
-                return False
-            name = self.query_one("#edit-repo-name", Input).value.strip()
-            url = self.query_one("#edit-repo-url", Input).value.strip()
-            branch = self._get_branch_value()
-            return (name != repo.name) or (url != repo.url) or (branch != (repo.branch or ""))
-        except Exception:
-            return False
-
-    def do_save(self) -> str:
-        """Save current repo edits (called by App, no log output).
-
-        In add-mode (after F10): always create a new repo; error if name
-        already exists. Otherwise: update the selected repo.
-        """
-        name = self.query_one("#edit-repo-name", Input).value.strip()
-        url = self.query_one("#edit-repo-url", Input).value.strip()
-        if not name or not url:
-            self.notify("Name and URL are required", severity="error")
-            return ""
-        if RepositoryScreen._adding_new:
-            if any(r.name == name for r in self._repos):
-                self.notify(f"Repo '{name}' already exists", severity="error")
-                return ""
-            self._handle_add_repo()
-            RepositoryScreen._adding_new = False
-            return f"Repository '{name}' added"
-        else:
-            if not self._handle_save_repo(notify=False):
-                return ""
-            return f"Repository '{name}' saved"
 
     def action_go_back(self) -> None:
         RepositoryScreen._log_history.clear()

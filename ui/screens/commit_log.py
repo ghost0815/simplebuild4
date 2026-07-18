@@ -138,8 +138,27 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         sep = "\x1f"
         fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
         cmd = ["git", "log", f"-n{self._limit}", f"--pretty=format:{fmt}"]
-        if self._branch:
-            cmd += [self._branch, "--"]
+        # No branch specified → resolve the remote's default branch so the
+        # log doesn't just walk HEAD (which is the pinned commit on a
+        # detached repo, hiding everything newer).
+        branch = self._branch
+        if not branch:
+            for candidate in ("origin/HEAD", "origin/master", "origin/main"):
+                try:
+                    resolved = subprocess.check_output(
+                        ["git", "rev-parse", "--abbrev-ref", candidate],
+                        cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=5,
+                    ).strip()
+                    if resolved and resolved != candidate:
+                        branch = resolved  # e.g. "origin/master"
+                        break
+                except subprocess.CalledProcessError:
+                    continue
+        if branch:
+            cmd += [branch, "--"]
+        else:
+            # Last resort — walk every local ref so at least something shows.
+            cmd += ["--all"]
         out = subprocess.check_output(
             cmd, cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=20,
             env=self._auth_env,
@@ -219,12 +238,20 @@ class CommitLogModal(ModalScreen[Optional[str]]):
                 else:
                     tbl.add_row(rev, subj_c, date, auth_c, key=rev)
         if tbl.row_count:
-            tbl.move_cursor(row=0)
+            # Land the cursor on the currently-checked-out commit so a
+            # pinned repo opens right at its pin — otherwise row 0.
+            cursor_row = 0
+            if initial and self._current_rev:
+                for idx, row in enumerate(self._current_rows):
+                    if row[0] == self._current_rev:
+                        cursor_row = idx
+                        break
+            tbl.move_cursor(row=cursor_row)
             # Only move focus on the first render — don't steal it from
             # the filter input while the user is still typing.
             if initial:
                 tbl.focus()
-            self._refresh_row_tooltip(0)
+            self._refresh_row_tooltip(cursor_row)
         else:
             tbl.tooltip = None
 

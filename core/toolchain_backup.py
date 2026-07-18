@@ -141,7 +141,8 @@ def backup_toolchain(
         if new_checksum:
             blog(f"Checksum: {new_checksum}")
         if log_path is not None:
-            blog(f"Log: {deliver_link(log_path)}")
+            _log("")
+            _log(f"Log: {deliver_link(log_path)}")
         blog(f"[green]{tc.name} backed up to {backup_file.name}[/green]")
         return True
 
