@@ -264,6 +264,7 @@ re_saved: "{name} gespeichert"
 re_name_required: "Name erforderlich"
 re_name_exists: "Repository '{name}' existiert bereits"
 re_disable_automation: "Von Automation ausschließen"
+re_excluded: "ausgeschlossen"
 
 re_type: "Typ"
 re_type_auth: "Typ / Auth"
@@ -659,7 +660,7 @@ mcp_inspector_ssh_hint: "Falls s4 auf einem anderen Rechner läuft, Inspector-Po
 mcp_inspector_container_hint: "Container-Modus: URL im Browser mit dem Server-Hostname statt 'localhost' öffnen. Ports 6274/6277 müssen im 'docker run -p …' bzw. in der docker-compose.yaml gemappt sein."
 
 # Artifacts-Tab (Hauptbildschirm) — Tab-Label selbst ist hartkodiert ("Files")
-artifacts_border: "Artefakte"
+artifacts_border: "Dateien"
 artifacts_binaries: "Binaries"
 artifacts_logs: "Logs"
 artifacts_libs: "Bibliotheken"

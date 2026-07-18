@@ -26,6 +26,7 @@ class Settings:
     last_target: str = ""          # Last loaded target path (auto-saved)
     last_repo: str = ""            # Last selected repository (auto-saved)
     repo_status_show_all: bool = False  # F3 Status box: single repo (False) or one-line-per-repo overview (True)
+    target_status_show_all: bool = False  # F2 Settings box: single target (False) or one-line-per-target overview (True)
     last_toolchain: str = ""       # Last selected toolchain (auto-saved)
 
     # Repository
@@ -126,6 +127,7 @@ class Settings:
             "last_target": self.last_target,
             "last_repo": self.last_repo,
             "repo_status_show_all": self.repo_status_show_all,
+            "target_status_show_all": self.target_status_show_all,
             "last_toolchain": self.last_toolchain,
             "language": self.language,
             "theme": self.theme,
@@ -201,6 +203,7 @@ class Settings:
             last_target=data.get("last_target", ""),
             last_repo=data.get("last_repo", ""),
             repo_status_show_all=bool(data.get("repo_status_show_all", False)),
+            target_status_show_all=bool(data.get("target_status_show_all", False)),
             last_toolchain=data.get("last_toolchain", ""),
             language=data.get("language", "en"),
             theme=data.get("theme", "textual-dark"),

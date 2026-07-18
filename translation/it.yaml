@@ -264,6 +264,7 @@ re_saved: "{name} salvato"
 re_name_required: "Nome richiesto"
 re_name_exists: "Il repository '{name}' esiste già"
 re_disable_automation: "Escludi dall'Automazione"
+re_excluded: "escluso"
 re_type: "Tipo"
 re_type_auth: "Tipo / Auth"
 re_patches_lbl: "Patch"
@@ -658,7 +659,7 @@ mcp_inspector_ssh_hint: "Se s4 gira su un host remoto, inoltra le porte dell'ins
 mcp_inspector_container_hint: "Modalità container: apri l'URL nel browser con l'hostname del server invece di 'localhost'. Le porte 6274/6277 devono essere mappate tramite 'docker run -p …' o in docker-compose.yaml."
 
 # Tab Artefatti (schermata principale) — l'etichetta del tab è hardcoded ("Files")
-artifacts_border: "Artefatti"
+artifacts_border: "File"
 artifacts_binaries: "Binari"
 artifacts_logs: "File di log"
 artifacts_libs: "Librerie"

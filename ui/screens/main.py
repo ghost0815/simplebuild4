@@ -20,12 +20,28 @@ from ui.screens.toolchains import S4DataTable
 class MainScreen(Screen):
     BINDINGS = [
         Binding("s", "tab_compact", "Summary", show=False),
-        Binding("f", "tab_artifacts", show=False),
+        Binding("a", "tab_artifacts", show=False),
         Binding("o", "tab_log", "Output", show=False),
     ]
 
     def action_tab_compact(self) -> None:
-        self._show_tab("compact")
+        # Already on Summary → S toggles between single-target Settings and
+        # all-targets Status overview.
+        if getattr(MainScreen, "_current_tab", "compact") == "compact":
+            self._toggle_status_mode()
+        else:
+            self._show_tab("compact")
+
+    _current_tab: str = "compact"
+
+    def _toggle_status_mode(self) -> None:
+        """Flip the Info box between single-target and all-targets overview."""
+        self.app.settings.target_status_show_all = not self.app.settings.target_status_show_all
+        try:
+            self.app.settings.save(self.app.settings_path)
+        except Exception:
+            pass
+        self._refresh_info_box()
 
     def action_tab_artifacts(self) -> None:
         self._show_tab("artifacts")
@@ -56,18 +72,23 @@ class MainScreen(Screen):
             # Tabs
             with Horizontal(id="main-tab-bar"):
                 yield Static(" [b]S[/b]ummary ", id="main-tab-compact", classes="tab-active")
-                yield Static(" [b]F[/b]iles ", id="main-tab-artifacts", classes="tab-inactive")
+                yield Static(" [b]A[/b]rtifacts ", id="main-tab-artifacts", classes="tab-inactive")
                 yield Static(" [b]O[/b]utput ", id="main-tab-log", classes="tab-inactive")
 
-            # Info panel (hidden in Log tab)
-            info = Static(
-                "  [bold]No target selected[/bold]\n"
-                "  Create a new target to get started.",
-                id="info",
-            )
-            info.can_focus = True
-            info.border_title = t("settings_title")
-            yield info
+            # Info panel — wraps a Static in its own VerticalScroll so the
+            # box can cap at max-height and scroll when the all-targets
+            # overview exceeds it. Border title, tooltip and click-to-toggle
+            # live on the outer VerticalScroll.
+            info_box = VerticalScroll(id="info")
+            info_box.can_focus = True
+            info_box.border_title = t("settings_title")
+            info_box.tooltip = t("re_status_toggle_tt")
+            with info_box:
+                yield Static(
+                    "  [bold]No target selected[/bold]\n"
+                    "  Create a new target to get started.",
+                    id="info-text",
+                )
 
             artifacts_box = VerticalScroll(id="artifacts")
             artifacts_box.can_focus = True
@@ -98,6 +119,10 @@ class MainScreen(Screen):
                     sel.value = str(p)
                 except Exception:
                     pass
+        # If the persisted view is "all", render it now — otherwise
+        # on_select_changed will have painted the single-target sheet.
+        if self.app.settings.target_status_show_all:
+            self._refresh_info_box()
 
     def _log(self, msg: str) -> None:
         """Append a line to the output panel (RichLog with markup)."""
@@ -105,7 +130,8 @@ class MainScreen(Screen):
 
     def _show_tab(self, tab: str) -> None:
         """Switch between Summary / Artifacts / Log tabs."""
-        self.query_one("#info", Static).display = (tab == "compact")
+        MainScreen._current_tab = tab
+        self.query_one("#info", VerticalScroll).display = (tab == "compact")
         self.query_one("#artifacts").display = (tab == "artifacts")
         self.query_one("#output").display = (tab != "artifacts")
         self.query_one("#main-tab-compact").set_classes("tab-active" if tab == "compact" else "tab-inactive")
@@ -143,6 +169,10 @@ class MainScreen(Screen):
             self._show_tab("artifacts")
         elif widget.id == "main-tab-log":
             self._show_tab("log")
+        elif widget.id == "info" and getattr(event, "y", 1) == 0:
+            # Click on the Info box border title toggles between single-target
+            # detail view and all-targets overview.
+            self._toggle_status_mode()
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         tbl = event.data_table
@@ -177,6 +207,118 @@ class MainScreen(Screen):
                 current = test
         lines.append(current)
         return "\n".join(lines)
+
+    def _refresh_info_box(self) -> None:
+        """Dispatch to either single-target Settings or all-targets Status."""
+        try:
+            info_box = self.query_one("#info", VerticalScroll)
+        except Exception:
+            return
+        if self.app.settings.target_status_show_all:
+            info_box.border_title = t("re_status")
+            self._update_info_all()
+        else:
+            info_box.border_title = t("settings_title")
+            target = self._current_selected_target()
+            if target is None:
+                self.query_one("#info-text", Static).update(
+                    "  [bold]No target selected[/bold]\n"
+                    "  Create a new target to get started."
+                )
+            else:
+                self._update_info(target)
+        try:
+            info_box.scroll_home(animate=False)
+        except Exception:
+            pass
+
+    def _current_selected_target(self) -> "Target | None":
+        """Load the target currently picked in the dropdown, or None."""
+        try:
+            sel = self.query_one("#target-select", Select)
+            value = sel.value
+        except Exception:
+            return None
+        if not value:
+            return None
+        from pathlib import Path
+        p = Path(str(value))
+        if not p.exists():
+            return None
+        try:
+            return Target.load(p)
+        except Exception:
+            return None
+
+    def _update_info_all(self) -> None:
+        """Render one line per target — same header shape as _update_info,
+        with the selected target's line bolded."""
+        from pathlib import Path
+        entries = self._load_targets()  # list of (label, path) or [("(no targets)", None)]
+        selected_value = None
+        try:
+            selected_value = self.query_one("#target-select", Select).value
+        except Exception:
+            pass
+        loaded: list[tuple[Target, bool]] = []
+        for label, path in entries:
+            if not path:
+                continue
+            try:
+                tgt = Target.load(Path(str(path)))
+            except Exception:
+                continue
+            loaded.append((tgt, str(path) == str(selected_value)))
+        if not loaded:
+            self.query_one("#info-text", Static).update(
+                "  [dim]No targets configured.[/dim]"
+            )
+            return
+        name_pad = max(len(t.name) for t, _ in loaded)
+        # Cache repo-name lookup once per render
+        from core.repos_config import load_repos
+        try:
+            repo_names = {r.name for r in load_repos(self.app.paths.repos_config)}
+        except Exception:
+            repo_names = set()
+        lines = [self._target_one_line(tgt, is_sel, name_pad, repo_names)
+                 for tgt, is_sel in loaded]
+        self.query_one("#info-text", Static).update("\n".join(lines))
+
+    def _target_one_line(self, target: Target, is_selected: bool,
+                         name_pad: int, repo_names: set) -> str:
+        """Header-only rendering — mirrors the first line in _update_info."""
+        from rich.markup import escape as _esc
+        b = target.build
+        n_repos = len(target.sources)
+        n_tcs = len(target.toolchains)
+        build_count = n_repos * n_tcs
+        active_deps = [d for d in target.deployment if d.enabled and d.host]
+        dep_count = len(active_deps)
+
+        name = target.name.ljust(name_pad)
+        parts = [_esc(name)]
+        if target.description:
+            parts.append(f" — {_esc(target.description)}")
+        else:
+            parts.append(" —")
+        if build_count:
+            _bs = (b.build_system or "make").strip().lower()
+            _word = t('n_builds') if build_count != 1 else t('n_build')
+            dep_word = t('n_deployments') if dep_count != 1 else t('n_deployment')
+            parts.append(f" ({build_count} {_bs} {_word}, {dep_count} {dep_word})")
+        # Flag: missing source-repos (shown compactly)
+        missing = [s.name for s in target.sources
+                   if (s.name if hasattr(s, 'name') else s) not in repo_names]
+        flags: list[str] = []
+        if target.exclude_from_automation:
+            flags.append(f"[yellow]{t('re_excluded')}[/yellow]")
+        if missing:
+            flags.append(f"[red]missing: {', '.join(_esc(m) for m in missing)}[/red]")
+        flags_str = f"  ({', '.join(flags)})" if flags else ""
+
+        body = "".join(parts) + flags_str
+        return f"  [bold]{body}[/bold]" if is_selected else f"  {body}"
 
     def _update_info(self, target: Target) -> None:
         """Update the info panel with target details."""
@@ -301,14 +443,13 @@ class MainScreen(Screen):
             names = ", ".join(sorted(d.name or d.host for d in active_deps))
             lines.append(f"  {_lbl('upload', len(active_deps)):<{pad}} {names}")
 
-        info = self.query_one("#info", Static)
-        info.update("\n".join(lines))
+        self.query_one("#info-text", Static).update("\n".join(lines))
 
     def on_screen_resume(self) -> None:
         """Refresh target list and translations when returning from another screen."""
         # Update translated widgets (language may have changed in settings)
         try:
-            self.query_one("#info", Static).border_title = t("settings_title")
+            self.query_one("#info", VerticalScroll).border_title = t("settings_title")
             self.query_one("#output", RichLog).border_title = t("output_title")
             self.query_one("#btn-edit", Button).label = t("edit")
             self.query_one("#btn-dup", Button).label = t("duplicate")
@@ -333,6 +474,11 @@ class MainScreen(Screen):
                 sel.value = select_path
             except Exception:
                 pass
+        # Always re-render — sel.value = select_path only triggers
+        # on_select_changed when the value actually changes, so a target
+        # that was renamed in-place (same path, new content) or a fresh
+        # all-view after Edit needs an explicit refresh either way.
+        self._refresh_info_box()
         # After re-scanning all targets, surface any *current* decrypt
         # failures. If everything decrypted fine (e.g. the user just
         # fixed a password and returned from target_edit), pop returns
@@ -352,7 +498,13 @@ class MainScreen(Screen):
         if event.select.id == "target-select" and event.value is not None and isinstance(event.value, str):
             from pathlib import Path
             target = Target.load(Path(event.value))
-            self._update_info(target)
+            # In all-targets view we re-render the whole overview so the
+            # bold-marker moves to the newly selected line; in single view
+            # we update the detail sheet as before.
+            if self.app.settings.target_status_show_all:
+                self._update_info_all()
+            else:
+                self._update_info(target)
             try:
                 if self.query_one("#artifacts").display:
                     self._refresh_artifacts()
@@ -503,7 +655,7 @@ class MainScreen(Screen):
                 return
         path.unlink(missing_ok=True)
         self._refresh_targets()
-        self.query_one("#info", Static).update(
+        self.query_one("#info-text", Static).update(
             "  [bold]No target selected[/bold]\n"
             "  Create a new target to get started."
         )

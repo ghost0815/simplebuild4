@@ -264,6 +264,7 @@ re_saved: "Saved {name}"
 re_name_required: "Name required"
 re_name_exists: "Repository '{name}' already exists"
 re_disable_automation: "Exclude from automation"
+re_excluded: "excluded"
 re_type: "Type"
 re_type_auth: "Type / Auth"
 re_patches_lbl: "Patches"
@@ -660,8 +661,8 @@ mcp_inspector_install_failed: "Node install failed — see log above."
 mcp_inspector_ssh_hint: "If s4 runs on a remote host, forward the inspector ports: ssh -L 6274:localhost:6274 -L 6277:localhost:6277 <host>  — then open the localhost URL on your laptop."
 mcp_inspector_container_hint: "Container mode: open the URL in your browser with the server's hostname instead of 'localhost'. Ports 6274/6277 must be mapped via 'docker run -p …' or in docker-compose.yaml."
 
-# Artifacts tab (main screen) — tab label itself is hardcoded ("Files")
-artifacts_border: "Artifacts"
+# Artifacts tab (main screen) — tab label itself is hardcoded ("Artifacts")
+artifacts_border: "Files"
 artifacts_binaries: "Binaries"
 artifacts_logs: "Logs"
 artifacts_libs: "Libraries"
