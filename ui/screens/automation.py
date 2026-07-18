@@ -378,11 +378,11 @@ class AutomationScreen(Screen):
     CSS = """
     #sched-controls {
         height: 3;
-        padding: 0 1;
+        padding: 0;
     }
     #sched-tab-bar {
         height: 1;
-        padding: 0 0 0 1;
+        padding: 0;
         margin-top: 1;
     }
     .sched-title {
@@ -395,7 +395,7 @@ class AutomationScreen(Screen):
     }
     #sched-entries {
         height: 1fr;
-        margin: 0 2;
+        margin: 0;
     }
     #sched-entries .up-grid {
         grid-columns: 2fr 3fr;
@@ -414,7 +414,7 @@ class AutomationScreen(Screen):
     }
     #sched-log {
         height: 40%;
-        margin: 1 2;
+        margin: 1 0;
         background: $boost;
         border: solid $accent;
         border-title-color: $text;
@@ -426,7 +426,7 @@ class AutomationScreen(Screen):
     }
     #sched-log-big {
         height: 1fr;
-        margin: 1 2;
+        margin: 1 0;
         background: $boost;
         border: solid $accent;
         border-title-color: $text;
@@ -443,7 +443,7 @@ class AutomationScreen(Screen):
         width: 1fr;
         height: auto;
         max-height: 14;
-        margin: 1 2;
+        margin: 1 0;
         background: $surface;
         border: tall $border-blurred;
         color: $foreground;

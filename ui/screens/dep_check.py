@@ -42,6 +42,7 @@ class DependencyCheckModal(ModalScreen[None]):
         border: solid $accent;
         border-title-color: $text;
         border-title-style: bold;
+        padding: 0 1;
         overflow-y: auto;
     }
     #dep-log:focus {
