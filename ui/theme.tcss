@@ -437,14 +437,28 @@ Collapsible:focus-within > CollapsibleTitle {
     margin: 1 0;
     padding: 1 1;
     height: auto;
+    max-height: 50%;
     background: $boost;
     border: solid $primary;
     border-title-color: $text;
     border-title-style: bold;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+#repo-info-text {
+    height: auto;
+    width: 1fr;
 }
 
 #repo-info:focus {
     border: heavy $primary;
+}
+
+/* Border title is a clickable toggle — subtle background tint only on
+   the title itself, so the interactive hot-spot is where the click is. */
+#repo-info:hover {
+    border-title-background: $primary-lighten-1;
 }
 
 #repo-output {

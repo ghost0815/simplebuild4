@@ -44,7 +44,11 @@ class RepositoryScreen(Screen):
     ]
 
     def action_tab_summary(self) -> None:
-        self._show_tab("summary")
+        # Already on Summary → S toggles between single-repo and all-repos view.
+        if RepositoryScreen._current_tab == "summary":
+            self._toggle_status_mode()
+        else:
+            self._show_tab("summary")
 
     def action_tab_patches(self) -> None:
         self._show_tab("patches")
@@ -202,12 +206,19 @@ class RepositoryScreen(Screen):
                 yield Static(" [b]O[/b]utput ", id="repo-tab-output", classes="tab-inactive")
 
             with VerticalScroll(id="repo-scroll"):
-                # Status box — populated by _refresh_status() from on_mount /
-                # on_select_changed. Only shows the currently selected repo.
-                info = Static(f"  [dim]{t('re_no_repo_selected')}[/dim]", id="repo-info")
-                info.can_focus = True
-                info.border_title = t("re_status")
-                yield info
+                # Status box — wraps a Static in its own VerticalScroll so
+                # the box can cap at max-height and scroll its content when
+                # the all-repos overview exceeds that height. Border title,
+                # tooltip and click-to-toggle live on the outer box.
+                info_box = VerticalScroll(id="repo-info")
+                info_box.can_focus = True
+                info_box.border_title = t("settings_title")
+                info_box.tooltip = t("re_status_toggle_tt")
+                with info_box:
+                    yield Static(
+                        f"  [dim]{t('re_no_repo_selected')}[/dim]",
+                        id="repo-info-text",
+                    )
 
                 # Patches box (shown on Patches tab; hidden on Summary/Output)
                 patches_dir = self.app.paths.patches_dir
@@ -293,6 +304,10 @@ class RepositoryScreen(Screen):
             self._show_tab("patches")
         elif widget_id == "repo-tab-output":
             self._show_tab("output")
+        elif widget_id == "repo-info" and getattr(event, "y", 1) == 0:
+            # Click on the Status box border title toggles between
+            # single-repo detail view and all-repos overview.
+            self._toggle_status_mode()
 
     def on_mount(self) -> None:
         """Restore selection and log on mount."""
@@ -503,6 +518,92 @@ class RepositoryScreen(Screen):
             f"  {patches_label:<{pad}} {patches_val}",
         ])
 
+    def _format_status_all(self) -> str:
+        """Render one line per repo — same header shape as _format_status,
+        with the selected repo's line bolded."""
+        if not self._repos:
+            return f"  [dim]{t('re_no_repo_selected')}[/dim]"
+        sel = self._get_selected_repo()
+        sel_name = sel.name if sel else ""
+        name_pad = max(len(r.name) for r in self._repos)
+        lines: list[str] = []
+        for repo in self._repos:
+            mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+            state = mgr.state()
+            lines.append(self._status_one_line(repo, state, repo.name == sel_name, name_pad))
+        return "\n".join(lines)
+
+    def _status_one_line(self, repo: RepoConfig, state: RepoState,
+                         is_selected: bool, name_pad: int) -> str:
+        """Header-only rendering — mirrors the header block in _format_status."""
+        from rich.markup import escape as _esc
+        name = repo.name.ljust(name_pad)
+
+        if not state.exists:
+            body = f"{_esc(name)} — [red]{t('re_not_checked_out')}[/red]"
+            return f"  [bold]{body}[/bold]" if is_selected else f"  {body}"
+
+        # Match the flag logic in _format_status exactly.
+        pin_str = (repo.switch_to or "").strip()
+        pinned = bool(pin_str)
+        mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
+        applied = mgr.list_applied_patches()
+        vcs_up = state.vcs.upper()
+        head_label = "detached" if state.detached else (state.branch or "—")
+        expected_branch = repo.branch or state.default_branch
+        on_config_branch = (
+            not state.detached and expected_branch and expected_branch == state.branch
+        )
+
+        def _pin_matches() -> bool:
+            if state.vcs == "svn":
+                return pin_str in (str(state.revision), f"r{state.revision}")
+            if state.commit and (
+                pin_str == state.commit
+                or state.commit.startswith(pin_str)
+                or pin_str.startswith(state.commit)
+            ):
+                return True
+            if state.tag and pin_str == state.tag:
+                return True
+            try:
+                import subprocess as _sp
+                pin_sha = _sp.check_output(
+                    ["git", "rev-parse", "--verify", "--short", pin_str],
+                    cwd=state.path, text=True, stderr=_sp.DEVNULL, timeout=3,
+                ).strip()
+                head_sha = _sp.check_output(
+                    ["git", "rev-parse", "--verify", "--short", "HEAD"],
+                    cwd=state.path, text=True, stderr=_sp.DEVNULL, timeout=3,
+                ).strip()
+                return bool(pin_sha) and pin_sha == head_sha
+            except Exception:
+                return False
+
+        flags: list[str] = []
+        if pinned:
+            flags.append(
+                f"[green]{t('re_pinned')}[/green]" if _pin_matches()
+                else f"[yellow]{t('re_pending')}[/yellow]"
+            )
+        elif on_config_branch:
+            flags.append(f"[green]{t('re_current')}[/green]")
+        else:
+            flags.append(f"[yellow]{t('re_pending')}[/yellow]")
+        if applied:
+            flags.append(f"[yellow]{t('re_patched')}[/yellow]")
+        flags_str = f" ({', '.join(flags)})" if flags else ""
+
+        if state.vcs == "git":
+            version = state.tag if state.tag else f"r{state.revision}"
+            body = (
+                f"{_esc(name)} — {vcs_up} {version} "
+                f"@ {state.commit} @ {head_label}"
+            )
+        else:
+            body = f"{_esc(name)} — {vcs_up} r{state.revision} @ {head_label}"
+        return f"  [bold]{body}[/bold]{flags_str}" if is_selected else f"  {body}{flags_str}"
+
     def _get_selected_repo_from_list(self) -> RepoConfig | None:
         """Get first repo (for use in compose before Select is mounted)."""
         return self._repos[0] if self._repos else None
@@ -576,8 +677,26 @@ class RepositoryScreen(Screen):
         else:
             sel.value = Select.BLANK
 
+    def _toggle_status_mode(self) -> None:
+        """Flip the Status box between single-repo and all-repos overview."""
+        self.app.settings.repo_status_show_all = not self.app.settings.repo_status_show_all
+        try:
+            self.app.settings.save(self.app.settings_path)
+        except Exception:
+            pass
+        self._refresh_status()
+
     def _refresh_status(self) -> None:
         try:
+            info_box = self.query_one("#repo-info", VerticalScroll)
+            info_text = self.query_one("#repo-info-text", Static)
+            show_all = self.app.settings.repo_status_show_all
+            if show_all and self._repos:
+                info_box.border_title = t("re_status")
+                info_text.update(self._format_status_all())
+                info_box.scroll_home(animate=False)
+                return
+            info_box.border_title = t("settings_title")
             repo = self._get_selected_repo()
             if repo is None:
                 text = f"  [dim]{t('re_no_repo_selected')}[/dim]"
@@ -585,7 +704,8 @@ class RepositoryScreen(Screen):
                 mgr = RepoManager(repo, self.app.paths.repos_dir, self.app.paths.backup_dir)
                 state = mgr.state()
                 text = self._format_status(repo, state)
-            self.query_one("#repo-info", Static).update(text)
+            info_text.update(text)
+            info_box.scroll_home(animate=False)
         except Exception:
             pass
 
