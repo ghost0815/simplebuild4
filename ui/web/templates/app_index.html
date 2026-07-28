@@ -110,7 +110,7 @@
       <div class="intro">
         <div>Session ended.</div>
         <button type="button" onClick="refresh()">Reconnect</button>
-        {% if has_auth %}<button type="button" onClick="window.location.href='/logout'" style="background-color:#ba3c5b;margin-top:8px">Logout</button>{% endif %}
+        {% if has_auth %}<button type="button" onClick="window.location.href='{{ prefix }}/logout'" style="background-color:#ba3c5b;margin-top:8px">Logout</button>{% endif %}
       </div>
     </div>
 

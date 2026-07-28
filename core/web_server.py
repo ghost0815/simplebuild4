@@ -103,10 +103,21 @@ class S4Server(Server):
         ctx.load_cert_chain(self._ssl_certfile, self._ssl_keyfile)
         return ctx
 
+
+    @staticmethod
+    def _fwd_prefix(request):
+        """Public URL prefix set by a reverse proxy (X-Forwarded-Prefix).
+        Returns "" when absent so string-concat stays a no-op."""
+        p = request.headers.get("X-Forwarded-Prefix", "").rstrip("/")
+        if p and not p.startswith("/"):
+            p = "/" + p
+        return p
+
     async def _handle_login_get(self, request: web.Request) -> web.Response:
         """Show login form."""
         return aiohttp_jinja2.render_template(
-            "login.html", request, {"error": "", **self._theme_colors},
+            "login.html", request,
+            {"error": "", "prefix": self._fwd_prefix(request), **self._theme_colors},
         )
 
     async def _handle_login_post(self, request: web.Request) -> web.Response:
@@ -116,7 +127,10 @@ class S4Server(Server):
         password = data.get("password", "")
         if user == self._auth_user and password == self._auth_password:
             # Redirect to index with session cookie
+            prefix = self._fwd_prefix(request)
             target = request.query.get("next", "/")
+            if prefix and not target.startswith(prefix):
+                target = f"{prefix}{target}" if target.startswith("/") else f"{prefix}/{target}"
             response = web.HTTPFound(target)
             token = _sign_token(user, self._cookie_secret)
             response.set_cookie(
@@ -129,14 +143,16 @@ class S4Server(Server):
             return response
         response = aiohttp_jinja2.render_template(
             "login.html", request,
-            {"error": "Invalid username or password", **self._theme_colors},
+            {"error": "Invalid username or password",
+             "prefix": self._fwd_prefix(request), **self._theme_colors},
         )
         response.set_status(401)
         return response
 
     async def _handle_logout(self, request: web.Request) -> web.Response:
         """Clear session cookie and redirect to login."""
-        response = web.HTTPFound("/login")
+        prefix = self._fwd_prefix(request)
+        response = web.HTTPFound(f"{prefix}/login")
         response.del_cookie(_COOKIE_NAME)
         return response
 
@@ -153,8 +169,9 @@ class S4Server(Server):
         if cookie and _verify_token(cookie, self._cookie_secret):
             return await handler(request)
 
-        # Redirect to login form
-        return web.HTTPFound(f"/login?next={path}")
+        # Redirect to login form (proxy-aware)
+        prefix = self._fwd_prefix(request)
+        return web.HTTPFound(f"{prefix}/login?next={prefix}{path}")
 
     @aiohttp_jinja2.template("app_index.html")
     async def handle_index(self, request: web.Request) -> dict:
@@ -174,10 +191,14 @@ class S4Server(Server):
             request.headers.get("Host", "")
             or request.headers.get("X-Forwarded-Host", "")
         )
+        # Trust X-Forwarded-Proto / -Prefix from a reverse proxy so
+        # generated URLs match how the browser reached us.
+        fwd_proto = request.headers.get("X-Forwarded-Proto", "").lower()
+        prefix = self._fwd_prefix(request)
         if host_header:
-            http_proto = "https" if self._ssl_certfile else "http"
-            ws_proto = "wss" if self._ssl_certfile else "ws"
-            base_url = f"{http_proto}://{host_header}"
+            http_proto = fwd_proto or ("https" if self._ssl_certfile else "http")
+            ws_proto = "wss" if http_proto == "https" else "ws"
+            base_url = f"{http_proto}://{host_header}{prefix}"
         else:
             base_url = self.public_url
             ws_proto = "wss" if self.public_url.startswith("https") else "ws"
@@ -187,7 +208,8 @@ class S4Server(Server):
 
         return {
             "font_size": font_size,
-            "app_websocket_url": f"{ws_proto}://{host_header or self.host}{ws_path}",
+            "prefix": prefix,
+            "app_websocket_url": f"{ws_proto}://{host_header or self.host}{prefix}{ws_path}",
             "config": {
                 "static": {"url": f"{base_url}{static_path}"},
             },
