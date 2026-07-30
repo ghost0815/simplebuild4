@@ -8,6 +8,36 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css?family=Roboto%20Mono"
     />
+    <!-- Reverse-proxy shim: textual-serve builds file-download URLs as
+         `${window.location.origin}/download/${key}` -- absolute-origin,
+         no path prefix. Behind a reverse proxy mounted under a URL
+         prefix (X-Forwarded-Prefix), these URLs miss the prefix and
+         404 at the origin root. Patch window.open to prepend our
+         prefix to any /download/... URL that targets this origin. When
+         `prefix` is empty (no proxy), this is a no-op. Loaded before
+         textual.js so any early cache the library takes of window.open
+         already sees the wrapped version. -->
+    <script>
+      (function () {
+        var PREFIX = "{{ prefix }}";
+        if (!PREFIX) return;
+        var origOpen = window.open;
+        window.open = function (url, target, features) {
+          if (typeof url === "string") {
+            try {
+              var u = new URL(url, window.location.href);
+              if (u.origin === window.location.origin
+                  && u.pathname.indexOf("/download/") === 0
+                  && u.pathname.indexOf(PREFIX + "/download/") !== 0) {
+                u.pathname = PREFIX + u.pathname;
+                url = u.toString();
+              }
+            } catch (e) { /* not a valid URL -- leave as-is */ }
+          }
+          return origOpen.call(this, url, target, features);
+        };
+      })();
+    </script>
     <script src="{{ config.static.url }}js/textual.js"></script>
     <style>
       body {
