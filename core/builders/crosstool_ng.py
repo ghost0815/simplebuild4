@@ -88,22 +88,28 @@ class CrosstoolNG:
         self.log = log or (lambda m: None)
         self.cancel_check = cancel_check or (lambda: False)
 
-    @property
-    def ct_ng(self) -> Path:
-        """Path to the ct-ng executable inside the install dir.
+    @classmethod
+    def resolve_binary(cls, ctng_dir: Path) -> Optional[Path]:
+        """Return the existing ct-ng binary inside ``ctng_dir``, or None.
 
-        Falls back to `<dir>/bin/ct-ng` (the layout produced by
-        ./configure --prefix=<dir> && make install) when the
-        local-build path does not exist.
+        Two supported layouts:
+          * `<dir>/ct-ng`       — `./configure --enable-local && make`
+                                   (produced by s4's own bootstrap)
+          * `<dir>/bin/ct-ng`   — `./configure --prefix=<dir> && make install`
+                                   (produced by a system-style install)
         """
-        candidates = [
-            self.ctng_dir / self.BINARY,
-            self.ctng_dir / "bin" / self.BINARY,
-        ]
-        for c in candidates:
+        for c in (ctng_dir / cls.BINARY, ctng_dir / "bin" / cls.BINARY):
             if c.is_file():
                 return c
-        return candidates[0]
+        return None
+
+    @property
+    def ct_ng(self) -> Path:
+        """Path to the ct-ng executable inside the install dir."""
+        found = self.resolve_binary(self.ctng_dir)
+        # Fall back to the local-build path when nothing is there yet so
+        # callers that log/format the path still get a sensible value.
+        return found if found is not None else (self.ctng_dir / self.BINARY)
 
     def is_installed(self) -> bool:
         """True if the builder binary is built and ready."""

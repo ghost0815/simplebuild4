@@ -4202,9 +4202,10 @@ class ToolchainsScreen(Screen):
         # Determine install dir
         ctng_path = self._resolve_ctng_dir()
 
-        # Check builder is installed
-        binary_path = ctng_path / CrosstoolNG.BINARY
-        if not binary_path.is_file():
+        # Check builder is installed (accepts both s4's local-build layout
+        # and a system-style `--prefix` install with the binary in bin/).
+        binary_path = CrosstoolNG.resolve_binary(ctng_path)
+        if binary_path is None:
             self.notify(t("customize_builder_missing", name="crosstool-ng"), severity="warning", timeout=10)
             return
 
@@ -4248,8 +4249,10 @@ class ToolchainsScreen(Screen):
         working_cfg = ctng_path / ".config"
         hash_before = _hash_file(working_cfg)
 
-        # Run the customize command via app.suspend()
-        cmd = list(CrosstoolNG.CUSTOMIZE_CMD)
+        # Run the customize command via app.suspend(). Use the resolved
+        # binary path (not the hardcoded ./ct-ng) so a system-installed
+        # ctng in bin/ct-ng also gets invoked correctly.
+        cmd = [str(binary_path), "menuconfig"]
         def _rel(p):
             if not p:
                 return ""
