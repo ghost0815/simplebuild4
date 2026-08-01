@@ -11,6 +11,9 @@ Rules:
     pre-installed so first-run has no network dependency.
   - ``pip_name`` overrides ``name`` for install (name is the import name).
   - ``min_version`` becomes ``>=`` in the requirement.
+  - ``max_version`` becomes ``<`` in the requirement — use it as an upper
+    bound to guard against breaking major bumps (e.g. mcp 2.0 broke the
+    ``@server.list_tools()`` API).
 """
 
 from __future__ import annotations
@@ -29,8 +32,14 @@ def main(path: str) -> int:
         if not name or name == "pip":
             continue
         pkg = entry.get("pip_name", name)
-        ver = entry.get("min_version")
-        reqs.append(f"{pkg}>={ver}" if ver else pkg)
+        lo = entry.get("min_version")
+        hi = entry.get("max_version")
+        parts: list[str] = []
+        if lo:
+            parts.append(f">={lo}")
+        if hi:
+            parts.append(f"<{hi}")
+        reqs.append(f"{pkg}{','.join(parts)}" if parts else pkg)
 
     print(" ".join(reqs))
     return 0

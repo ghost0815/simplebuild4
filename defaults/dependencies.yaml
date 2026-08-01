@@ -140,6 +140,7 @@ python:
   - name: mcp
     optional: true
     min_version: "1.0"
+    max_version: "2"
   - name: starlette
     optional: true
   - name: uvicorn
