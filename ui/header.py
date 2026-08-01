@@ -4,11 +4,17 @@ import subprocess
 from textual.widgets import Static
 from textual.containers import Horizontal
 
-VERSION = "2026.04"
+VERSION = "2026.08"  # last-resort fallback when git is unavailable
 
 
 def _get_version() -> str:
-    """Build version string: sha@branch 2026.04.337 alpha."""
+    """Build version string: sha@branch YYYY.MM.<count> [suffix]
+
+    The YYYY.MM prefix comes from the HEAD commit's date so the version
+    tracks actual project activity — a month with no commits does not
+    bump the label. Falls back to the ``VERSION`` constant when git
+    isn't available.
+    """
     base, _, suffix = VERSION.partition(" ")
     try:
         count = subprocess.run(
@@ -23,6 +29,15 @@ def _get_version() -> str:
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
+        # %cs → YYYY-MM-DD (committer date, short). Use the year + month
+        # as the version prefix so it reflects the last real change.
+        commit_date = subprocess.run(
+            ["git", "log", "-1", "--format=%cs", "HEAD"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        parts = commit_date.split("-")
+        if len(parts) >= 2:
+            base = f"{parts[0]}.{parts[1]}"
         if count and sha:
             return f"{sha}@{branch} {base}.{count} {suffix}".strip()
     except Exception:
