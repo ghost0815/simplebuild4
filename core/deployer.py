@@ -17,9 +17,14 @@ from rich.markup import escape as rich_escape
 
 from core.target import DeploymentConfig
 
-SSH_OPTS = ["-o", "StrictHostKeyChecking=no",
-            "-o", "HostKeyAlgorithms=+ssh-rsa",
-            "-o", "ConnectTimeout=10"]
+SSH_OPTS = [
+    # Auto-accept previously-unseen host keys (StrictHostKeyChecking=no
+    # writes them to known_hosts on first contact); but a CHANGED key
+    # is still refused so the user sees an MITM warning and decides.
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "HostKeyAlgorithms=+ssh-rsa",
+    "-o", "ConnectTimeout=10",
+]
 
 
 class Deployer:
@@ -109,8 +114,30 @@ class Deployer:
                 self._log("  [green]Connected successfully[/green]")
                 return True
             else:
-                err = result.stderr.strip().split("\n")[-1] if result.stderr else "unknown error"
-                self._log(f"  [red]Connection failed: {rich_escape(err)}[/red]")
+                # Preserve every stderr line the ssh client emitted — the
+                # last line is often terse ("Permission denied") while the
+                # actual cause (host-key change, wrong key, unreachable
+                # port …) sits several lines above with the fix-it hint.
+                stderr = (result.stderr or "").rstrip()
+                lines = [ln.rstrip() for ln in stderr.splitlines() if ln.strip()] if stderr else []
+                if not lines:
+                    self._log("  [red]Connection failed: unknown error[/red]")
+                else:
+                    self._log(f"  [red]Connection failed:[/red]")
+                    for ln in lines:
+                        self._log(f"    [red]{rich_escape(ln)}[/red]")
+                    # Highlight the fix for the most common recoverable
+                    # case — a host key that changed because the target
+                    # box was reflashed / reset.
+                    if "REMOTE HOST IDENTIFICATION HAS CHANGED" in stderr \
+                            or "Host key verification failed" in stderr:
+                        target = f"[{self.config.host}]:{self.config.port}" \
+                            if self.config.port != 22 else self.config.host
+                        self._log(
+                            "  [yellow]Host key changed. "
+                            "If you trust this box, drop the stale key with:[/yellow]"
+                        )
+                        self._log(f"    [bold]ssh-keygen -R {target}[/bold]")
                 return False
         except subprocess.TimeoutExpired:
             self._log("  [red]Connection timeout[/red]")
