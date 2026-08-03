@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ct-ng menuconfig</title>
+  <link rel="stylesheet" href="{{ prefix }}/term/vendor/xterm.css">
+  <style>
+    html, body { margin: 0; padding: 0; background: {{ bg }}; color: {{ fg }}; height: 100%; font-family: 'Menlo', 'Consolas', 'Courier New', monospace; }
+    #terminal { width: 100vw; height: 100vh; padding: 4px; box-sizing: border-box; }
+    #status { position: fixed; top: 8px; right: 8px; padding: 4px 10px; background: {{ panel }}; border: 1px solid {{ surface }}; color: {{ fg_dim }}; font-size: 12px; border-radius: 4px; z-index: 10; transition: opacity .4s ease-out; }
+    #status.err { color: {{ error_color }}; border-color: {{ error_color }}; }
+    #status.hide { opacity: 0; pointer-events: none; }
+    .xterm-viewport::-webkit-scrollbar { width: 8px; }
+    .xterm-viewport::-webkit-scrollbar-thumb { background: {{ surface }}; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div id="status">{{ t("term_connecting") }}</div>
+  <div id="terminal"></div>
+  <script src="{{ prefix }}/term/vendor/xterm.js"></script>
+  <script src="{{ prefix }}/term/vendor/xterm-fit.js"></script>
+  <script>
+    (function () {
+      var term = new Terminal({
+        cursorBlink: true,
+        allowProposedApi: true,
+        theme: { background: {{ bg | tojson }}, foreground: {{ fg | tojson }} },
+        fontFamily: 'Menlo, Consolas, "Courier New", monospace',
+        fontSize: 14,
+        scrollback: 2000,
+      });
+      var fit = new FitAddon.FitAddon();
+      term.loadAddon(fit);
+      term.open(document.getElementById('terminal'));
+      fit.fit();
+
+      var status = document.getElementById('status');
+      function hideStatus() { status.classList.add('hide'); }
+      function errStatus(msg) { status.textContent = msg; status.classList.add('err'); status.classList.remove('hide'); }
+
+      var wsScheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      var wsUrl = wsScheme + '//' + window.location.host + {{ ws_path | tojson }};
+      var ws = new WebSocket(wsUrl, 'tty');
+      ws.binaryType = 'arraybuffer';
+      var enc = new TextEncoder();
+      var dec = new TextDecoder();
+
+      ws.onopen = function () {
+        status.textContent = {{ t("term_connected") | tojson }};
+        setTimeout(hideStatus, 1000);
+        // ttyd initial JSON handshake — auth token is empty (all auth
+        // was checked by the s4 WS-proxy before we got here).
+        ws.send(JSON.stringify({ AuthToken: '' }));
+        sendResize();
+      };
+      ws.onmessage = function (ev) {
+        var data = new Uint8Array(ev.data);
+        if (!data.length) return;
+        var cmd = String.fromCharCode(data[0]);
+        var payload = data.subarray(1);
+        if (cmd === '0') {
+          term.write(payload);
+        }
+        // '1' SET_WINDOW_TITLE — ignore. bash/make send their command
+        //     line here ("bash -c trap ...") which is uglier than the
+        //     static <title> we set in the HTML head.
+        // '2' SET_PREFERENCES — ignore.
+      };
+      ws.onclose = function () {
+        errStatus({{ t("term_session_ended") | tojson }});
+        term.write('\r\n\x1b[31m' + {{ t("term_connection_closed") | tojson }} + '\x1b[0m\r\n');
+        // Try to close the tab automatically — only works if this tab
+        // was opened via window.open() (which textual App.open_url does).
+        // If the browser blocks it, the user sees the message above and
+        // closes it themselves.
+        setTimeout(function () { try { window.close(); } catch (e) {} }, 400);
+      };
+      ws.onerror = function () { errStatus({{ t("term_connection_error") | tojson }}); };
+
+      term.onData(function (data) {
+        var encoded = enc.encode(data);
+        var buf = new Uint8Array(1 + encoded.length);
+        buf[0] = 48; // '0'
+        buf.set(encoded, 1);
+        if (ws.readyState === WebSocket.OPEN) ws.send(buf);
+      });
+
+      function sendResize() {
+        if (ws.readyState !== WebSocket.OPEN) return;
+        ws.send('1' + JSON.stringify({ columns: term.cols, rows: term.rows }));
+      }
+      term.onResize(sendResize);
+      window.addEventListener('resize', function () { fit.fit(); });
+      term.focus();
+    })();
+  </script>
+</body>
+</html>

@@ -6,13 +6,20 @@ import asyncio
 import hashlib
 import hmac
 import os
+import secrets
 import signal
 import ssl
 import time
 
+import aiohttp
 import aiohttp_jinja2
 from aiohttp import web
 from textual_serve.server import Server
+
+# Term-token (F6 menuconfig-in-browser) — short-lived signed URL
+_TERM_TTL = 60                        # seconds a term URL is valid
+_TERM_CMD_WHITELIST = ("ctng-menuconfig",)
+_TTYD_INTERNAL = "http://127.0.0.1:7681"
 
 # Session cookie valid for 24 hours
 _SESSION_MAX_AGE = 86400
@@ -83,6 +90,7 @@ class S4Server(Server):
         auth_user: str = "",
         auth_password: str = "",
         theme: str = "textual-dark",
+        language: str = "en",
     ) -> None:
         super().__init__(
             command=command, host=host, port=port, title=title,
@@ -95,6 +103,17 @@ class S4Server(Server):
         self._auth_password = auth_password
         self._cookie_secret = os.urandom(32)
         self._theme_colors = _resolve_theme_colors(theme)
+        # Load translations for template rendering — F6 web-modal + term.html
+        # both use {{ t(...) }}. Without an explicit load(), t() would return
+        # keys verbatim (no active translation dict).
+        try:
+            from translation import load as _load_translations
+            _load_translations(language)
+        except Exception:
+            pass
+        # Kill-first policy for menuconfig-in-browser: newest F6 revokes
+        # the user's previous term-session. Key = user, value = sid.
+        self._active_term_sids: dict[str, str] = {}
 
     def _make_ssl_context(self) -> ssl.SSLContext | None:
         if not self._ssl_certfile or not self._ssl_keyfile:
@@ -216,6 +235,177 @@ class S4Server(Server):
             "application": {"name": self.title},
         }
 
+    # ------------------------------------------------------------------
+    # menuconfig-in-browser: F6 opens a signed URL that streams a ttyd
+    # subshell (running `ct-ng menuconfig`) through a WS-proxy in this
+    # very server. All gating lives here — ttyd itself listens on
+    # loopback only, unauthenticated. See _start_ttyd() in
+    # docker/entrypoint.py for the ttyd side.
+    # ------------------------------------------------------------------
+
+    def _user_from_cookie(self, cookie: str) -> str:
+        """Return the user field from a signed session cookie, "" if malformed."""
+        try:
+            _ts, user, _sig = cookie.rsplit(":", 2)
+            return user
+        except Exception:
+            return ""
+
+    def _sign_term(self, user: str, sid: str, exp: int) -> str:
+        msg = f"term:{user}:{sid}:{exp}".encode()
+        return hmac.new(self._cookie_secret, msg, hashlib.sha256).hexdigest()[:16]
+
+    def _verify_term(self, user: str, sid: str, exp: int, sig: str) -> bool:
+        if time.time() > exp:
+            return False
+        return hmac.compare_digest(sig, self._sign_term(user, sid, exp))
+
+    def _authed_user(self, request: web.Request) -> tuple[str, web.Response | None]:
+        """Resolve the effective user for a term-* request.
+
+        - auth on  + valid cookie  → (user, None)
+        - auth on  + missing/bad   → ("", HTTPFound to /login) if login
+                                     is wired, else 401 response
+        - auth off                 → ("anonymous", None) — single-tenant
+                                     containers without a password still
+                                     get to use F6.
+        """
+        has_auth = bool(self._auth_user and self._auth_password)
+        if not has_auth:
+            return "anonymous", None
+        cookie = request.cookies.get(_COOKIE_NAME, "")
+        if cookie and _verify_token(cookie, self._cookie_secret):
+            user = self._user_from_cookie(cookie)
+            if user:
+                return user, None
+        prefix = self._fwd_prefix(request)
+        return "", web.HTTPFound(f"{prefix}/login?next={prefix}{request.path_qs}")
+
+    async def _handle_term_open(self, request: web.Request) -> web.Response:
+        """GET /term/open?cmd=… — mint a session, redirect browser to /term/.
+
+        Called via ``self.app.open_url()`` from the textual TUI on F6.
+        The redirect keeps the flow entirely browser-driven: the login
+        cookie is presented naturally, no cross-process token passing
+        needed. Revokes any previous term session for the same user
+        (kill-first policy). Only whitelisted ``cmd`` values are minted.
+        """
+        user, err = self._authed_user(request)
+        if err is not None:
+            return err
+        cmd = request.query.get("cmd", "")
+        if cmd not in _TERM_CMD_WHITELIST:
+            return web.Response(status=400, text=f"unknown cmd: {cmd!r}")
+        sid = secrets.token_hex(16)
+        exp = int(time.time()) + _TERM_TTL
+        sig = self._sign_term(user, sid, exp)
+        self._active_term_sids[user] = sid
+        prefix = self._fwd_prefix(request)
+        return web.HTTPFound(f"{prefix}/term/?sid={sid}&exp={exp}&sig={sig}")
+
+    async def _handle_term_shell(self, request: web.Request) -> web.Response:
+        """GET /term/ — serves the minimal xterm.js shell page."""
+        prefix = self._fwd_prefix(request)
+        sid = request.query.get("sid", "")
+        exp = request.query.get("exp", "")
+        sig = request.query.get("sig", "")
+        # WS URL is same-origin, protocol chosen by browser.
+        return aiohttp_jinja2.render_template(
+            "term.html", request,
+            {
+                "prefix": prefix,
+                "ws_path": f"{prefix}/term/ws?sid={sid}&exp={exp}&sig={sig}",
+                "static_prefix": f"{prefix}/static",
+                **self._theme_colors,
+            },
+        )
+
+    async def _handle_term_ws(self, request: web.Request) -> web.StreamResponse:
+        """WebSocket proxy /term/ws → ttyd 127.0.0.1:7681/ws.
+
+        Bidirectional forwarding via two asyncio tasks. Enforces:
+          - valid session cookie
+          - HMAC on (user, sid, exp) matches
+          - exp not passed
+          - sid == user's currently-active sid (kill-first)
+        """
+        user, err = self._authed_user(request)
+        if err is not None:
+            # WS: HTTPFound is not helpful; just fail explicitly.
+            return web.Response(status=401, text="unauthorized")
+        sid = request.query.get("sid", "")
+        try:
+            exp = int(request.query.get("exp", "0"))
+        except ValueError:
+            exp = 0
+        sig = request.query.get("sig", "")
+        if not (user and sid and self._verify_term(user, sid, exp, sig)):
+            return web.Response(status=403, text="term token invalid or expired")
+        if self._active_term_sids.get(user) != sid:
+            return web.Response(status=409, text="term session revoked by newer session")
+
+        ws_client = web.WebSocketResponse(protocols=("tty",))
+        await ws_client.prepare(request)
+
+        session = aiohttp.ClientSession()
+        try:
+            try:
+                ws_ttyd = await session.ws_connect(
+                    f"{_TTYD_INTERNAL}/ws",
+                    protocols=("tty",),
+                    origin=_TTYD_INTERNAL,
+                    max_msg_size=0,
+                )
+            except Exception as e:
+                await ws_client.close(message=f"ttyd connect failed: {e}".encode())
+                return ws_client
+
+            async def _fwd_msgs(src, dst):
+                try:
+                    async for msg in src:
+                        if msg.type == aiohttp.WSMsgType.TEXT:
+                            await dst.send_str(msg.data)
+                        elif msg.type == aiohttp.WSMsgType.BINARY:
+                            await dst.send_bytes(msg.data)
+                        else:  # CLOSE/CLOSING/CLOSED/ERROR
+                            break
+                except Exception:
+                    pass
+
+            # Wait for ONE side to close, then tear down the other. If we
+            # await both (asyncio.gather), a browser tab-close only
+            # completes client→ttyd; the ttyd→client task blocks forever
+            # waiting for ttyd traffic, ws_ttyd.close() in `finally`
+            # never fires, ttyd never sees its client leave, no SIGHUP
+            # gets sent — and mconf/make/bash orphan under dumb-init.
+            t_c2t = asyncio.create_task(_fwd_msgs(ws_client, ws_ttyd))
+            t_t2c = asyncio.create_task(_fwd_msgs(ws_ttyd, ws_client))
+            try:
+                done, pending = await asyncio.wait(
+                    {t_c2t, t_t2c}, return_when=asyncio.FIRST_COMPLETED,
+                )
+                for t in pending:
+                    t.cancel()
+                for t in pending:
+                    try:
+                        await t
+                    except (asyncio.CancelledError, Exception):
+                        pass
+            finally:
+                if not ws_ttyd.closed:
+                    await ws_ttyd.close()
+        finally:
+            if not ws_client.closed:
+                await ws_client.close()
+            await session.close()
+            # If this session is still the "active" one, clear it — user
+            # closed the tab. A stale entry (already revoked by a newer
+            # F6) is left alone so we don't overwrite the newer sid.
+            if self._active_term_sids.get(user) == sid:
+                del self._active_term_sids[user]
+
+        return ws_client
+
     async def _make_app(self) -> web.Application:
         """Override to inject auth middleware and login routes."""
         app = await super()._make_app()
@@ -225,9 +415,30 @@ class S4Server(Server):
             app.router.add_post("/login", self._handle_login_post)
             app.router.add_get("/logout", self._handle_logout)
             app.middlewares.insert(0, self._auth_middleware)
-        # Make has_auth available to all jinja2 templates
+        # menuconfig-in-browser: always available; the whole flow is
+        # gated by the auth middleware above (when auth is on) and by
+        # HMAC-signed short-lived tokens (always).
+        app.router.add_get("/term/open", self._handle_term_open)
+        app.router.add_get("/term/", self._handle_term_shell)
+        app.router.add_get("/term/ws", self._handle_term_ws)
+        # xterm.js + fit-addon vendored under ui/web/static/vendor/.
+        # web_server.py lives at core/web_server.py, so parent.parent is
+        # the repo root — same location whether we run from a fresh
+        # checkout, /app inside docker, or a system-install.
+        from pathlib import Path as _Path
+        _vendor_dir = _Path(__file__).resolve().parent.parent / "ui" / "web" / "static" / "vendor"
+        if _vendor_dir.is_dir():
+            app.router.add_static("/term/vendor/", str(_vendor_dir))
+        # Make has_auth + t() available to all jinja2 templates
         env = aiohttp_jinja2.get_env(app)
         env.globals["has_auth"] = has_auth
+        try:
+            from translation import t as _t
+            env.globals["t"] = _t
+        except Exception:
+            # Fallback: identity — templates using {{ t(...) }} still render
+            # something sensible even if the translation module is absent.
+            env.globals["t"] = lambda key, **kwargs: key
         return app
 
     def serve(self, debug: bool = False) -> None:

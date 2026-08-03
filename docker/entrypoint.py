@@ -262,6 +262,50 @@ def _load_settings():
     return Settings.load(SETTINGS_PATH)
 
 
+def _spawn_ttyd(settings) -> subprocess.Popen | None:
+    """Spawn ttyd (WebSocket→PTY bridge) on localhost only.
+
+    ttyd hosts a single fixed command — ``ct-ng menuconfig`` in the
+    crosstool-NG builder dir. Each browser connect gets its own PTY and
+    ncurses runs live; disconnect kills the subshell (and menuconfig).
+
+    Binds ``lo`` — the port is not published; only s4's aiohttp WS-proxy
+    (same container, running as builder) can reach it. All auth is done
+    at the s4 layer via signed HMAC tokens; ttyd itself is unauthenticated.
+
+    Only spawned when web is enabled and the ttyd binary is present.
+    Silently skipped otherwise — the WS-proxy in web_server.py refuses
+    connects with a clear error, so a missing ttyd surfaces as a UI
+    notification, not a crash.
+    """
+    if not settings.web_enabled:
+        return None
+    ttyd = "/usr/local/bin/ttyd"
+    if not os.access(ttyd, os.X_OK):
+        _log("ttyd: /usr/local/bin/ttyd not found — menuconfig-in-browser disabled")
+        return None
+    ctng = str(APP_ROOT / "data" / "builders" / "crosstool-ng")
+    # Client disconnect → ttyd sends SIGHUP to its direct child (the outer
+    # bash). Without the trap that only kills bash; make/mconf get orphaned
+    # under dumb-init and keep running forever. The trap tears down the
+    # whole process group so tab-close actually terminates menuconfig.
+    inner = (
+        f'trap "kill -TERM 0 2>/dev/null" EXIT HUP TERM INT; '
+        f'cd {ctng} && ./ct-ng menuconfig'
+    )
+    cmd = [
+        ttyd,
+        "-i", "lo",           # bind loopback only — internal proxy target
+        "-p", "7681",
+        "-W",                 # writable client input
+        "-t", "titleFixed=ct-ng menuconfig",
+        "-t", "disableLeaveAlert=true",
+        "bash", "-c", inner,
+    ]
+    _log("ttyd: starting on 127.0.0.1:7681 (loopback only)")
+    return subprocess.Popen(cmd, cwd=str(APP_ROOT))
+
+
 def _spawn_web(settings) -> subprocess.Popen | None:
     if not settings.web_enabled:
         _log("web: disabled in settings")
@@ -285,6 +329,7 @@ def _spawn_web(settings) -> subprocess.Popen | None:
         auth_user=settings.web_auth_user,
         auth_password=settings.web_auth_password,
         theme=settings.theme,
+        language=settings.language,
     )
     _log(f"web: starting on {host}:{port}")
     return subprocess.Popen(
@@ -335,11 +380,21 @@ def _pass_through() -> int:
 
 def _launcher() -> int:
     settings = _load_settings()
+    # Critical services: their exit means the container is done.
     procs: list[subprocess.Popen] = []
     for spawn in (_spawn_web, _spawn_mcp):
         p = spawn(settings)
         if p is not None:
             procs.append(p)
+    # Nice-to-haves: shut down with the container but their exit alone
+    # doesn't tear the container down. ttyd (menuconfig-in-browser) is
+    # here — if it crashes, s4 web/mcp keep running; menuconfig-in-web
+    # just breaks until next docker restart.
+    opt_procs: list[subprocess.Popen] = []
+    for spawn in (_spawn_ttyd,):
+        p = spawn(settings)
+        if p is not None:
+            opt_procs.append(p)
 
     if not procs:
         _log("both services disabled — sleeping (docker exec -it <c> s4 to configure)")
@@ -349,22 +404,24 @@ def _launcher() -> int:
         return 0
 
     def _terminate(*_):
-        for p in procs:
+        all_procs = procs + opt_procs
+        for p in all_procs:
             if p.poll() is None:
                 p.terminate()
         deadline = time.monotonic() + 5.0
         while time.monotonic() < deadline:
-            if all(p.poll() is not None for p in procs):
+            if all(p.poll() is not None for p in all_procs):
                 return
             time.sleep(0.1)
-        for p in procs:
+        for p in all_procs:
             if p.poll() is None:
                 p.kill()
 
     signal.signal(signal.SIGTERM, _terminate)
     signal.signal(signal.SIGINT, _terminate)
 
-    # Wait for any child to exit, then tear down the rest and propagate.
+    # Wait for a *critical* child to exit, then tear down the rest and
+    # propagate. Optional procs (ttyd) are monitored only for logging.
     while True:
         for p in procs:
             rc = p.poll()
@@ -372,6 +429,11 @@ def _launcher() -> int:
                 _log(f"child pid={p.pid} exited rc={rc} — shutting down siblings")
                 _terminate()
                 return rc
+        for p in list(opt_procs):
+            rc = p.poll()
+            if rc is not None:
+                _log(f"[warn] optional child pid={p.pid} exited rc={rc} — continuing")
+                opt_procs.remove(p)
         time.sleep(1)
 
 

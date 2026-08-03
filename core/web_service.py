@@ -180,6 +180,7 @@ def _build_server_code(
     ssl: bool = False, ssl_cert: str = "", ssl_key: str = "",
     auth_user: str = "", auth_password: str = "",
     theme: str = "textual-dark",
+    language: str = "en",
 ) -> str:
     """Build the inline Python code for launching the web server."""
     protocol = "https" if ssl else "http"
@@ -193,6 +194,7 @@ def _build_server_code(
         f"  public_url='{protocol}://{public_host}:{port}',",
         f"  templates_path='{templates}',",
         f"  theme='{theme}',",
+        f"  language='{language}',",
     ]
     if ssl and ssl_cert and ssl_key:
         parts.append(f"  ssl_certfile='{ssl_cert}',")

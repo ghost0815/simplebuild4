@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
 import subprocess
 import re
@@ -4249,10 +4250,6 @@ class ToolchainsScreen(Screen):
         working_cfg = ctng_path / ".config"
         hash_before = _hash_file(working_cfg)
 
-        # Run the customize command via app.suspend(). Use the resolved
-        # binary path (not the hardcoded ./ct-ng) so a system-installed
-        # ctng in bin/ct-ng also gets invoked correctly.
-        cmd = [str(binary_path), "menuconfig"]
         def _rel(p):
             if not p:
                 return ""
@@ -4266,6 +4263,28 @@ class ToolchainsScreen(Screen):
             self._log_sync(f"  template: [dim]{_rel(tpl.yaml_path)}[/dim]")
         if cfg_src:
             self._log_sync(f"  config:   [dim]{_rel(cfg_src)}[/dim]")
+
+        # Web-session (textual-serve): App.suspend() is unavailable, so
+        # we can't run menuconfig in the same terminal. Instead: mint a
+        # signed URL, open a browser tab that talks to the internal ttyd
+        # (WS-proxied and HMAC-gated by our web_server). The user clicks
+        # "Done" in this dialog when they're back from the menuconfig
+        # tab; the same hash-check + fork/save logic then runs.
+        if os.environ.get("S4_WEB_MODE") == "1":
+            self._log_sync("[dim]$ (menuconfig-in-browser) opening /term/open?cmd=ctng-menuconfig[/dim]")
+            from ui.screens.ctng_web_modal import CtngWebCustomizeModal
+            self.app.push_screen(
+                CtngWebCustomizeModal(working_cfg, hash_before, _hash_file),
+                callback=lambda apply: self._customize_ctng_finish(
+                    tpl, working_cfg, hash_before, _hash_file,
+                ) if apply else None,
+            )
+            return
+
+        # Run the customize command via app.suspend(). Use the resolved
+        # binary path (not the hardcoded ./ct-ng) so a system-installed
+        # ctng in bin/ct-ng also gets invoked correctly.
+        cmd = [str(binary_path), "menuconfig"]
         self._log_sync(f"[dim]$ {' '.join(cmd)}  (cwd={_rel(ctng_path)})[/dim]")
 
         import subprocess as _sp
@@ -4281,7 +4300,17 @@ class ToolchainsScreen(Screen):
             self._log_sync(f"[red]Customize failed: {e}[/red]")
             return
 
-        hash_after = _hash_file(working_cfg)
+        self._customize_ctng_finish(tpl, working_cfg, hash_before, _hash_file)
+
+    def _customize_ctng_finish(self, tpl, working_cfg, hash_before, hash_fn) -> None:
+        """Post-menuconfig: hash-check, fork-to-local if needed, save.
+
+        Shared by the TTY path (runs synchronously right after
+        subprocess.run returns from menuconfig) and the web path (runs
+        as the modal's dismiss callback once mconf exits).
+        """
+        import shutil as _shutil
+        hash_after = hash_fn(working_cfg)
 
         # No change → user quit without saving → do nothing
         if hash_before == hash_after:
