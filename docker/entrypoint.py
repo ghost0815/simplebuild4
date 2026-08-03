@@ -78,6 +78,39 @@ def _write_shafile(path: Path, sha: str) -> None:
         _log(f"[warn] cannot write {path.name}: {e}")
 
 
+def _start_sshd() -> None:
+    """Start sshd once at container boot.
+
+    The image ships openssh-server and a ``builder:builder`` login. The
+    entrypoint is responsible for creating host keys on first start and
+    launching sshd. sshd self-daemonizes (double-fork) so we don't hold
+    on to a Popen — kernel reparents it to PID 1 (dumb-init), which
+    reaps it on container shutdown.
+
+    Silently skipped when sshd or ssh-keygen is missing (older image, a
+    stripped-down variant, or a stdio-only build) — sshd is nice-to-have
+    for `ssh builder@host -p 2222`, never load-bearing.
+    """
+    sshd = "/usr/sbin/sshd"
+    keygen = "/usr/bin/ssh-keygen"
+    if not (os.path.isfile(sshd) and os.access(sshd, os.X_OK)):
+        return
+    try:
+        if not any(os.path.exists(f"/etc/ssh/ssh_host_{a}_key") for a in ("rsa", "ed25519")):
+            subprocess.run(["sudo", "-n", keygen, "-A"], check=False,
+                           capture_output=True, text=True, timeout=30)
+        subprocess.run(["sudo", "-n", "mkdir", "-p", "/run/sshd"], check=False,
+                       capture_output=True, text=True, timeout=10)
+        r = subprocess.run(["sudo", "-n", sshd], check=False,
+                           capture_output=True, text=True, timeout=15)
+        if r.returncode != 0:
+            _log(f"[warn] sshd start failed: {r.stderr.strip() or r.stdout.strip()}")
+        else:
+            _log("sshd: started (login: builder / builder)")
+    except FileNotFoundError:
+        _log("[warn] sudo not available — sshd not started")
+
+
 def _ensure_data_writable() -> None:
     """Heal ``/app/data`` ownership if we can't write to it.
 
@@ -346,6 +379,7 @@ def main() -> int:
     _ensure_data_writable()
     _handle_image_change()
     _sync_to_target_sha()
+    _start_sshd()
     if len(sys.argv) > 1:
         return _pass_through()
     return _launcher()
