@@ -342,6 +342,8 @@ class WebServiceManager:
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
         password: str = "",
+        theme: str = "textual-dark",
+        language: str = "en",
         log: Optional[Callable[[str], None]] = None,
     ) -> bool:
         """Write unit file + sudoers, reload daemon, enable and start."""
@@ -400,6 +402,7 @@ class WebServiceManager:
             public_host=public_host, templates=templates,
             ssl=ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
             auth_user=auth_user, auth_password=auth_password,
+            theme=theme, language=language,
         )
 
         unit = _UNIT_TEMPLATE.format(
@@ -532,6 +535,7 @@ class WebServiceManager:
         logs_dir: Optional[Path] = None,
         organize_logs: bool = False,
         theme: str = "textual-dark",
+        language: str = "en",
         log: Optional[Callable[[str], None]] = None,
     ) -> bool:
         """Update the systemd unit file with current settings (no password needed).
@@ -576,7 +580,7 @@ class WebServiceManager:
             public_host=public_host, templates=templates,
             ssl=ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
             auth_user=auth_user, auth_password=auth_password,
-            theme=theme,
+            theme=theme, language=language,
         )
 
         unit = _UNIT_TEMPLATE.format(

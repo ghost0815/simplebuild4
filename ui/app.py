@@ -206,6 +206,7 @@ class S4App(App):
             ssl=use_ssl, ssl_cert=ssl_cert, ssl_key=ssl_key,
             auth_user=auth_user, auth_password=auth_password,
             theme=self.settings.theme,
+            language=self.settings.language,
         )
 
         # Launch as a standalone subprocess to avoid asyncio conflicts

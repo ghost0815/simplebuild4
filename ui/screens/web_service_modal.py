@@ -199,6 +199,8 @@ class WebServiceSetupModal(ModalScreen[None]):
                     logs_dir=self.app.paths.logs_dir,
                     organize_logs=s.organize_logs,
                     password=password,
+                    theme=s.theme,
+                    language=s.language,
                     log=self._log,
                 )
                 if success:

@@ -739,7 +739,7 @@ class SettingsScreen(Screen):
                 ssl=s.web_ssl, ssl_cert=s.web_ssl_cert, ssl_key=s.web_ssl_key,
                 auth_user=s.web_auth_user, auth_password=s.web_auth_password,
                 logs_dir=self.app.paths.logs_dir,
-                organize_logs=s.organize_logs, theme=s.theme,
+                organize_logs=s.organize_logs, theme=s.theme, language=s.language,
                 log=_log,
             ):
                 def _warn(msg):

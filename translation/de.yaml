@@ -676,7 +676,7 @@ customize_web_body: "Menuconfig öffnet in einem neuen Browser-Tab. Änderungen 
 customize_web_reopen: "Tab erneut öffnen"
 customize_web_discard: "Verwerfen"
 customize_web_applied: "Menuconfig-Änderungen übernommen"
-customize_web_timeout: "Menuconfig-Session abgelaufen — mit „Tab erneut öffnen" neu starten"
+customize_web_timeout: "Menuconfig-Session abgelaufen — mit „Tab erneut öffnen“ neu starten"
 term_connecting: "verbinde…"
 term_connected: "verbunden"
 term_session_ended: "Session beendet"
