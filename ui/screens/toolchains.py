@@ -658,7 +658,7 @@ class ToolchainsScreen(Screen):
         # Border titles
         self.query_one("#tc-installed-box", Vertical).border_title = t("installed")
         tc_output = self.query_one("#tc-output", RichLog)
-        tc_output.border_title = "Output"
+        tc_output.border_title = t("output_title")
         tc_output.write("")  # Prevent IndexError on empty RichLog click
 
         # Restore log
