@@ -160,7 +160,6 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
     existing = next((tc for tc in local_tcs if tc.name == tpl.name), None)
     if existing is not None:
         existing.description = tpl.description or existing.description or tpl.name
-        existing.category = "selfbuild"
         existing.arch = tpl.arch or existing.arch
         existing.machines = tpl.machines or existing.machines
         existing.prefix = prefix
@@ -169,7 +168,7 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
         existing.ldflags = tpl.ldflags or existing.ldflags
         existing.selfbuild = True
         existing.libraries = scanned_libs   # wholesale replace — scan result wins
-        _log("  [green]Merged into existing local entry → category=selfbuild[/green]")
+        _log(f"  [green]Merged into existing local entry (category={existing.category or '(empty → Local)'} kept)[/green]")
     else:
         local_tcs.append(Toolchain(
             name=tpl.name,
