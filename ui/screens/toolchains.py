@@ -460,6 +460,9 @@ class ToolchainsScreen(Screen):
     # Same for the vertical splitter between Installed table and the
     # tab area below it. 0 = never dragged, use CSS auto/max-height.
     _splitter_top_cells: int = 0
+    # Vertical splitter on the right side, between the details/libs/
+    # editor wrapper and the Output pane. 0 = never dragged.
+    _splitter_right_top_cells: int = 0
 
     def __init__(self) -> None:
         super().__init__()
@@ -573,33 +576,42 @@ class ToolchainsScreen(Screen):
                     yield Static(" [b]L[/b]ibraries ", id="btn-tab-libs", classes="tab-inactive")
                     yield Static(" [b]O[/b]utput ", id="btn-tab-log", classes="tab-inactive")
 
-                # Details panel
-                detail = Static("", id="tc-detail")
-                detail.auto_links = False
-                detail.can_focus = True
-                yield detail
+                # Wrapper for the swappable tab panels (details / libs /
+                # editor). Wrapper height splits vs #tc-output; only one
+                # inner panel is display: True at a time and fills the
+                # wrapper via its own height: 1fr.
+                with Vertical(id="tc-right-top"):
+                    # Details panel
+                    detail = Static("", id="tc-detail")
+                    detail.auto_links = False
+                    detail.can_focus = True
+                    yield detail
 
-                # Libraries panel (hidden by default)
-                with VerticalScroll(id="tc-libs"):
-                    yield Static("", id="tc-libs-header")
-                    with Horizontal(classes="lib-action-row", id="lib-header-row"):
-                        yield Static(f"  [dim]{t('lib_col_library'):<15s} {t('lib_col_installed'):<12s}[/dim]", classes="lib-status")
-                        yield Static(f" [dim]{t('lib_col_action')}[/dim] ([dim]{t('lib_skip_all')}[/dim])", id="btn-skip-all", classes="lib-skip-all")
-                    # Pre-create rows for all known libraries
-                    for lib_name, _, _ in KNOWN_LIBS:
-                        safe_id = lib_name.replace(".", "-").replace(" ", "-")
-                        with Horizontal(classes="lib-action-row", id=f"lib-row-{safe_id}"):
-                            yield Static(f"  {lib_name:<15s} {'—':<12s}", id=f"lib-status-{safe_id}", classes="lib-status")
-                            yield Select(
-                                options=[(t("lib_skip"), "skip")],
-                                value="skip",
-                                id=f"lib-action-{safe_id}",
-                                classes="lib-select",
-                                prompt=t("select_prompt"),
-                            )
+                    # Libraries panel (hidden by default)
+                    with VerticalScroll(id="tc-libs"):
+                        yield Static("", id="tc-libs-header")
+                        with Horizontal(classes="lib-action-row", id="lib-header-row"):
+                            yield Static(f"  [dim]{t('lib_col_library'):<15s} {t('lib_col_installed'):<12s}[/dim]", classes="lib-status")
+                            yield Static(f" [dim]{t('lib_col_action')}[/dim] ([dim]{t('lib_skip_all')}[/dim])", id="btn-skip-all", classes="lib-skip-all")
+                        # Pre-create rows for all known libraries
+                        for lib_name, _, _ in KNOWN_LIBS:
+                            safe_id = lib_name.replace(".", "-").replace(" ", "-")
+                            with Horizontal(classes="lib-action-row", id=f"lib-row-{safe_id}"):
+                                yield Static(f"  {lib_name:<15s} {'—':<12s}", id=f"lib-status-{safe_id}", classes="lib-status")
+                                yield Select(
+                                    options=[(t("lib_skip"), "skip")],
+                                    value="skip",
+                                    id=f"lib-action-{safe_id}",
+                                    classes="lib-select",
+                                    prompt=t("select_prompt"),
+                                )
 
-                # Yaml editor panel (hidden by default)
-                yield TextArea("", id="tc-editor", language="yaml", show_line_numbers=True)
+                    # Yaml editor panel (hidden by default)
+                    yield TextArea("", id="tc-editor", language="yaml", show_line_numbers=True)
+
+                # Draggable divider between the top panel (details /
+                # libs / editor) and the Output pane.
+                yield VSplitter("tc-right-top", "tc-output", min_cells=3, id="tc-v-splitter-right")
 
                 # Output
                 yield ArtifactRichLog(highlight=False, markup=True, id="tc-output", wrap=True)
@@ -656,6 +668,14 @@ class ToolchainsScreen(Screen):
                 box.styles.height = Scalar.parse(
                     f"{ToolchainsScreen._splitter_top_cells}"
                 )
+            except Exception:
+                pass
+        if ToolchainsScreen._splitter_right_top_cells > 0:
+            try:
+                self.query_one("#tc-right-top").styles.height = Scalar.parse(
+                    f"{ToolchainsScreen._splitter_right_top_cells}"
+                )
+                self.query_one("#tc-output").styles.height = Scalar.parse("1fr")
             except Exception:
                 pass
 
@@ -777,9 +797,16 @@ class ToolchainsScreen(Screen):
 
     @on(VSplitter.Changed)
     def _on_vsplitter_changed(self, event: VSplitter.Changed) -> None:
-        """Same as ``_on_hsplitter_changed`` but for the vertical
-        splitter between the Installed table and the tab area."""
-        ToolchainsScreen._splitter_top_cells = event.top_cells
+        """Two VSplitters on this screen — route by widget id.
+
+        ``tc-v-splitter``      → left column: Installed / tab area
+        ``tc-v-splitter-right``→ right column: details-wrapper / Output
+        """
+        sid = getattr(event.splitter, "id", "") or ""
+        if sid == "tc-v-splitter-right":
+            ToolchainsScreen._splitter_right_top_cells = event.top_cells
+        else:
+            ToolchainsScreen._splitter_top_cells = event.top_cells
 
     def _enable_events(self) -> None:
         self._mounted = True
@@ -1948,6 +1975,16 @@ class ToolchainsScreen(Screen):
         detail.display = False
         libs.display = False
         editor.display = False
+
+        # Log tab claims the whole right side — hide the top wrapper
+        # and the splitter, so Output can grow to full height without
+        # an empty details/editor/libs frame + divider above it.
+        log_active = tab == "log"
+        try:
+            self.query_one("#tc-right-top").display = not log_active
+            self.query_one("#tc-v-splitter-right").display = not log_active
+        except Exception:
+            pass
 
         if tab == "details":
             detail.display = True

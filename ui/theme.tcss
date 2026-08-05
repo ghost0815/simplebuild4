@@ -718,6 +718,10 @@ Switch.-on .switch--slider {
     padding: 0 0 0 1;
 }
 
+#tc-right-top {
+    height: 1fr;
+}
+
 #tc-filter {
     width: 20;
 }
@@ -760,7 +764,7 @@ Switch.-on .switch--slider {
 #tc-libs {
     margin: 0;
     padding: 1 1;
-    height: auto;
+    height: 1fr;
     border: solid #444444;
     border-title-color: $accent;
     border-title-style: bold;
