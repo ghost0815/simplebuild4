@@ -25,7 +25,7 @@ from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_li
 from core.lib_builder import build_library, sort_by_dependencies
 from translation import t
 from ui.header import S4Header
-from ui.widgets.splitter import HSplitter
+from ui.widgets.splitter import HSplitter, VSplitter
 
 
 def _ensure_excl_auto(yaml_text: str) -> str:
@@ -457,6 +457,9 @@ class ToolchainsScreen(Screen):
     # use the CSS default (1fr / 1fr). Not persisted — a fresh s4 run
     # resets to the default split.
     _splitter_left_cells: int = 0
+    # Same for the vertical splitter between Installed table and the
+    # tab area below it. 0 = never dragged, use CSS auto/max-height.
+    _splitter_top_cells: int = 0
 
     def __init__(self) -> None:
         super().__init__()
@@ -506,6 +509,10 @@ class ToolchainsScreen(Screen):
                 # Installed toolchains (always visible)
                 with Vertical(id="tc-installed-box"):
                     yield S4DataTable(id="tbl-installed", cursor_type="row", zebra_stripes=True)
+
+                # Horizontal divider — drag to resize Installed vs. the
+                # tab area below.
+                yield VSplitter("tc-installed-box", "tc-browser", min_cells=4, id="tc-v-splitter")
 
                 # PreBuild / SelfBuild tabs
                 with Horizontal(id="tc-left-tab-bar"):
@@ -629,15 +636,26 @@ class ToolchainsScreen(Screen):
         # self._sb_templates_snapshot later would get compose-time data.
         del self._sb_templates_snapshot
 
-        # Restore session-scoped splitter position (0 = never dragged →
-        # keep the CSS default 1fr / 1fr equal split).
+        # Restore session-scoped splitter positions (0 = never dragged →
+        # keep the CSS defaults). Lifting max-height on the installed
+        # box mirrors what VSplitter.on_mouse_down does on first drag —
+        # the CSS cap is only meant to bound auto-growth.
+        from textual.css.scalar import Scalar
         if ToolchainsScreen._splitter_left_cells > 0:
             try:
-                from textual.css.scalar import Scalar
                 self.query_one("#tc-browser-wrap").styles.width = Scalar.parse(
                     f"{ToolchainsScreen._splitter_left_cells}"
                 )
                 self.query_one("#tc-right").styles.width = Scalar.parse("1fr")
+            except Exception:
+                pass
+        if ToolchainsScreen._splitter_top_cells > 0:
+            try:
+                box = self.query_one("#tc-installed-box")
+                box.styles.max_height = None
+                box.styles.height = Scalar.parse(
+                    f"{ToolchainsScreen._splitter_top_cells}"
+                )
             except Exception:
                 pass
 
@@ -742,8 +760,8 @@ class ToolchainsScreen(Screen):
         self.set_timer(0.5, self._enable_events)
 
     @on(HSplitter.Changed)
-    def _on_splitter_changed(self, event: HSplitter.Changed) -> None:
-        """Remember the splitter position for the rest of this s4 run.
+    def _on_hsplitter_changed(self, event: HSplitter.Changed) -> None:
+        """Remember the horizontal splitter position for this s4 run.
 
         Not persisted to disk — a fresh start resets to the CSS default
         equal-split. Stored on the class so re-opening the screen (F1→F4
@@ -756,6 +774,12 @@ class ToolchainsScreen(Screen):
         namify rule — the decorator sidesteps the ambiguity.
         """
         ToolchainsScreen._splitter_left_cells = event.left_cells
+
+    @on(VSplitter.Changed)
+    def _on_vsplitter_changed(self, event: VSplitter.Changed) -> None:
+        """Same as ``_on_hsplitter_changed`` but for the vertical
+        splitter between the Installed table and the tab area."""
+        ToolchainsScreen._splitter_top_cells = event.top_cells
 
     def _enable_events(self) -> None:
         self._mounted = True

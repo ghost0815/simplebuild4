@@ -163,3 +163,199 @@ class HSplitter(Static):
             except Exception:
                 pass
         event.stop()
+
+    def on_click(self, event: events.Click) -> None:
+        """Double-click resets the split to the CSS default.
+
+        Chain==1 is the trailing click of a normal drag (mouse_up
+        already fired) — ignore. Chain>=2 means the user genuinely
+        double-clicked without moving; clearing the inline widths
+        lets the CSS defaults (both panes at 1fr) take over again.
+        Emits ``Changed(0)`` so the screen wipes its stored session
+        override too.
+        """
+        if event.chain < 2:
+            return
+        try:
+            self._left().styles.width = None
+            self._right().styles.width = None
+        except Exception:
+            pass
+        self._last_left_cells = 0
+        try:
+            self.post_message(self.Changed(self, 0))
+        except Exception:
+            pass
+        event.stop()
+
+
+class VSplitter(Static):
+    """Horizontal drag handle between two stacked panes.
+
+    Mirror of HSplitter for vertical layouts: sits between two children
+    of a ``Vertical`` container, dragging changes the top pane's
+    ``height`` in rows. Bottom pane stays ``1fr`` so it re-fills the
+    remainder. The top pane's ``max-height`` cap (if any) is lifted on
+    first drag so the user can pull the divider past a CSS default
+    (e.g. the 50% cap on ``#tc-installed-box`` is intentional as an
+    auto-growth ceiling but not a user-drag ceiling).
+    """
+
+    class Changed(Message):
+        """Emitted when the user finishes a drag. Carries the final
+        top-pane height in rows."""
+
+        def __init__(self, splitter: "VSplitter", top_cells: int) -> None:
+            self.splitter = splitter
+            self.top_cells = top_cells
+            super().__init__()
+
+        @property
+        def control(self):
+            return self.splitter
+
+    DEFAULT_CSS = """
+    VSplitter {
+        width: 1fr;
+        height: 1;
+        min-height: 1;
+        max-height: 1;
+        color: $foreground 40%;
+        background: transparent;
+    }
+    /* Terminal cells are ~2:1 tall/wide — a full-width background
+       tint reads much heavier here than on the vertical splitter.
+       Compromise: very low alpha (~8%) + text-style bold on hover,
+       so the line noticeably lights up without the whole strip
+       feeling like a filled bar. */
+    VSplitter:hover {
+        color: $text;
+        background: $foreground 15%;
+    }
+    VSplitter.-dragging {
+        color: $text;
+        background: $foreground 15%;
+    }
+    """
+
+    def __init__(
+        self,
+        top_id: str,
+        bottom_id: str,
+        min_cells: int = 5,
+        **kwargs,
+    ) -> None:
+        super().__init__("", **kwargs)
+        self._top_id = top_id
+        self._bottom_id = bottom_id
+        self._min_cells = min_cells
+        self._drag_start_y: int | None = None
+        self._start_top_cells: int = 0
+        self._last_top_cells: int = 0
+
+    def _top(self):
+        return self.screen.query_one(f"#{self._top_id}")
+
+    def _bottom(self):
+        return self.screen.query_one(f"#{self._bottom_id}")
+
+    def render_line(self, y: int) -> Strip:
+        # Single-row widget; y is always 0. Fill full width with the
+        # thin horizontal-rule glyph so the divider spans both panes.
+        w = max(1, self.size.width)
+        return Strip([Segment("─" * w, self.rich_style)])
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        try:
+            top = self._top()
+        except Exception:
+            return
+        # Store the top pane's absolute top-edge in screen coords. The
+        # splitter always sits directly below the top pane, so
+        # (splitter_screen_y - top_start_y) is how much room the top
+        # pane occupies (in the "styles.height" sense — this includes
+        # whatever box-sizing Textual uses). Tracking absolute Y makes
+        # the drag independent of padding/border overhead.
+        self._top_start_y = top.region.y
+        # How far into the splitter widget the mouse was clicked, so
+        # the splitter's top edge stays under the same cursor pixel.
+        self._mouse_offset = event.screen_y - self.region.y
+        self._drag_start_y = event.screen_y
+        # Lift the CSS max-height cap for the whole drag. ``None`` might
+        # not always clear the compiled style; setting an explicit
+        # 100% works reliably and expresses "as tall as the parent
+        # allows" — Textual will still clip to whatever's actually
+        # available (parent height minus fixed siblings).
+        try:
+            top.styles.max_height = Scalar.parse("100%")
+        except Exception:
+            pass
+        self.add_class("-dragging")
+        self.capture_mouse()
+        event.stop()
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._drag_start_y is None:
+            return
+        try:
+            top = self._top()
+            bottom = self._bottom()
+            parent = top.parent
+            if parent is None:
+                return
+            # Compute how much space the top pane can grow into:
+            # parent height minus every sibling that isn't top itself
+            # and isn't the ``1fr`` bottom pane we're draggin against.
+            # (splitter + any fixed-height siblings like a tabbar or
+            # action row — they keep their sizes regardless of drag.)
+            # Then reserve ``min_cells`` for bottom so it can't be
+            # crushed to zero.
+            reserved = 0
+            for c in parent.children:
+                if c is top or c is bottom:
+                    continue
+                reserved += c.size.height
+            max_top = parent.size.height - reserved - self._min_cells
+            target_splitter_y = event.screen_y - self._mouse_offset
+            new_top = target_splitter_y - self._top_start_y
+            new_top = max(self._min_cells, min(max_top, new_top))
+            top.styles.height = Scalar.parse(f"{new_top}")
+            bottom.styles.height = Scalar.parse("1fr")
+            self._last_top_cells = new_top
+        except Exception:
+            pass
+
+    def on_mouse_up(self, event: events.MouseUp) -> None:
+        was_dragging = self._drag_start_y is not None
+        self._drag_start_y = None
+        self.remove_class("-dragging")
+        try:
+            self.release_mouse()
+        except Exception:
+            pass
+        if was_dragging and self._last_top_cells > 0:
+            try:
+                self.post_message(self.Changed(self, self._last_top_cells))
+            except Exception:
+                pass
+        event.stop()
+
+    def on_click(self, event: events.Click) -> None:
+        """Double-click restores the CSS default (auto height + the
+        max-height cap that on_mouse_down had lifted). Chain==1 is a
+        drag-tail click — ignore.
+        """
+        if event.chain < 2:
+            return
+        try:
+            top = self._top()
+            top.styles.height = None
+            top.styles.max_height = None
+        except Exception:
+            pass
+        self._last_top_cells = 0
+        try:
+            self.post_message(self.Changed(self, 0))
+        except Exception:
+            pass
+        event.stop()
