@@ -527,22 +527,33 @@ class S4App(App):
         """Copy selected text to clipboard via Ctrl+C.
 
         Priority:
-        1. Mouse text selection on any widget → copy selection.
-        2. Focused RichLog → copy all lines as plain text.
-        3. Focused Static → copy its rendered text.
-        4. Focused VerticalScroll containing a Static → copy child text.
+        1. ArtifactRichLog with an active line-based selection → delegate
+           to the widget's own action_copy_selection so it picks the
+           exact selected range (not the whole log).
+        2. Mouse text selection on any widget → copy selection.
+        3. Focused RichLog → copy all lines as plain text.
+        4. Focused Static → copy its rendered text.
+        5. Focused VerticalScroll containing a Static → copy child text.
         """
         from textual.widgets import RichLog, Static, TextArea
         from textual.containers import VerticalScroll
+        from ui.widgets.artifact_richlog import ArtifactRichLog
         import re as _re
+
+        # 1. Prefer the log's own selection state — otherwise the
+        # fall-through "focused is RichLog → copy all" branch below
+        # would clobber a real user selection with the whole log.
+        focused = self.focused
+        if isinstance(focused, ArtifactRichLog):
+            if focused._sel_start is not None or focused._sel_end is not None:
+                focused.action_copy_selection()
+                return
 
         selection = self.screen.get_selected_text()
         if selection:
             self.copy_to_clipboard(selection)
             self.notify("Copied to clipboard")
             return
-
-        focused = self.focused
         def _box_title(widget) -> str:
             """Return the border_title of the widget or its parent, or a fallback."""
             for w in (widget, widget.parent):
