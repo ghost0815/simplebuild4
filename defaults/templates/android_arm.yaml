@@ -3,6 +3,5 @@ description: "Android ARM (armeabi-v7a)"
 exclude_from_automation: true
 builder: android-ndk
 arch: armv7
-category: android
 # Android NDK builder config (next to this file)
 config: android_arm.config

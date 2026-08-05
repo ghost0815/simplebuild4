@@ -3,7 +3,6 @@ description: "opendreambox aarch64"
 exclude_from_automation: true
 builder: oe-sdk
 arch: aarch64
-category: stb
 
 # Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
 prefix: "aarch64-oe-linux-"

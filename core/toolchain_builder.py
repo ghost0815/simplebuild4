@@ -170,10 +170,13 @@ def register_built_toolchain(tpl: Template, paths, log=None) -> None:
         existing.libraries = scanned_libs   # wholesale replace — scan result wins
         _log(f"  [green]Merged into existing local entry (category={existing.category or '(empty → Local)'} kept)[/green]")
     else:
+        # New toolchain: inherit the template's category so a user-defined
+        # bucket (e.g. "stb", "custom-foo") flows through into PreBuild.
+        # Default templates have no category → fall back to "selfbuild".
         local_tcs.append(Toolchain(
             name=tpl.name,
             description=tpl.description or tpl.name,
-            category="selfbuild",
+            category=tpl.category or "selfbuild",
             arch=tpl.arch,
             machines=tpl.machines,
             prefix=prefix,

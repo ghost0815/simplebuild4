@@ -241,13 +241,45 @@ def _build_categories(reg) -> list[tuple[str, str]]:
         cat = tc.category
         if cat and cat not in known_keys and cat != "native":
             known_keys.add(cat)
-            custom.append((cat, cat.capitalize()))
+            custom.append((cat, cat))
     categories = []
     for entry in _BASE_CATEGORIES:
         categories.append(entry)
         if entry[0] == "local":
             categories.extend(sorted(custom))
     return categories
+
+
+def _sb_safe_key(cat: str) -> str:
+    """Sanitize a category string for use in a Textual widget id.
+
+    Appends a short hash of the raw input so two distinct categories that
+    only differ in characters we sanitize (e.g. ``foo/bar`` vs ``foo_bar``)
+    map to distinct widget ids instead of colliding.
+    """
+    import re as _re
+    import hashlib as _hashlib
+    base = _re.sub(r'[^a-zA-Z0-9_-]', '_', cat).strip('_').lower() or "cat"
+    digest = _hashlib.sha1(cat.encode("utf-8")).hexdigest()[:6]
+    return f"{base}-{digest}"
+
+
+def _sb_user_categories(templates) -> list[tuple[str, str]]:
+    """Distinct non-Local categories carried by is_local templates.
+
+    Returns ``[(cat_key, cat_label), …]`` sorted alphabetically. Used to
+    fill the middle section of the SelfBuild panel between "Local" and
+    the fixed default-builder buckets.
+    """
+    seen = {}
+    for t in templates:
+        if not t.is_local:
+            continue
+        cat = (t.category or "").strip()
+        if not cat or cat == "local":
+            continue
+        seen.setdefault(cat, cat)
+    return sorted(seen.items())
 
 
 class FilePickerScreen(ModalScreen[tuple]):
@@ -488,10 +520,25 @@ class ToolchainsScreen(Screen):
                             table = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
                             yield table
 
-                # SelfBuild panel (hidden by default) — populated in on_mount
+                # SelfBuild panel (hidden by default) — populated in on_mount.
+                # Layout: Local → [user-category buckets, dynamic] → [default
+                # builder buckets, fixed]. User-category buckets are derived
+                # from is_local templates whose category is non-empty and not
+                # "local"; they surface here whenever a user places a template
+                # under a custom label (see _save_template's fork-on-write).
+                from core.template import load_templates as _load_tpls_c
+                self._sb_templates_snapshot = _load_tpls_c(
+                    self.app.paths.templates_defaults,
+                    self.app.paths.templates_local,
+                )
+                self._sb_user_categories = _sb_user_categories(self._sb_templates_snapshot)
                 with VerticalScroll(id="tc-selfbuild"):
                     with Collapsible(title="Local (0)", collapsed=True, id="cat-sb-local"):
                         yield S4DataTable(id="tbl-sb-local", cursor_type="row", zebra_stripes=True)
+                    for cat_key, cat_label in self._sb_user_categories:
+                        safe = _sb_safe_key(cat_key)
+                        with Collapsible(title=f"{cat_label} (0)", collapsed=True, id=f"cat-sb-user-{safe}"):
+                            yield S4DataTable(id=f"tbl-sb-user-{safe}", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="OE-SDK (0)", collapsed=True, id="cat-sb-oesdk"):
                         yield S4DataTable(id="tbl-sb-oesdk", cursor_type="row", zebra_stripes=True)
                     with Collapsible(title="Crosstool-NG (0)", collapsed=True, id="cat-sb-ctng"):
@@ -550,110 +597,28 @@ class ToolchainsScreen(Screen):
         if reg.yaml_error:
             self.notify(f"YAML error: {reg.yaml_error}", severity="error", timeout=15)
 
-        # Populate installed table (from local yaml)
-        tbl = self.query_one("#tbl-installed", DataTable)
-        tbl.add_columns("Name", "Arch", "Description")
-        for tc in reg.installed_toolchains():
-            if tc.native:
-                tbl.add_row(
-                    Text(tc.name, style="bold"),
-                    Text(tc.arch, style="bold"),
-                    Text(tc.description, style="bold"),
-                    key=tc.name,
-                )
-            else:
-                tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
-        tbl.sort_by_column(1)  # sort by Name
-
-        # Populate category tables
-        all_catalog = reg.catalog_toolchains()
-        all_local = reg.local_toolchains()
-        for cat_key, _ in self._categories:
-            if cat_key == "local":
-                tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
-            else:
-                tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
-            if not tcs:
-                continue
-            try:
-                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
-                tbl.add_columns("●", "Name", "Arch", "Description")
-                for tc in tcs:
-                    status = "●" if tc.installed else ""
-                    tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
-                tbl.sort_by_column(2)  # sort by Name
-            except Exception:
-                pass
-
-        # SelfBuild tables — load templates and group by builder + local
-        from core.template import load_templates
-        templates = load_templates(
-            self.app.paths.templates_defaults,
-            self.app.paths.templates_local,
+        # Populate PreBuild tables (installed + all category buckets)
+        self._populate_prebuild_tables(
+            reg=reg,
+            init_columns=True,
+            clear_first=False,
+            sort_after=True,
         )
-        # Builder name → table id
-        _builder_table = {
-            "crosstool-ng": "tbl-sb-ctng",
-            "freetz-ng": "tbl-sb-freetz",
-            "oe-sdk": "tbl-sb-oesdk",
-            "android-ndk": "tbl-sb-android",
-        }
-        _builder_collapsible = {
-            "oe-sdk": ("cat-sb-oesdk", "OE-SDK"),
-            "crosstool-ng": ("cat-sb-ctng", "Crosstool-NG"),
-            "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
-            "android-ndk": ("cat-sb-android", "Android-NDK"),
-        }
-        # Init columns
-        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
-            try:
-                tbl_sb = self.query_one(f"#{sb_id}", DataTable)
-                tbl_sb.add_columns("●", "Name", "Arch", "Builder", "Description")
-            except Exception:
-                pass
-        # Populate
-        local_count = 0
-        builder_counts: dict[str, int] = {}
-        # If a name exists as both default + local template, only the local
-        # one is treated as installed — it shadows the default.
-        _local_names = {t.name for t in templates if t.is_local}
-        for tpl in templates:
-            _reg_entry = self._get_registry().get(tpl.name)
-            installed = bool(_reg_entry and _reg_entry.installed)
-            if installed and not tpl.is_local and tpl.name in _local_names:
-                installed = False
-            status = "●" if installed else ""
-            if tpl.is_local:
-                try:
-                    tbl_sb = self.query_one("#tbl-sb-local", DataTable)
-                    tbl_sb.add_row(status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name)
-                    local_count += 1
-                except Exception:
-                    pass
-            else:
-                tbl_id = _builder_table.get(tpl.builder)
-                if tbl_id:
-                    try:
-                        tbl_sb = self.query_one(f"#{tbl_id}", DataTable)
-                        tbl_sb.add_row(status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name)
-                        builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
-                    except Exception:
-                        pass
-        # Sort selfbuild tables by Name (col 2)
-        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
-            try:
-                self.query_one(f"#{sb_id}", DataTable).sort_by_column(2)
-            except Exception:
-                pass
 
-        # Update collapsible titles with counts
-        try:
-            self.query_one("#cat-sb-local", Collapsible).title = f"Local ({local_count})"
-            for builder, (col_id, label) in _builder_collapsible.items():
-                count = builder_counts.get(builder, 0)
-                self.query_one(f"#{col_id}", Collapsible).title = f"{label} ({count})"
-        except Exception:
-            pass
+        # SelfBuild tables — reuse the snapshot from compose() so the
+        # column-init / population / sort pipeline works on the same set
+        # the dynamic user-category collapsibles were built from.
+        self._populate_selfbuild_tables(
+            templates=self._sb_templates_snapshot,
+            init_columns=True,
+            clear_first=False,
+            sort_after=True,
+        )
+        # Drop the compose-time snapshot: subsequent refreshes reload
+        # templates fresh via _refresh_selfbuild_tables. Keeping it around
+        # would be a debugger tripwire — anyone reaching for
+        # self._sb_templates_snapshot later would get compose-time data.
+        del self._sb_templates_snapshot
 
         # Border titles
         self.query_one("#tc-installed-box", Vertical).border_title = t("installed")
@@ -679,8 +644,10 @@ class ToolchainsScreen(Screen):
         # Restore selection — either a SelfBuild template or an installed toolchain
         focused_tbl = tbl  # default focus target
         if ToolchainsScreen._selected_tpl_source and ToolchainsScreen._selected_tc:
-            # SelfBuild template — find the row in the right table
-            tpl_tbl_id = "tbl-sb-local" if ToolchainsScreen._selected_tpl_source == "local" else None
+            # SelfBuild template — find the row in the right table.
+            _user_bucket_ids = [
+                f"tbl-sb-user-{_sb_safe_key(k)}" for k, _ in (self._sb_user_categories or [])
+            ]
             _table_to_collapsible = {
                 "tbl-sb-local": "cat-sb-local",
                 "tbl-sb-ctng": "cat-sb-ctng",
@@ -688,9 +655,12 @@ class ToolchainsScreen(Screen):
                 "tbl-sb-oesdk": "cat-sb-oesdk",
                 "tbl-sb-android": "cat-sb-android",
             }
+            for tbl_id in _user_bucket_ids:
+                _table_to_collapsible[tbl_id] = tbl_id.replace("tbl-sb-", "cat-sb-")
             try:
-                if tpl_tbl_id:
-                    candidates = [tpl_tbl_id]
+                if ToolchainsScreen._selected_tpl_source == "local":
+                    # local includes both the plain Local bucket and any user-category bucket
+                    candidates = ["tbl-sb-local"] + _user_bucket_ids
                 else:
                     candidates = ["tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"]
                 for cand_id in candidates:
@@ -773,117 +743,22 @@ class ToolchainsScreen(Screen):
         template tables so the filter input is universal.
         """
         term_lower = term.lower().strip()
-        reg = self._get_registry()
-
-        # Rebuild installed table
-        try:
-            tbl = self.query_one("#tbl-installed", DataTable)
-            tbl.clear()
-            count = 0
-            for tc in reg.installed_toolchains():
-                if not self._tc_matches(tc, term_lower):
-                    continue
-                if tc.native:
-                    tbl.add_row(
-                        Text(tc.name, style="bold"),
-                        Text(tc.arch, style="bold"),
-                        Text(tc.description, style="bold"),
-                        key=tc.name,
-                    )
-                else:
-                    tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
-                count += 1
-            self.query_one("#tc-installed-label", Static).update(f" [bold]{t('installed')} ({count})[/bold]")
-        except Exception:
-            pass
-
-        # Rebuild category tables
-        all_catalog = reg.catalog_toolchains()
-        all_local = reg.local_toolchains()
-        for cat_key, cat_label in self._categories:
-            if cat_key == "local":
-                tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
-            else:
-                tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
-            if not tcs:
-                continue
-            try:
-                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
-                tbl.clear()
-                count = 0
-                for tc in tcs:
-                    if not self._tc_matches(tc, term_lower):
-                        continue
-                    status = "●" if tc.installed else ""
-                    tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
-                    count += 1
-                col = self.query_one(f"#cat-{cat_key}", Collapsible)
-                col.title = f"{cat_label} ({count})"
-            except Exception:
-                pass
-
-        # Rebuild SelfBuild template tables
+        self._populate_prebuild_tables(
+            filter_term_lower=term_lower,
+            init_columns=False,
+            clear_first=True,
+            sort_after=False,
+        )
         self._apply_selfbuild_filter(term_lower)
 
     def _apply_selfbuild_filter(self, term_lower: str) -> None:
         """Filter the SelfBuild template tables by the same search term."""
-        from core.template import load_templates
-        templates = load_templates(
-            self.app.paths.templates_defaults,
-            self.app.paths.templates_local,
+        self._populate_selfbuild_tables(
+            filter_term_lower=term_lower,
+            init_columns=False,
+            clear_first=True,
+            sort_after=False,
         )
-        _builder_table = {
-            "crosstool-ng": "tbl-sb-ctng",
-            "freetz-ng": "tbl-sb-freetz",
-            "oe-sdk": "tbl-sb-oesdk",
-            "android-ndk": "tbl-sb-android",
-        }
-        _builder_collapsible = {
-            "oe-sdk": ("cat-sb-oesdk", "OE-SDK"),
-            "crosstool-ng": ("cat-sb-ctng", "Crosstool-NG"),
-            "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
-            "android-ndk": ("cat-sb-android", "Android-NDK"),
-        }
-        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
-            try:
-                self.query_one(f"#{sb_id}", DataTable).clear()
-            except Exception:
-                pass
-        local_count = 0
-        builder_counts: dict[str, int] = {}
-        for tpl in templates:
-            # Reuse the same match logic — Template has name, description,
-            # arch, machines just like Toolchain.
-            if not self._tc_matches(tpl, term_lower):
-                continue
-            _reg_entry = self._get_registry().get(tpl.name)
-            installed = bool(_reg_entry and _reg_entry.installed)
-            status = "●" if installed else ""
-            if tpl.is_local:
-                try:
-                    self.query_one("#tbl-sb-local", DataTable).add_row(
-                        status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name,
-                    )
-                    local_count += 1
-                except Exception:
-                    pass
-            else:
-                tbl_id = _builder_table.get(tpl.builder)
-                if tbl_id:
-                    try:
-                        self.query_one(f"#{tbl_id}", DataTable).add_row(
-                            status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name,
-                        )
-                        builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
-                    except Exception:
-                        pass
-        try:
-            self.query_one("#cat-sb-local", Collapsible).title = f"Local ({local_count})"
-            for builder, (col_id, label) in _builder_collapsible.items():
-                count = builder_counts.get(builder, 0)
-                self.query_one(f"#{col_id}", Collapsible).title = f"{label} ({count})"
-        except Exception:
-            pass
 
     def on_click(self, event) -> None:
         """Handle clicks on tab labels."""
@@ -926,6 +801,10 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._active_left_tab = tab
         # Refresh F5/F9 button states for the new tab
         self._update_footer_state()
+        # Top action buttons (Install / Check / Backup / Restore / Remove)
+        # operate on installed toolchains only — disable them on the
+        # SelfBuild tab where the selection is a template instead.
+        self._update_action_button_states()
         # Focus first focusable widget in the new panel
         panel_id = "#tc-browser" if tab == "prebuild" else "#tc-selfbuild"
         try:
@@ -1030,6 +909,21 @@ class ToolchainsScreen(Screen):
             tbl.update_cell(rk, cols[2], desc)  # 3rd column = Description
         except Exception:
             pass
+
+    def _update_action_button_states(self) -> None:
+        """Enable/disable the top action buttons based on the active left tab.
+
+        Install / Check / Backup / Restore / Remove are PreBuild-only —
+        they act on installed toolchains. When ToolchainBuilder is
+        active the selection is a template, so those actions don't
+        apply and the buttons are greyed out to prevent misuse.
+        """
+        selfbuild_active = ToolchainsScreen._active_left_tab == "selfbuild"
+        for bid in ("btn-install", "btn-check", "btn-backup", "btn-restore", "btn-remove"):
+            try:
+                self.query_one(f"#{bid}", Button).disabled = selfbuild_active
+            except Exception:
+                pass
 
     def _set_installed_row_style(self, tc_name: str, style: str) -> None:
         """Update the style of an existing row in the installed table."""
@@ -1168,14 +1062,14 @@ class ToolchainsScreen(Screen):
     def _track_template_source(self, event) -> None:
         """When the user picks a row in a SelfBuild table, remember its source.
 
-        sb-local → user-edited copy in data/templates/
-        anything else → shipped template in defaults/templates/
+        sb-local or sb-user-<cat> → user-edited copy in data/templates/
+        anything else (sb-ctng / sb-oesdk / …) → shipped default template
         """
         try:
             tbl_id = getattr(event.data_table, "id", "") or ""
         except Exception:
             tbl_id = ""
-        if tbl_id == "tbl-sb-local":
+        if tbl_id == "tbl-sb-local" or tbl_id.startswith("tbl-sb-user-"):
             ToolchainsScreen._selected_tpl_source = "local"
         elif tbl_id.startswith("tbl-sb-"):
             ToolchainsScreen._selected_tpl_source = "default"
@@ -1207,6 +1101,7 @@ class ToolchainsScreen(Screen):
                     f"  [bold]{tpl.name}[/bold] — {tpl.description}",
                     f"  Source:    {source_label}    File: [dim]{rel_yaml}[/dim]",
                     f"  Builder:   {tpl.builder}",
+                    f"  Category:  {tpl.category or '[dim](none)[/dim]'}",
                     f"  Arch:      {tpl.arch}",
                 ]
                 if tpl.machines:
@@ -1915,9 +1810,49 @@ class ToolchainsScreen(Screen):
         thread.start()
 
     def _refresh(self) -> None:
+        """In-place refresh of both PreBuild and SelfBuild tables.
+
+        Replaces the earlier ``pop+push`` approach that nuked the whole
+        ToolchainsScreen (losing scroll, expand and cursor state). Now the
+        registry is invalidated, both panels are reloaded via their
+        respective ``_refresh_*_tables`` helpers, and the previous
+        selection is restored — bucket expanded, cursor moved — from the
+        stable ``_selected_tc`` / ``_selected_tpl_source`` class vars.
+        """
         self._registry = None
-        self.app.pop_screen()
-        self.app.push_screen(ToolchainsScreen())
+        target = ToolchainsScreen._selected_tc
+        tpl_source = ToolchainsScreen._selected_tpl_source
+
+        # Suppress row_highlighted while the tables settle. See
+        # _fork_template_to_local for the same pattern — Textual queues
+        # RowHighlighted events during clear+repopulate and dispatches
+        # them AFTER this handler returns, so pinning _mounted=True right
+        # away would let them clobber _selected_tc.
+        self._mounted = False
+        try:
+            self._refresh_prebuild_tables()
+            self._refresh_selfbuild_tables()
+        except Exception as e:
+            self._log_sync(f"[yellow]refresh failed: {e}[/yellow]")
+
+        def _finalize() -> None:
+            if target:
+                ToolchainsScreen._selected_tc = target
+                if tpl_source:
+                    ToolchainsScreen._selected_tpl_source = tpl_source
+                    self._reselect_selfbuild_row(target, focus=False)
+                else:
+                    self._reselect_prebuild_row(target, focus=False)
+            self._mounted = True
+            self._update_detail()
+            self._update_editor()
+            # F5/F6/F9/F11/F12 button states depend on the current
+            # selection — refresh them explicitly so a deleted/moved
+            # row doesn't leave the footer stuck showing the previous
+            # action set.
+            self._update_footer_state()
+
+        self.set_timer(0.3, _finalize)
 
     def _log(self, msg: str) -> None:
         ToolchainsScreen._log_history.append(msg)
@@ -2025,7 +1960,18 @@ class ToolchainsScreen(Screen):
 
         - PreBuild: YAML block of the selected installed toolchain
         - SelfBuild: full YAML of the selected template
+
+        Wrapped defensively so deferred callers (``set_timer`` finalize
+        hooks) don't die on transient widget-not-found / stale-state
+        races: a failed editor refresh must not take down the reselect
+        pipeline that already ran before it.
         """
+        try:
+            self._update_editor_impl()
+        except Exception:
+            pass
+
+    def _update_editor_impl(self) -> None:
         editor = self.query_one("#tc-editor", TextArea)
 
         name = ToolchainsScreen._selected_tc
@@ -2210,10 +2156,24 @@ class ToolchainsScreen(Screen):
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
                 return ""
-            # Collision check against ALL templates (defaults + local)
+            # Collision check.
+            #
+            # Renaming a LOCAL template back to the name of a shipped
+            # default is allowed — the local copy simply shadows that
+            # default (fork-on-write semantics), and reverting to the
+            # original name is the natural "restore the override" flow.
+            # We only reject collisions with another *local* file, which
+            # would clobber user data.
+            #
+            # Renaming during a fresh fork (source != "local") still
+            # rejects any existing template at the target name.
             from core.template import load_templates as _load_tpls
             _all = _load_tpls(self.app.paths.templates_defaults, self.app.paths.templates_local)
-            if any(t.name == new_name for t in _all):
+            if ToolchainsScreen._selected_tpl_source == "local":
+                collision = any(t.name == new_name and t.is_local for t in _all)
+            else:
+                collision = any(t.name == new_name for t in _all)
+            if collision:
                 msg = t("template_rename_name_exists", name=new_name)
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
@@ -2255,6 +2215,29 @@ class ToolchainsScreen(Screen):
                 self._log_sync(f"  [red]✗ {msg}[/red]")
                 self.notify(msg, severity="error", timeout=10)
                 return ""
+            # Inject `category: local` into the forked YAML when the user
+            # hasn't set one — default templates ship without category, so a
+            # bare fork would build a toolchain into the Selfbuild bucket.
+            # For a hand-copied entry we want it to land in Local by default
+            # (matches how the template itself is bucketed in ToolchainBuilder).
+            # User can then edit category to move it to another bucket.
+            if not (parsed.get("category") or "").strip():
+                import re as _re3
+                if _re3.search(r'(?m)^\s*category\s*:', new_text):
+                    # Field exists but empty (e.g. `category:` or `category: ""`)
+                    new_text = _re3.sub(
+                        r'(?m)^(\s*category\s*:).*$', r'\1 local', new_text, count=1,
+                    )
+                elif _re3.search(r'(?m)^\s*arch\s*:', new_text):
+                    # Insert right after the `arch:` line for consistent layout
+                    new_text = _re3.sub(
+                        r'(?m)^(\s*arch\s*:.*)$', r'\1\ncategory: local', new_text, count=1,
+                    )
+                else:
+                    # Fallback: append at end
+                    if not new_text.endswith("\n"):
+                        new_text += "\n"
+                    new_text += "category: local\n"
             try:
                 local_dir.mkdir(parents=True, exist_ok=True)
                 # Copy the .config (under new filename if renamed)
@@ -2303,59 +2286,280 @@ class ToolchainsScreen(Screen):
             ToolchainsScreen._selected_tc = final_name
             name = final_name
 
-        # Step 5: Refresh SelfBuild tables and detail/editor
+        # Step 5: Refresh SelfBuild tables and detail/editor.
+        # Row_highlighted events from the clear+repopulate inside
+        # _refresh_selfbuild_tables are queued and dispatched AFTER this
+        # handler returns. If _mounted flips True right away they would
+        # clobber _selected_tc with whatever sits at row 0 of some other
+        # bucket. So we suppress them for the whole settling window and
+        # do the pin/reselect/detail-update deferred, mirroring the
+        # pattern in _fork_template_to_local and _refresh().
+        self._mounted = False
         try:
-            # Suppress row_highlighted handlers while tables rebuild — otherwise
-            # RowHighlighted from e.g. tbl-sb-ctng row 0 would clobber our
-            # _selected_tc with whatever sits at the top of those tables.
-            self._mounted = False
             self._refresh_selfbuild_tables()
-            # After a rename, move the cursor in the local table to the new entry
-            if is_rename:
-                try:
-                    self.query_one("#cat-sb-local", Collapsible).collapsed = False
-                except Exception:
-                    pass
-                try:
-                    sb_tbl = self.query_one("#tbl-sb-local", DataTable)
-                    for i, key in enumerate(sb_tbl.rows):
-                        if key.value == final_name:
-                            sb_tbl.move_cursor(row=i)
-                            if hasattr(sb_tbl, "mark_row"):
-                                sb_tbl.mark_row(i)
-                            sb_tbl.focus()
-                            break
-                except Exception as e:
-                    self._log_sync(f"  [yellow]select_renamed: {e}[/yellow]")
-                # Pin the selection again after the deferred RowHighlighted
-                # events from the table rebuild have flushed.
-                def _repin():
-                    ToolchainsScreen._selected_tc = final_name
-                    ToolchainsScreen._selected_tpl_source = "local"
-                    self._mounted = True
-                    self._update_detail()
-                    self._update_editor()
-                self.set_timer(0.1, _repin)
-            else:
-                self._mounted = True
+        except Exception as e:
+            self._log_sync(f"  [yellow]refresh after template save failed: {e}[/yellow]")
+
+        def _finalize() -> None:
+            ToolchainsScreen._selected_tc = final_name
+            ToolchainsScreen._selected_tpl_source = "local"
+            self._reselect_selfbuild_row(final_name, focus=is_rename)
+            self._mounted = True
             self._update_detail()
             self._update_editor()
-            # Skip editor focus restore on rename — focus stays on the SB table
-            # so the highlight on the renamed entry is visible.
+            self._update_footer_state()
+            # Editor cursor restore only when editor kept focus (no rename).
             if saved_cursor and editor_was_focused and not is_rename:
                 self.set_timer(0.05, lambda: self._restore_editor_cursor(saved_cursor))
-        except Exception:
-            pass
+        self.set_timer(0.3, _finalize)
 
         return t("template_saved", name=name)
 
-    def _refresh_selfbuild_tables(self) -> None:
-        """Reload SelfBuild templates and rebuild all tables."""
-        from core.template import load_templates
-        templates = load_templates(
-            self.app.paths.templates_defaults,
-            self.app.paths.templates_local,
+    def _populate_prebuild_tables(
+        self,
+        reg=None,
+        filter_term_lower: str = "",
+        init_columns: bool = False,
+        clear_first: bool = False,
+        sort_after: bool = False,
+    ) -> None:
+        """Single source of truth for filling the PreBuild-panel tables.
+
+        Handles both the top ``#tbl-installed`` (installed toolchains) and
+        every category bucket in ``self._categories``. Skips empty custom
+        buckets silently — base buckets always render with their (0) count.
+        """
+        if reg is None:
+            reg = self._get_registry()
+
+        # 1. Installed table (top of the screen)
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            if init_columns:
+                tbl.add_columns("Name", "Arch", "Description")
+            if clear_first:
+                tbl.clear()
+            installed = [
+                tc for tc in reg.installed_toolchains()
+                if not filter_term_lower or self._tc_matches(tc, filter_term_lower)
+            ]
+            for tc in installed:
+                if tc.native:
+                    tbl.add_row(
+                        Text(tc.name, style="bold"),
+                        Text(tc.arch, style="bold"),
+                        Text(tc.description, style="bold"),
+                        key=tc.name,
+                    )
+                else:
+                    tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
+            if sort_after:
+                tbl.sort_by_column(1)
+            # Installed count in the Installed label (if present)
+            try:
+                self.query_one("#tc-installed-label", Static).update(
+                    f" [bold]{t('installed')} ({len(installed)})[/bold]"
+                )
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        # 2. Category buckets
+        all_catalog = reg.catalog_toolchains()
+        all_local = reg.local_toolchains()
+        for cat_key, cat_label in self._categories:
+            if cat_key == "local":
+                tcs = [tc for tc in all_local if tc.category in ("local", "", "native")]
+            else:
+                tcs = [tc for tc in all_catalog + all_local if tc.category == cat_key]
+            # Custom categories with no matches: skip drawing (bucket stays
+            # in DOM but empty; unmounted by _ensure_prebuild_user_buckets
+            # if truly gone from the data).
+            try:
+                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
+            except Exception:
+                continue
+            if init_columns:
+                tbl.add_columns("●", "Name", "Arch", "Description")
+            if clear_first:
+                tbl.clear()
+            count = 0
+            for tc in tcs:
+                if filter_term_lower and not self._tc_matches(tc, filter_term_lower):
+                    continue
+                status = "●" if tc.installed else ""
+                tbl.add_row(status, tc.name, tc.arch, tc.description, key=tc.name)
+                count += 1
+            if sort_after and count:
+                try:
+                    tbl.sort_by_column(2)
+                except Exception:
+                    pass
+            # Update the collapsible title with the visible count
+            try:
+                self.query_one(f"#cat-{cat_key}", Collapsible).title = f"{cat_label} ({count})"
+            except Exception:
+                pass
+
+    def _ensure_prebuild_user_buckets(self, reg=None) -> None:
+        """Sync custom-category Collapsibles for the PreBuild panel.
+
+        Base categories in ``_BASE_CATEGORIES`` are always mounted at
+        compose() time and left alone. Custom categories (any ``category:``
+        value on a toolchain that isn't a base key or ``"native"``) get
+        mounted here when new and unmounted when the last toolchain that
+        used them is gone.
+        """
+        if reg is None:
+            reg = self._get_registry()
+        current = _build_categories(reg)
+        base_keys = {k for k, _ in _BASE_CATEGORIES}
+        current_custom = [(k, l) for k, l in current if k not in base_keys]
+        existing_custom = [(k, l) for k, l in (self._categories or []) if k not in base_keys]
+        current_custom_keys = {k for k, _ in current_custom}
+        existing_custom_keys = {k for k, _ in existing_custom}
+        new_cats = [(k, l) for k, l in current_custom if k not in existing_custom_keys]
+        stale_cats = [(k, l) for k, l in existing_custom if k not in current_custom_keys]
+
+        try:
+            container = self.query_one("#tc-browser", VerticalScroll)
+        except Exception:
+            return
+
+        for cat_key, _ in stale_cats:
+            try:
+                self.query_one(f"#cat-{cat_key}", Collapsible).remove()
+            except Exception as e:
+                self._log_sync(f"  [yellow]remove empty PreBuild bucket '{cat_key}' failed: {e}[/yellow]")
+
+        if new_cats:
+            # New custom buckets slot right after the "Local" bucket to
+            # mirror the compose()-time layout produced by _build_categories.
+            # Anchor = first non-local base bucket (usually "common"). Falls
+            # back to appending at the end if not found.
+            anchor = None
+            for k, _ in _BASE_CATEGORIES:
+                if k == "local":
+                    continue
+                try:
+                    anchor = self.query_one(f"#cat-{k}", Collapsible)
+                    break
+                except Exception:
+                    continue
+            for cat_key, cat_label in new_cats:
+                try:
+                    tbl = S4DataTable(id=f"tbl-{cat_key}", cursor_type="row", zebra_stripes=True)
+                    col = Collapsible(
+                        tbl,
+                        title=f"{cat_label} (0)",
+                        collapsed=False,
+                        id=f"cat-{cat_key}",
+                    )
+                    if anchor is not None:
+                        container.mount(col, before=anchor)
+                    else:
+                        container.mount(col)
+                    tbl.add_columns("●", "Name", "Arch", "Description")
+                except Exception as e:
+                    self._log_sync(f"  [yellow]mount PreBuild bucket '{cat_key}' failed: {e}[/yellow]")
+
+        self._categories = current
+
+    def _refresh_prebuild_tables(self) -> None:
+        """Reload registry + rebuild PreBuild tables in place.
+
+        Includes the current filter term so post-refresh state matches
+        what the user was looking at.
+        """
+        reg = self._get_registry()
+        self._ensure_prebuild_user_buckets(reg)
+        try:
+            term_lower = self.query_one("#tc-filter", Input).value.lower().strip()
+        except Exception:
+            term_lower = ""
+        self._populate_prebuild_tables(
+            reg=reg,
+            filter_term_lower=term_lower,
+            init_columns=False,
+            clear_first=True,
+            sort_after=True,
         )
+
+    def _reselect_prebuild_row(self, name: str, focus: bool = False) -> None:
+        """Find ``name`` in the Installed table or one of the category
+        buckets, move the cursor there and expand the bucket if
+        collapsed.
+
+        Preference order — installed table first, then category buckets.
+        Rationale: the installed table is always visible at the top and
+        is where the user was most likely working (F12 save, install/
+        remove). Reselecting there means we don't spuriously expand a
+        category bucket the user hadn't opened. If the toolchain isn't
+        installed (only catalog-listed), we fall through to its category
+        bucket."""
+        try:
+            tbl = self.query_one("#tbl-installed", DataTable)
+            for i, key in enumerate(tbl.rows):
+                if key.value == name:
+                    try:
+                        tbl.move_cursor(row=i)
+                        if hasattr(tbl, "mark_row"):
+                            tbl.mark_row(i)
+                        if focus:
+                            tbl.focus()
+                    except Exception:
+                        pass
+                    return
+        except Exception:
+            pass
+        for cat_key, _ in (self._categories or []):
+            try:
+                tbl = self.query_one(f"#tbl-{cat_key}", DataTable)
+            except Exception:
+                continue
+            for i, key in enumerate(tbl.rows):
+                if key.value == name:
+                    try:
+                        self.query_one(f"#cat-{cat_key}", Collapsible).collapsed = False
+                    except Exception:
+                        pass
+                    try:
+                        tbl.move_cursor(row=i)
+                        if hasattr(tbl, "mark_row"):
+                            tbl.mark_row(i)
+                        if focus:
+                            tbl.focus()
+                    except Exception:
+                        pass
+                    return
+
+    def _populate_selfbuild_tables(
+        self,
+        templates=None,
+        filter_term_lower: str = "",
+        init_columns: bool = False,
+        clear_first: bool = False,
+        sort_after: bool = False,
+    ) -> None:
+        """Single source of truth for filling the SelfBuild-panel tables.
+
+        Routing:
+          * ``is_local`` template with empty or ``"local"`` category
+            → ``tbl-sb-local``
+          * ``is_local`` template with a user-defined category
+            → ``tbl-sb-user-<safe_key>`` (dynamic bucket created in
+            compose(); templates whose category appeared after the
+            snapshot fall back to ``tbl-sb-local`` silently)
+          * default template → ``tbl-sb-<builder>`` (unchanged)
+        """
+        if templates is None:
+            from core.template import load_templates
+            templates = load_templates(
+                self.app.paths.templates_defaults,
+                self.app.paths.templates_local,
+            )
+
         _builder_table = {
             "crosstool-ng": "tbl-sb-ctng",
             "freetz-ng": "tbl-sb-freetz",
@@ -2368,41 +2572,247 @@ class ToolchainsScreen(Screen):
             "freetz-ng": ("cat-sb-freetz", "Freetz-NG"),
             "android-ndk": ("cat-sb-android", "Android-NDK"),
         }
-        # Clear all
-        for sb_id in ("tbl-sb-local", "tbl-sb-ctng", "tbl-sb-freetz", "tbl-sb-oesdk", "tbl-sb-android"):
-            try:
-                self.query_one(f"#{sb_id}", DataTable).clear()
-            except Exception:
-                pass
-        local_count = 0
-        builder_counts: dict[str, int] = {}
-        for tpl in templates:
-            _reg_entry = self._get_registry().get(tpl.name)
-            installed = bool(_reg_entry and _reg_entry.installed)
-            status = "●" if installed else ""
-            if tpl.is_local:
+        # User-category buckets snapshotted at compose() time.
+        user_buckets = list(getattr(self, "_sb_user_categories", []) or [])
+        user_bucket_by_key = {cat_key: _sb_safe_key(cat_key) for cat_key, _ in user_buckets}
+
+        all_table_ids = (
+            ["tbl-sb-local"]
+            + [f"tbl-sb-user-{safe}" for safe in user_bucket_by_key.values()]
+            + list(_builder_table.values())
+        )
+
+        if init_columns:
+            for sb_id in all_table_ids:
                 try:
-                    tbl_sb = self.query_one("#tbl-sb-local", DataTable)
-                    tbl_sb.add_row(status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name)
-                    local_count += 1
+                    tbl_sb = self.query_one(f"#{sb_id}", DataTable)
+                    tbl_sb.add_columns("●", "Name", "Arch", "Builder", "Description")
                 except Exception:
                     pass
+        if clear_first:
+            for sb_id in all_table_ids:
+                try:
+                    self.query_one(f"#{sb_id}", DataTable).clear()
+                except Exception:
+                    pass
+
+        local_count = 0
+        builder_counts: dict[str, int] = {}
+        user_counts: dict[str, int] = {}
+
+        # If a name exists as both default + local template, only the local
+        # one is treated as installed — it shadows the default.
+        _local_names = {t.name for t in templates if t.is_local}
+
+        def _route(tpl) -> str | None:
+            if tpl.is_local:
+                cat = (tpl.category or "").strip()
+                if not cat or cat == "local":
+                    return "tbl-sb-local"
+                if cat in user_bucket_by_key:
+                    return f"tbl-sb-user-{user_bucket_by_key[cat]}"
+                # New category since compose() snapshot — fall back to Local.
+                return "tbl-sb-local"
+            return _builder_table.get(tpl.builder)
+
+        for tpl in templates:
+            if filter_term_lower and not self._tc_matches(tpl, filter_term_lower):
+                continue
+            _reg_entry = self._get_registry().get(tpl.name)
+            installed = bool(_reg_entry and _reg_entry.installed)
+            if installed and not tpl.is_local and tpl.name in _local_names:
+                installed = False
+            status = "●" if installed else ""
+            tbl_id = _route(tpl)
+            if not tbl_id:
+                continue
+            try:
+                tbl_sb = self.query_one(f"#{tbl_id}", DataTable)
+                tbl_sb.add_row(status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name)
+            except Exception:
+                continue
+            if tbl_id == "tbl-sb-local":
+                local_count += 1
+            elif tbl_id.startswith("tbl-sb-user-"):
+                # Reverse lookup: safe → cat_key
+                for cat_key, safe in user_bucket_by_key.items():
+                    if f"tbl-sb-user-{safe}" == tbl_id:
+                        user_counts[cat_key] = user_counts.get(cat_key, 0) + 1
+                        break
             else:
-                tbl_id = _builder_table.get(tpl.builder)
-                if tbl_id:
-                    try:
-                        tbl_sb = self.query_one(f"#{tbl_id}", DataTable)
-                        tbl_sb.add_row(status, tpl.name, tpl.arch, tpl.builder, tpl.description, key=tpl.name)
-                        builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
-                    except Exception:
-                        pass
+                builder_counts[tpl.builder] = builder_counts.get(tpl.builder, 0) + 1
+
+        if sort_after:
+            for sb_id in all_table_ids:
+                try:
+                    self.query_one(f"#{sb_id}", DataTable).sort_by_column(2)
+                except Exception:
+                    pass
+
+        # Titles
         try:
             self.query_one("#cat-sb-local", Collapsible).title = f"Local ({local_count})"
+            for cat_key, cat_label in user_buckets:
+                safe = user_bucket_by_key[cat_key]
+                count = user_counts.get(cat_key, 0)
+                try:
+                    self.query_one(f"#cat-sb-user-{safe}", Collapsible).title = f"{cat_label} ({count})"
+                except Exception:
+                    pass
             for builder, (col_id, label) in _builder_collapsible.items():
                 count = builder_counts.get(builder, 0)
                 self.query_one(f"#{col_id}", Collapsible).title = f"{label} ({count})"
         except Exception:
             pass
+
+    def _refresh_selfbuild_tables(self) -> None:
+        """Reload SelfBuild templates and rebuild all tables.
+
+        Also syncs the dynamic user-category buckets so that empty ones
+        vanish after the last matching template is deleted or moved out.
+        Honours the current filter term so the post-refresh view stays
+        symmetric with what the user was looking at (same policy as
+        _refresh_prebuild_tables).
+        """
+        from core.template import load_templates
+        templates = load_templates(
+            self.app.paths.templates_defaults,
+            self.app.paths.templates_local,
+        )
+        try:
+            term_lower = self.query_one("#tc-filter", Input).value.lower().strip()
+        except Exception:
+            term_lower = ""
+        self._ensure_selfbuild_user_buckets(templates)
+        self._populate_selfbuild_tables(
+            templates=templates,
+            filter_term_lower=term_lower,
+            init_columns=False,
+            clear_first=True,
+            sort_after=False,
+        )
+
+    def _ensure_selfbuild_user_buckets(self, templates) -> None:
+        """Sync user-category Collapsibles with the current template set.
+
+        compose() only knows about the categories present at initial load.
+        When the user edits a template and adds / renames / removes a
+        category, the corresponding bucket widget needs to appear or
+        vanish. This method:
+          * mounts a new Collapsible + DataTable for any category that
+            appeared since the last snapshot (inserted before the fixed
+            default builder buckets so the layout stays: Local → user
+            buckets → OE-SDK / Crosstool-NG …)
+          * unmounts empty user buckets whose category no longer exists
+            in any template (e.g. after renaming ``aaa`` → ``aab``, the
+            ``Aaa`` bucket is gone)
+        Updates ``self._sb_user_categories`` so subsequent lookups see
+        only the buckets that actually exist.
+        """
+        current = _sb_user_categories(templates)
+        existing = self._sb_user_categories or []
+        current_keys = {k for k, _ in current}
+        existing_keys = {k for k, _ in existing}
+        new_cats = [(k, l) for k, l in current if k not in existing_keys]
+        stale_cats = [(k, l) for k, l in existing if k not in current_keys]
+
+        try:
+            container = self.query_one("#tc-selfbuild", VerticalScroll)
+        except Exception:
+            return
+
+        # Unmount stale buckets first so mount(anchor=…) below still finds
+        # its anchor even if the layout shrank a lot.
+        for cat_key, _ in stale_cats:
+            safe = _sb_safe_key(cat_key)
+            try:
+                self.query_one(f"#cat-sb-user-{safe}", Collapsible).remove()
+            except Exception as e:
+                self._log_sync(f"  [yellow]remove empty user bucket '{cat_key}' failed: {e}[/yellow]")
+
+        if new_cats:
+            # Anchor = first default builder bucket, so new user buckets
+            # slot between Local and OE-SDK.
+            anchor = None
+            try:
+                anchor = self.query_one("#cat-sb-oesdk", Collapsible)
+            except Exception:
+                pass
+            for cat_key, cat_label in new_cats:
+                safe = _sb_safe_key(cat_key)
+                try:
+                    tbl = S4DataTable(id=f"tbl-sb-user-{safe}", cursor_type="row", zebra_stripes=True)
+                    # Freshly-appearing buckets start expanded: the user just
+                    # produced this category by saving a template, so the
+                    # matching row should be visible without extra clicks.
+                    col = Collapsible(
+                        tbl,
+                        title=f"{cat_label} (0)",
+                        collapsed=False,
+                        id=f"cat-sb-user-{safe}",
+                    )
+                    if anchor is not None:
+                        container.mount(col, before=anchor)
+                    else:
+                        container.mount(col)
+                    tbl.add_columns("●", "Name", "Arch", "Builder", "Description")
+                except Exception as e:
+                    self._log_sync(f"  [yellow]mount user bucket '{cat_key}' failed: {e}[/yellow]")
+
+        self._sb_user_categories = current
+
+    def _reselect_selfbuild_row(self, name: str, focus: bool = False) -> None:
+        """After a table rebuild, find `name` in whatever bucket it landed
+        in, expand that bucket, and move the cursor to it.
+
+        ``focus=True`` also shifts widget focus to the target table — use
+        for flows where the previous focus (e.g. a sibling bucket the user
+        picked from) would otherwise keep its blue-highlighted cursor and
+        visually contradict the new selection. Default False so save-from-
+        editor doesn't steal focus away from the YAML editor.
+
+        Iteration order is source-aware: when the current selection is a
+        local template the Local + user-category buckets are searched
+        first, so a template that shares its name with a shipped default
+        (e.g. edited-local ``qnap_x64`` alongside the default ``qnap_x64``
+        in Crosstool-NG) resolves to the user's copy rather than the
+        default — otherwise both buckets would light up."""
+        default_ids = [
+            ("tbl-sb-ctng",    "cat-sb-ctng"),
+            ("tbl-sb-freetz",  "cat-sb-freetz"),
+            ("tbl-sb-oesdk",   "cat-sb-oesdk"),
+            ("tbl-sb-android", "cat-sb-android"),
+        ]
+        local_ids = [("tbl-sb-local", "cat-sb-local")]
+        for k, _ in (self._sb_user_categories or []):
+            safe = _sb_safe_key(k)
+            local_ids.append((f"tbl-sb-user-{safe}", f"cat-sb-user-{safe}"))
+
+        if ToolchainsScreen._selected_tpl_source == "local":
+            ordered = local_ids + default_ids
+        else:
+            ordered = default_ids + local_ids
+
+        for tbl_id, col_id in ordered:
+            try:
+                tbl = self.query_one(f"#{tbl_id}", DataTable)
+            except Exception:
+                continue
+            for i, key in enumerate(tbl.rows):
+                if key.value == name:
+                    try:
+                        self.query_one(f"#{col_id}", Collapsible).collapsed = False
+                    except Exception:
+                        pass
+                    try:
+                        tbl.move_cursor(row=i)
+                        if hasattr(tbl, "mark_row"):
+                            tbl.mark_row(i)
+                        if focus:
+                            tbl.focus()
+                    except Exception:
+                        pass
+                    return
 
     def do_save(self) -> str:
         """F12 Save handler. Only saves the YAML editor if the Yaml tab is active."""
@@ -2534,39 +2944,31 @@ class ToolchainsScreen(Screen):
             final_name = name
             result_msg = t("yaml_saved", name=name)
 
-        # Step 4: Reload registry and refresh tables
+        # Step 4: Reload registry and refresh tables in place. Rebuilds
+        # the installed table AND every category bucket, so a category:
+        # change in the YAML (e.g. stb → nas) immediately moves the row
+        # to the right bucket without a screen rebuild.
         self._registry = None
-        reg = self._get_registry()
+        self._mounted = False
         try:
-            tbl = self.query_one("#tbl-installed", DataTable)
-            tbl.clear()
-            row_index = -1
-            for i, tc in enumerate(reg.installed_toolchains()):
-                if tc.native:
-                    tbl.add_row(
-                        Text(tc.name, style="bold"),
-                        Text(tc.arch, style="bold"),
-                        Text(tc.description, style="bold"),
-                        key=tc.name,
-                    )
-                else:
-                    tbl.add_row(tc.name, tc.arch, tc.description, key=tc.name)
-                if tc.name == final_name:
-                    row_index = i
-            # Restore selection on the just-edited (or renamed) toolchain
-            if row_index >= 0:
-                tbl.move_cursor(row=row_index)
-                if hasattr(tbl, "mark_row"):
-                    tbl.mark_row(row_index)
-                ToolchainsScreen._selected_tc = final_name
-                # Refresh yaml editor with new content
-                self._update_editor()
-                # Defer cursor restore: row_highlighted events trigger another
-                # _update_editor() that would reset (0,0). Run after events.
-                if saved_cursor and editor_was_focused:
-                    self.set_timer(0.05, lambda: self._restore_editor_cursor(saved_cursor))
-        except Exception:
-            pass
+            self._refresh_prebuild_tables()
+        except Exception as e:
+            self._log_sync(f"[yellow]refresh after toolchain save failed: {e}[/yellow]")
+
+        def _finalize():
+            ToolchainsScreen._selected_tc = final_name
+            # Toolchain save leaves _selected_tpl_source untouched — pin
+            # to "" so the reselect uses the PreBuild logic.
+            ToolchainsScreen._selected_tpl_source = ""
+            self._reselect_prebuild_row(final_name, focus=False)
+            self._mounted = True
+            self._update_detail()
+            self._update_editor()
+            # Editor cursor restore has to run AFTER _update_editor above
+            # so the freshly-loaded text is in place before we position.
+            if saved_cursor and editor_was_focused:
+                self.set_timer(0.05, lambda: self._restore_editor_cursor(saved_cursor))
+        self.set_timer(0.3, _finalize)
 
         return result_msg
 
@@ -4293,21 +4695,88 @@ class ToolchainsScreen(Screen):
             if tpl.config and tpl.config_path and tpl.config_path.exists():
                 _shutil.copy2(tpl.config_path, local_dir / tpl.config)
             if tpl.yaml_path and tpl.yaml_path.exists():
-                _shutil.copy2(tpl.yaml_path, local_yaml)
+                # Same category injection as the editor fork-on-write:
+                # default templates ship without category, so a raw copy
+                # would build into the Selfbuild bucket. For a UI-triggered
+                # fork (e.g. ctng menuconfig) we want it in Local.
+                yaml_text = tpl.yaml_path.read_text(encoding="utf-8")
+                local_yaml.write_text(
+                    self._inject_default_local_category(yaml_text),
+                    encoding="utf-8",
+                )
         except Exception as e:
             self.notify(t("template_fork_failed", err=str(e)), severity="error")
             return None
         self._log_sync(f"  [green]Forked {tpl.name} → data/templates/[/green]")
-        ToolchainsScreen._selected_tpl_source = "local"
+        target_name = tpl.name
+
+        # Keep _mounted=False for the entire refresh+reselect settling
+        # window: refresh's row_highlighted events are dispatched
+        # asynchronously after this handler returns, and if we let them
+        # fire with _mounted=True they clobber _selected_tc with whatever
+        # sits at row 0 of some other table (typically the first
+        # collapsible's first row).
+        self._mounted = False
         try:
             self._refresh_selfbuild_tables()
-        except Exception:
-            pass
+        except Exception as e:
+            self._log_sync(f"  [yellow]refresh after fork failed: {e}[/yellow]")
+
+        def _finalize() -> None:
+            ToolchainsScreen._selected_tc = target_name
+            ToolchainsScreen._selected_tpl_source = "local"
+            self._reselect_selfbuild_row(target_name, focus=True)
+            self._mounted = True
+            self._update_detail()
+            self._update_editor()
+
+        # Defer the pin so the queued row_highlighted events from the
+        # refresh finish firing (and get discarded thanks to _mounted=False)
+        # before we re-enable them and stamp the final selection.
+        self.set_timer(0.3, _finalize)
+
         from core.template import load_template
         new_tpl = load_template(local_yaml)
         if new_tpl:
             new_tpl.is_local = True
         return new_tpl
+
+    @staticmethod
+    def _inject_default_local_category(yaml_text: str) -> str:
+        """Ensure a template YAML has ``category: local`` when it lacks one.
+
+        Used by the two fork paths — editor save (``_save_template``) and
+        UI-triggered fork (``_fork_template_to_local``). The default
+        templates don't carry a category, so a bare copy would land the
+        resulting toolchain in the Selfbuild bucket rather than Local.
+        """
+        import re as _re
+        import yaml as _yaml
+        try:
+            parsed = _yaml.safe_load(yaml_text) or {}
+        except Exception:
+            parsed = {}
+        # Empty / whitespace-only / non-mapping YAML — don't invent a
+        # bogus one-field template. The caller normally validates first
+        # (_save_template), but _fork_template_to_local passes raw file
+        # contents through; a corrupted default template shouldn't
+        # silently become a one-line "category: local" file.
+        if not parsed or not isinstance(parsed, dict):
+            return yaml_text
+        if (parsed.get("category") or "").strip():
+            return yaml_text
+        if _re.search(r'(?m)^\s*category\s*:', yaml_text):
+            # Field exists but empty (e.g. `category:` or `category: ""`)
+            return _re.sub(
+                r'(?m)^(\s*category\s*:).*$', r'\1 local', yaml_text, count=1,
+            )
+        if _re.search(r'(?m)^\s*arch\s*:', yaml_text):
+            return _re.sub(
+                r'(?m)^(\s*arch\s*:.*)$', r'\1\ncategory: local', yaml_text, count=1,
+            )
+        if not yaml_text.endswith("\n"):
+            yaml_text += "\n"
+        return yaml_text + "category: local\n"
 
     def _customize_oesdk(self, tpl: "Template") -> None:
         """F6 for OE-SDK templates: open the form-based customize modal."""

@@ -3,6 +3,5 @@ description: "Android x86"
 exclude_from_automation: true
 builder: android-ndk
 arch: x86
-category: android
 # Android NDK builder config (next to this file)
 config: android_x86.config

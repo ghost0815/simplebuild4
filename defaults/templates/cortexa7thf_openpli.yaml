@@ -3,7 +3,6 @@ description: "openpli cortexa7thf"
 exclude_from_automation: true
 builder: oe-sdk
 arch: armv7
-category: stb
 
 # Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
 prefix: "arm-oe-linux-gnueabi-"

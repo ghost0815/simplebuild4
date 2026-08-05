@@ -3,7 +3,6 @@ description: "openpli mips32el-nf"
 exclude_from_automation: true
 builder: oe-sdk
 arch: mips32el
-category: stb
 
 # Result toolchain properties (auto-detected after build, pre-filled from PreBuild)
 prefix: "mipsel-oe-linux-"
