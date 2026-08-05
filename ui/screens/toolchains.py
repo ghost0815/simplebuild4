@@ -838,10 +838,6 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._active_left_tab = tab
         # Refresh F5/F9 button states for the new tab
         self._update_footer_state()
-        # Top action buttons (Install / Check / Backup / Restore / Remove)
-        # operate on installed toolchains only — disable them on the
-        # SelfBuild tab where the selection is a template instead.
-        self._update_action_button_states()
         # Focus first focusable widget in the new panel
         panel_id = "#tc-browser" if tab == "prebuild" else "#tc-selfbuild"
         try:
@@ -946,21 +942,6 @@ class ToolchainsScreen(Screen):
             tbl.update_cell(rk, cols[2], desc)  # 3rd column = Description
         except Exception:
             pass
-
-    def _update_action_button_states(self) -> None:
-        """Enable/disable the top action buttons based on the active left tab.
-
-        Install / Check / Backup / Restore / Remove are PreBuild-only —
-        they act on installed toolchains. When ToolchainBuilder is
-        active the selection is a template, so those actions don't
-        apply and the buttons are greyed out to prevent misuse.
-        """
-        selfbuild_active = ToolchainsScreen._active_left_tab == "selfbuild"
-        for bid in ("btn-install", "btn-check", "btn-backup", "btn-restore", "btn-remove"):
-            try:
-                self.query_one(f"#{bid}", Button).disabled = selfbuild_active
-            except Exception:
-                pass
 
     def _set_installed_row_style(self, tc_name: str, style: str) -> None:
         """Update the style of an existing row in the installed table."""
