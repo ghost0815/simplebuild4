@@ -12,6 +12,7 @@ import threading
 from pathlib import Path
 
 from rich.text import Text
+from textual import on
 from textual.app import ComposeResult
 from textual.screen import Screen, ModalScreen
 from textual.widgets import Static, Input, Button, Collapsible, DataTable, Select, RichLog, DirectoryTree, TextArea
@@ -24,6 +25,7 @@ from core.toolchain import Toolchain, ToolchainRegistry, scan_libraries, load_li
 from core.lib_builder import build_library, sort_by_dependencies
 from translation import t
 from ui.header import S4Header
+from ui.widgets.splitter import HSplitter
 
 
 def _ensure_excl_auto(yaml_text: str) -> str:
@@ -451,6 +453,10 @@ class ToolchainsScreen(Screen):
     _pending_sb_overwrite: str = ""  # name of template awaiting confirm-to-overwrite
     _active_left_tab: str = "prebuild"   # "prebuild" | "selfbuild"
     _active_right_tab: str = "details"   # "details" | "libs" | "editor" | "log"
+    # Session-scoped split width (left pane in cells). 0 = never dragged,
+    # use the CSS default (1fr / 1fr). Not persisted — a fresh s4 run
+    # resets to the default split.
+    _splitter_left_cells: int = 0
 
     def __init__(self) -> None:
         super().__init__()
@@ -548,6 +554,9 @@ class ToolchainsScreen(Screen):
                     with Collapsible(title="Android-NDK (0)", collapsed=True, id="cat-sb-android"):
                         yield S4DataTable(id="tbl-sb-android", cursor_type="row", zebra_stripes=True)
 
+            # Draggable divider between the two panes.
+            yield HSplitter("tc-browser-wrap", "tc-right", min_cells=30, id="tc-splitter")
+
             # Right: Details + Output
             with Vertical(id="tc-right"):
                 # Detail/Libraries/Log tab buttons
@@ -619,6 +628,18 @@ class ToolchainsScreen(Screen):
         # would be a debugger tripwire — anyone reaching for
         # self._sb_templates_snapshot later would get compose-time data.
         del self._sb_templates_snapshot
+
+        # Restore session-scoped splitter position (0 = never dragged →
+        # keep the CSS default 1fr / 1fr equal split).
+        if ToolchainsScreen._splitter_left_cells > 0:
+            try:
+                from textual.css.scalar import Scalar
+                self.query_one("#tc-browser-wrap").styles.width = Scalar.parse(
+                    f"{ToolchainsScreen._splitter_left_cells}"
+                )
+                self.query_one("#tc-right").styles.width = Scalar.parse("1fr")
+            except Exception:
+                pass
 
         # Border titles
         self.query_one("#tc-installed-box", Vertical).border_title = t("installed")
@@ -719,6 +740,22 @@ class ToolchainsScreen(Screen):
         focused_tbl.focus()
         # Delay enabling event handling — tables fire RowHighlighted during render
         self.set_timer(0.5, self._enable_events)
+
+    @on(HSplitter.Changed)
+    def _on_splitter_changed(self, event: HSplitter.Changed) -> None:
+        """Remember the splitter position for the rest of this s4 run.
+
+        Not persisted to disk — a fresh start resets to the CSS default
+        equal-split. Stored on the class so re-opening the screen (F1→F4
+        round-trip) keeps the split the user last set.
+
+        Using the explicit ``@on`` decorator instead of Textual's
+        auto-generated ``on_<class>_<event>`` handler name, because
+        camel-to-snake for ``HSplitter`` (single leading cap) can
+        produce ``h_splitter`` vs ``h_s_plitter`` depending on the
+        namify rule — the decorator sidesteps the ambiguity.
+        """
+        ToolchainsScreen._splitter_left_cells = event.left_cells
 
     def _enable_events(self) -> None:
         self._mounted = True
