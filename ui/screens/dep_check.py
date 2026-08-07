@@ -184,20 +184,29 @@ class DependencyCheckModal(ModalScreen[None]):
             self._log("[dim]Checking PyPI for updates ...[/dim]")
             updates = checker.check_python_updates()
 
+            from core.dep_checker import _parse_version as _pv
+
+            def _upgrade_target(e):
+                # Latest on PyPI that also satisfies our max_version cap.
+                # Returns "" when we're already current or the cap forbids it.
+                latest = updates.get((e['pip_name'] or e['name']).lower(), "")
+                if not latest or latest == e['installed_version']:
+                    return ""
+                max_v = e.get('max_version') or ""
+                if max_v and _pv(latest) >= _pv(max_v):
+                    return ""
+                return latest
+
             if installed_py:
                 items = []
                 for e in installed_py:
                     label = f"{e['name']} {e['installed_version']}".rstrip()
-                    latest = updates.get((e['pip_name'] or e['name']).lower(), "")
-                    if latest and latest != e['installed_version']:
+                    latest = _upgrade_target(e)
+                    if latest:
                         label += f" [yellow]→ {latest}[/yellow]"
                     items.append(label)
                 self._log(f"[green]Python OK ({len(installed_py)}):[/green] {', '.join(items)}")
-            updates_available = sum(
-                1 for e in installed_py
-                if updates.get((e['pip_name'] or e['name']).lower(), "")
-                and updates[(e['pip_name'] or e['name']).lower()] != e['installed_version']
-            )
+            updates_available = sum(1 for e in installed_py if _upgrade_target(e))
             if updates_available:
                 self._log(f"[yellow]{updates_available} Python module(s) have updates available — click Install to upgrade.[/yellow]")
 

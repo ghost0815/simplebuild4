@@ -311,8 +311,14 @@ class DependencyChecker:
                 if pip_name in already:
                     continue
                 latest = updates.get(pip_name.lower(), "")
-                if latest and latest != e.get("installed_version"):
-                    targets.append(e)
+                if not latest or latest == e.get("installed_version"):
+                    continue
+                # Honour the max_version cap — a 2.0 release must not
+                # queue for install when the entry declared ``<2``.
+                max_v = e.get("max_version") or ""
+                if max_v and _parse_version(latest) >= _parse_version(max_v):
+                    continue
+                targets.append(e)
 
         if not targets:
             self._log("[green]All Python modules are up to date[/green]")
