@@ -824,6 +824,7 @@ def run_job(job_name: str, paths, settings, log: Optional[Callable[[str], None]]
                 log_max_count=settings.log_max_count,
                 log_max_size_mb=settings.log_max_size_mb,
                 organize_logs=settings.organize_logs,
+                auto_fix_stale_host_keys=settings.auto_fix_stale_host_keys,
                 default_confdir=settings.default_confdir,
                 default_build_system=settings.default_build_system,
                 log=log,

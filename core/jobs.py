@@ -489,6 +489,7 @@ def start_build_job(
                 organize_logs=settings.organize_logs,
                 default_confdir=settings.default_confdir,
                 default_build_system=settings.default_build_system,
+                auto_fix_stale_host_keys=settings.auto_fix_stale_host_keys,
                 log=_log,
                 cancel_check=cancel_event.is_set,
                 write_log_file=False,    # we own the log file

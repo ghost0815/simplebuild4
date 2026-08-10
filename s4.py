@@ -128,6 +128,7 @@ def cli_build(args: list[str]) -> int:
             organize_logs=settings.organize_logs,
             default_confdir=settings.default_confdir,
             default_build_system=settings.default_build_system,
+            auto_fix_stale_host_keys=settings.auto_fix_stale_host_keys,
             log=log,
         )
         success = engine.build()

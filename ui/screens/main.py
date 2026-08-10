@@ -730,6 +730,7 @@ class MainScreen(Screen):
                     organize_logs=self.app.settings.organize_logs,
                     default_confdir=self.app.settings.default_confdir,
                     default_build_system=self.app.settings.default_build_system,
+                    auto_fix_stale_host_keys=self.app.settings.auto_fix_stale_host_keys,
                     log=log,
                     cancel_check=cancel_check,
                 )

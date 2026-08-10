@@ -190,6 +190,8 @@ class DeploymentCheckModal(ModalScreen[None]):
                 config=d, log=log,
                 binary_path=binary_path,
                 dry_run=is_dry_run,
+                auto_fix_host_keys=getattr(
+                    self.app.settings, "auto_fix_stale_host_keys", False),
             )
             deployer.run()
             log("")

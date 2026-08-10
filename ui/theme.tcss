@@ -356,6 +356,14 @@ Collapsible:focus-within > CollapsibleTitle {
     margin: 0 0 0 2;
 }
 
+.s-toggle-grid-3 {
+    grid-size: 3;
+    grid-columns: 1fr 1fr 1fr;
+    grid-gutter: 0;
+    height: auto;
+    margin: 0 0 0 2;
+}
+
 .s-toggle-cell {
     height: 3;
 }

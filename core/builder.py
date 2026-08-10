@@ -56,6 +56,7 @@ class BuildEngine:
         organize_logs: bool = False,
         default_confdir: str = "/etc/tuxbox/config",
         default_build_system: str = "make",
+        auto_fix_stale_host_keys: bool = False,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
         write_log_file: bool = True,
@@ -93,6 +94,7 @@ class BuildEngine:
         self._organize_logs = organize_logs
         self._default_confdir = default_confdir
         self._default_build_system = default_build_system
+        self._auto_fix_stale_host_keys = auto_fix_stale_host_keys
         self._warning_count = 0  # per-build warning counter
 
     def _log_file_only(self, msg: str) -> None:
@@ -1025,7 +1027,10 @@ class BuildEngine:
             else:
                 self._log(f"\n  [bold]━━━ {name}: {d.user}@{d.host}:{d.target_path} ━━━[/bold]")
 
-            deployer = Deployer(config=d, log=self._log, binary_path=bin_path)
+            deployer = Deployer(
+                config=d, log=self._log, binary_path=bin_path,
+                auto_fix_host_keys=self._auto_fix_stale_host_keys,
+            )
             if not deployer.run(verbose=False):
                 all_ok = False
         return all_ok

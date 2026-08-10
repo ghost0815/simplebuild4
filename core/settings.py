@@ -23,6 +23,13 @@ class Settings:
     warn_unsaved_on_exit: bool = False  # Esc/F2 warn when a screen is dirty
     confirm_dangerous: bool = True     # require double-press for destructive actions
     ascii_mode: bool = False           # replace emoji/unicode with ASCII-safe alternatives
+    # When True and a deploy fails with the classic "REMOTE HOST
+    # IDENTIFICATION HAS CHANGED" SSH warning, s4 runs ``ssh-keygen -R
+    # <host>`` to drop the stale known_hosts entry and retries the
+    # connection ONCE. Trades some MITM protection for one-click
+    # recovery when a receiver was reflashed — off by default; the
+    # warning itself is still logged in full either way.
+    auto_fix_stale_host_keys: bool = False
     last_target: str = ""          # Last loaded target path (auto-saved)
     last_repo: str = ""            # Last selected repository (auto-saved)
     repo_status_show_all: bool = False  # F3 Status box: single repo (False) or one-line-per-repo overview (True)
@@ -135,6 +142,7 @@ class Settings:
             "warn_unsaved_on_exit": self.warn_unsaved_on_exit,
             "confirm_dangerous": self.confirm_dangerous,
             "ascii_mode": self.ascii_mode,
+            "auto_fix_stale_host_keys": self.auto_fix_stale_host_keys,
             "s4_url": self.s4_url,
             "compiler_opt": self.compiler_opt,
             "max_cpus": self._max_cpus,
@@ -211,6 +219,7 @@ class Settings:
             warn_unsaved_on_exit=data.get("warn_unsaved_on_exit", False),
             confirm_dangerous=data.get("confirm_dangerous", True),
             ascii_mode=data.get("ascii_mode", False),
+            auto_fix_stale_host_keys=data.get("auto_fix_stale_host_keys", False),
             s4_url=data.get("s4_url", cls.s4_url),
             compiler_opt=data.get("compiler_opt", cls.compiler_opt),
             _max_cpus=data.get("max_cpus", 0),

@@ -19,6 +19,7 @@ SWITCH_MAP = {
     "set-warn-unsaved": "warn_unsaved_on_exit",
     "set-confirm-dangerous": "confirm_dangerous",
     "set-ascii-mode": "ascii_mode",
+    "set-auto-fix-hostkeys": "auto_fix_stale_host_keys",
     "set-patch-webif": "patch_webif",
     "set-delete-debug": "delete_debug",
     "set-save-smargo": "save_smargo",
@@ -108,9 +109,18 @@ class SettingsScreen(Screen):
                     classes="s-row",
                 )
                 from textual.containers import Grid
-                with Grid(classes="s-toggle-grid"):
+                # 3-column grid; yield order places existing toggles at
+                # their historical (col 1 / col 2) positions and drops
+                # the new Auto-fix toggle into the vacant column 3, row 1.
+                # Row 2 col 3 stays empty.
+                with Grid(classes="s-toggle-grid-3"):
                     yield _switch_cell(t("check_updates_start"), s.update_check, "set-update-check")
                     yield _switch_cell(t("warn_unsaved_on_exit"), s.warn_unsaved_on_exit, "set-warn-unsaved")
+                    yield _switch_cell(
+                        t("auto_fix_stale_host_keys"),
+                        s.auto_fix_stale_host_keys,
+                        "set-auto-fix-hostkeys",
+                    )
                     yield _switch_cell(t("confirm_dangerous"), s.confirm_dangerous, "set-confirm-dangerous")
                     yield _switch_cell(t("ascii_mode"), s.ascii_mode, "set-ascii-mode")
 

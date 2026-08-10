@@ -33,11 +33,17 @@ class Deployer:
     def __init__(self, config: DeploymentConfig,
                  log: Callable[[str], None],
                  binary_path: Optional[Path] = None,
-                 dry_run: bool = False):
+                 dry_run: bool = False,
+                 auto_fix_host_keys: bool = False):
         self.config = config
         self._log = log
         self.binary_path = binary_path
         self.dry_run = dry_run
+        # When True, a "REMOTE HOST IDENTIFICATION HAS CHANGED" failure
+        # triggers a single ``ssh-keygen -R <host>`` + retry. Wired from
+        # Settings.auto_fix_stale_host_keys; the SSH warning itself is
+        # still logged in full before any auto-fix runs.
+        self.auto_fix_host_keys = auto_fix_host_keys
         self.is_local = config.host in ("localhost", "127.0.0.1", "::1")
         self.name = config.name or config.host
 
@@ -105,40 +111,21 @@ class Deployer:
         if self._sshpass and not shutil.which("sshpass"):
             self._log("  [red]sshpass not installed[/red]")
             return False
+        # allow_auto_fix flips off after one retry so a still-failing
+        # host key doesn't loop.
+        return self._try_ssh_connect(allow_auto_fix=self.auto_fix_host_keys)
+
+    def _try_ssh_connect(self, allow_auto_fix: bool) -> bool:
+        """Run a single ``ssh … echo connected`` probe; on a host-key
+        mismatch AND when ``allow_auto_fix`` is set, drop the stale
+        known_hosts entry and retry ONCE. Original SSH stderr is always
+        logged verbatim first so the security signal never gets hidden.
+        """
         try:
             result = subprocess.run(
                 self._sshpass + self._ssh_base + [self._ssh_target, "echo connected"],
                 capture_output=True, text=True, timeout=15,
             )
-            if result.returncode == 0:
-                self._log("  [green]Connected successfully[/green]")
-                return True
-            else:
-                # Preserve every stderr line the ssh client emitted — the
-                # last line is often terse ("Permission denied") while the
-                # actual cause (host-key change, wrong key, unreachable
-                # port …) sits several lines above with the fix-it hint.
-                stderr = (result.stderr or "").rstrip()
-                lines = [ln.rstrip() for ln in stderr.splitlines() if ln.strip()] if stderr else []
-                if not lines:
-                    self._log("  [red]Connection failed: unknown error[/red]")
-                else:
-                    self._log(f"  [red]Connection failed:[/red]")
-                    for ln in lines:
-                        self._log(f"    [red]{rich_escape(ln)}[/red]")
-                    # Highlight the fix for the most common recoverable
-                    # case — a host key that changed because the target
-                    # box was reflashed / reset.
-                    if "REMOTE HOST IDENTIFICATION HAS CHANGED" in stderr \
-                            or "Host key verification failed" in stderr:
-                        target = f"[{self.config.host}]:{self.config.port}" \
-                            if self.config.port != 22 else self.config.host
-                        self._log(
-                            "  [yellow]Host key changed. "
-                            "If you trust this box, drop the stale key with:[/yellow]"
-                        )
-                        self._log(f"    [bold]ssh-keygen -R {target}[/bold]")
-                return False
         except subprocess.TimeoutExpired:
             self._log("  [red]Connection timeout[/red]")
             return False
@@ -148,6 +135,74 @@ class Deployer:
         except Exception as e:
             self._log(f"  [red]Error: {e}[/red]")
             return False
+
+        if result.returncode == 0:
+            self._log("  [green]Connected successfully[/green]")
+            return True
+
+        # Preserve every stderr line the ssh client emitted — the
+        # last line is often terse ("Permission denied") while the
+        # actual cause (host-key change, wrong key, unreachable
+        # port …) sits several lines above with the fix-it hint.
+        stderr = (result.stderr or "").rstrip()
+        lines = [ln.rstrip() for ln in stderr.splitlines() if ln.strip()] if stderr else []
+        if not lines:
+            self._log("  [red]Connection failed: unknown error[/red]")
+            return False
+
+        self._log(f"  [red]Connection failed:[/red]")
+        for ln in lines:
+            self._log(f"    [red]{rich_escape(ln)}[/red]")
+
+        host_key_changed = (
+            "REMOTE HOST IDENTIFICATION HAS CHANGED" in stderr
+            or "Host key verification failed" in stderr
+        )
+        if not host_key_changed:
+            return False
+
+        target = (
+            f"[{self.config.host}]:{self.config.port}"
+            if self.config.port != 22 else self.config.host
+        )
+        self._log(
+            "  [yellow]Host key changed. "
+            "If you trust this box, drop the stale key with:[/yellow]"
+        )
+        self._log(f"    [bold]ssh-keygen -R {target}[/bold]")
+
+        if not allow_auto_fix:
+            # Warning already surfaced, hint printed — user's turn.
+            return False
+
+        # Setting says "trust me, just fix it". Log the auto-fix
+        # explicitly (the warning above still stands as the audit trail).
+        self._log(
+            f"  [yellow]Auto-fix enabled: running "
+            f"[bold]ssh-keygen -R {target}[/bold][/yellow]"
+        )
+        try:
+            fix = subprocess.run(
+                ["ssh-keygen", "-R", target],
+                capture_output=True, text=True, timeout=10,
+            )
+        except Exception as e:
+            self._log(f"  [red]ssh-keygen -R failed: {rich_escape(str(e))}[/red]")
+            return False
+        # ssh-keygen -R is chatty on both stdout and stderr; log the
+        # useful lines so the audit trail shows what got removed.
+        fix_out = ((fix.stdout or "") + (fix.stderr or "")).strip()
+        for ln in [l for l in fix_out.splitlines() if l.strip()]:
+            self._log(f"    [dim]{rich_escape(ln)}[/dim]")
+        if fix.returncode != 0:
+            self._log(
+                f"  [red]ssh-keygen -R exit {fix.returncode} — "
+                f"cannot retry connection[/red]"
+            )
+            return False
+
+        self._log("  [yellow]Retrying SSH connection...[/yellow]")
+        return self._try_ssh_connect(allow_auto_fix=False)
 
     def step_system_info(self) -> None:
         """Step 2: Show remote/local system information."""
