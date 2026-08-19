@@ -293,6 +293,14 @@ def _do_build(
         return False
 
     downloads_dir.mkdir(parents=True, exist_ok=True)
+
+    # Git sources bypass the download+extract path — we clone directly
+    # into build_dir further down. Used by advanced users
+    # (libraries.local.yaml) pointing at their own git server; auth
+    # relies on the system's ~/.ssh/config or credential helpers — s4
+    # doesn't manage keys.
+    _source_is_git = source.startswith("git://")
+
     # Default filename = last URL segment (e.g. ``curl-8.20.0.tar.gz``).
     # Recipes can override via ``archive_filename:`` for sources.
     filename = (
@@ -302,7 +310,11 @@ def _do_build(
     )
     filepath = downloads_dir / filename
 
-    if source.startswith("file://"):
+    if _source_is_git:
+        # Deferred to the build_dir creation below — no cache lookup
+        # needed since we always clone fresh.
+        pass
+    elif source.startswith("file://"):
         # Local file — resolve relative to downloads_dir
         file_ref = source[7:]  # strip "file://"
         local_path = Path(file_ref) if file_ref.startswith("/") else downloads_dir / file_ref
@@ -334,31 +346,41 @@ def _do_build(
         log("[yellow]Cancelled[/yellow]")
         return False
 
-    # Extract
+    # Extract (or clone, for git:// sources)
     build_dir = downloads_dir / f"build-{lib_name}-{actual_version}"
-    if build_dir.exists():
-        shutil.rmtree(build_dir)
-    build_dir.mkdir()
-
-    if log:
-        log(f"Extracting...")
-    try:
-        if filename.endswith(".zip"):
-            subprocess.run(
-                ["unzip", "-o", "-d", str(build_dir), str(filepath)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
-            )
-            # Move contents up if extracted into subdirectory
-            _flatten_single_subdir(build_dir)
-        else:
-            subprocess.run(
-                ["tar", "-xf", str(filepath), "--strip-components=1", "-C", str(build_dir)],
-                capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
-            )
-    except subprocess.CalledProcessError as e:
+    if _source_is_git:
+        # ``_git_clone`` handles the wipe+create itself; it insists on
+        # a non-existent target so git can create it.
+        clone_url, git_branch, git_rev = _parse_bitbake_git(source)
         if log:
-            log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
-        return False
+            _tag = git_rev or git_branch or "default branch"
+            log(f"Cloning {clone_url} ({_tag}) ...")
+        if not _git_clone(clone_url, git_branch, git_rev, build_dir, log):
+            return False
+    else:
+        if build_dir.exists():
+            shutil.rmtree(build_dir)
+        build_dir.mkdir()
+
+        if log:
+            log(f"Extracting...")
+        try:
+            if filename.endswith(".zip"):
+                subprocess.run(
+                    ["unzip", "-o", "-d", str(build_dir), str(filepath)],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
+                )
+                # Move contents up if extracted into subdirectory
+                _flatten_single_subdir(build_dir)
+            else:
+                subprocess.run(
+                    ["tar", "-xf", str(filepath), "--strip-components=1", "-C", str(build_dir)],
+                    capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=120, check=True,
+                )
+        except subprocess.CalledProcessError as e:
+            if log:
+                log(f"[red]Extract failed: {e.stderr.strip() if e.stderr else e}[/red]")
+            return False
 
     # Generate a Meson cross-file if any command references @MESON_CROSS@.
     # The file lives in build_dir and the placeholder is replaced with its
@@ -656,6 +678,111 @@ def _looks_like_archive(path: Path) -> bool:
     if len(head) >= 262 and head[257:262] == b"ustar":
         return True  # plain (uncompressed) tar
     return False
+
+
+def _parse_bitbake_git(source: str) -> tuple[str, str, str]:
+    """Turn an OE/bitbake-style ``git://…;param=val;…`` source into
+    ``(clone_url, branch, rev)`` for a plain ``git clone``.
+
+    Recognised params: ``protocol`` (ssh | https | http | git — default
+    ``git``), ``branch``, ``rev``. Empty branch/rev are returned as ``""``.
+
+    Examples:
+      ``git://git@host/path.git;protocol=ssh;branch=master`` →
+          ``("git@host:path.git", "master", "")``
+      ``git://host/path.git;protocol=https;branch=main`` →
+          ``("https://host/path.git", "main", "")``
+
+    Authentication is entirely the caller's ``~/.ssh/config`` (for ssh)
+    or ``~/.netrc`` / credential-helper (for https) — s4 never sets
+    ``-i`` or handles passwords.
+    """
+    parts = [p.strip() for p in source.split(";") if p.strip()]
+    base = parts[0]
+    params: dict[str, str] = {}
+    for p in parts[1:]:
+        if "=" in p:
+            k, v = p.split("=", 1)
+            params[k.strip()] = v.strip()
+    protocol = params.get("protocol", "git")
+    branch = params.get("branch", "")
+    rev = params.get("rev", "")
+
+    # Strip the outer ``git://`` scheme — after that ``rest`` looks like
+    # ``[user@]host/path.git``. bitbake always uses ``git://`` as the
+    # transport-agnostic prefix and rewrites via ``protocol=…``.
+    rest = base[len("git://"):] if base.startswith("git://") else base
+    host, _, path = rest.partition("/")
+
+    if protocol == "ssh":
+        # SCP-style ``user@host:path`` — the form ~/.ssh/config's Host
+        # directives actually match on. Falls back to ``ssh://`` when no
+        # user was specified (edge case; usually implies key-less anon).
+        clone_url = f"{host}:{path}" if ("@" in host and path) else f"ssh://{rest}"
+    elif protocol == "https":
+        clone_url = f"https://{rest}"
+    elif protocol == "http":
+        clone_url = f"http://{rest}"
+    else:  # "git" or unknown → keep original scheme
+        clone_url = base
+
+    return clone_url, branch, rev
+
+
+def _git_clone(
+    url: str, branch: str, rev: str, target_dir: Path,
+    log: Optional[Callable[[str], None]] = None,
+) -> bool:
+    """Shallow-clone ``url`` into ``target_dir`` (which must not exist).
+
+    Uses ``--depth 1`` for speed. If ``rev`` is set the depth is dropped
+    (arbitrary commits aren't reachable from a shallow tip) and the rev
+    gets checked out after the clone.
+    """
+    if target_dir.exists():
+        shutil.rmtree(target_dir)
+    cmd = ["git", "clone"]
+    if not rev:
+        cmd += ["--depth", "1"]
+    if branch:
+        cmd += ["--branch", branch, "--single-branch"]
+    cmd += [url, str(target_dir)]
+    try:
+        result = subprocess.run(
+            cmd, capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        if log:
+            log("[red]git clone timeout (5 min)[/red]")
+        return False
+    except FileNotFoundError:
+        if log:
+            log("[red]git not found — install git to use git:// sources[/red]")
+        return False
+
+    if result.returncode != 0:
+        if log:
+            log(f"[red]git clone failed (exit {result.returncode}):[/red]")
+            for ln in (result.stderr or "").splitlines():
+                if ln.strip():
+                    log(f"  [red]{ln.rstrip()}[/red]")
+        return False
+
+    if rev:
+        r = subprocess.run(
+            ["git", "-C", str(target_dir), "checkout", "--detach", rev],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=60,
+        )
+        if r.returncode != 0:
+            if log:
+                log(f"[red]git checkout {rev} failed:[/red]")
+                for ln in (r.stderr or "").splitlines():
+                    if ln.strip():
+                        log(f"  [red]{ln.rstrip()}[/red]")
+            return False
+    return True
 
 
 def _download(url: str, filepath: Path, log: Optional[Callable[[str], None]] = None) -> bool:
