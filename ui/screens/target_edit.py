@@ -223,9 +223,16 @@ class TargetEditScreen(Screen):
                     Checkbox("Exclude from automation", value=tgt.exclude_from_automation, id="t-excl-auto"),
                     classes="s-row",
                 )
+                _del_cb = Checkbox(
+                    t("te_delete_binary_after_deploy"),
+                    value=tgt.delete_binary_after_deploy,
+                    id="t-del-binary",
+                )
+                _del_cb.tooltip = t("tt_delete_binary_after_deploy")
                 yield Horizontal(
                     Static(f" {t('te_description')}", classes="s-label-tall"),
                     Input(value=tgt.description, placeholder=t("ph_target_desc"), id="t-desc"),
+                    _del_cb,
                     classes="s-row",
                 )
                 compress_enabled = b.use_compress and bool(self._upx_path)
@@ -1923,6 +1930,7 @@ class TargetEditScreen(Screen):
             target_name=target.name,
             binaries_dir=self.app.paths.binaries_dir,
             logs_dir=self.app.paths.logs_dir,
+            delete_binary_after_deploy=target.delete_binary_after_deploy,
         ))
 
     def do_add(self) -> None:
@@ -2147,6 +2155,11 @@ class TargetEditScreen(Screen):
         except Exception:
             excl_auto = self.target.exclude_from_automation
 
+        try:
+            del_binary = self.query_one("#t-del-binary", Checkbox).value
+        except Exception:
+            del_binary = self.target.delete_binary_after_deploy
+
         return Target(
             name=name,
             description=desc,
@@ -2155,6 +2168,7 @@ class TargetEditScreen(Screen):
             build=build,
             deployment=deployment,
             exclude_from_automation=excl_auto,
+            delete_binary_after_deploy=del_binary,
         )
 
     def _input_val(self, widget_id: str) -> str:

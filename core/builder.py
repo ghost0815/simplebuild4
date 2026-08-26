@@ -1016,6 +1016,21 @@ class BuildEngine:
 
         self._log(f"\n[bold]PHASE 5: Deploy ({len(deployments)} destination{'s' if len(deployments) > 1 else ''})[/bold]")
 
+        # Announce delete-after-deploy intent up front so the user sees
+        # the plan before the deploy loop runs. Only announce when a
+        # binary actually exists — a "no binary" phase-5 wouldn't touch
+        # data/binaries/ anyway.
+        will_delete = (
+            self.target.delete_binary_after_deploy
+            and bin_path is not None
+            and bin_path.exists()
+        )
+        if will_delete:
+            self._log(
+                f"[yellow]Local binary will be deleted after successful deploy: "
+                f"{bin_path.name}[/yellow]"
+            )
+
         all_ok = True
         for d in deployments:
             if self._cancel():
@@ -1033,6 +1048,33 @@ class BuildEngine:
             )
             if not deployer.run(verbose=False):
                 all_ok = False
+
+        # Post-loop delete — only when every destination succeeded, a
+        # real binary is on disk, and the target has the flag set. Log
+        # explicit outcome either way for the audit trail.
+        if will_delete:
+            try:
+                size_kb = bin_path.stat().st_size // 1024
+                size_str = f"{size_kb / 1024:.1f} MB" if size_kb >= 1024 else f"{size_kb} KB"
+            except OSError:
+                size_str = "?"
+            if not all_ok:
+                self._log(
+                    f"[yellow]Local binary kept (deploy failed): "
+                    f"{bin_path.name}[/yellow]"
+                )
+            else:
+                try:
+                    bin_path.unlink()
+                    self._log(
+                        f"[dim]Deleted local binary: {bin_path.name} "
+                        f"({size_str})[/dim]"
+                    )
+                except OSError as e:
+                    self._log(
+                        f"[yellow]Could not delete {bin_path.name}: "
+                        f"{e}[/yellow]"
+                    )
         return all_ok
 
     def _auto_clone_repo(self, source_name: str) -> Optional[Path]:

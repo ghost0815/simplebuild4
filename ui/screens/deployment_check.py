@@ -72,7 +72,8 @@ class DeploymentCheckModal(ModalScreen[None]):
     def __init__(self, deployments: list[DeploymentConfig], target_name: str,
                  binaries_dir: Optional[Path] = None,
                  logs_dir: Optional[Path] = None,
-                 toolchain_filter: str = "") -> None:
+                 toolchain_filter: str = "",
+                 delete_binary_after_deploy: bool = False) -> None:
         super().__init__()
         self._deployments = [d for d in deployments if d.host]
         self._target_name = target_name
@@ -81,6 +82,8 @@ class DeploymentCheckModal(ModalScreen[None]):
         self._toolchain_filter = toolchain_filter or (self._deployments[0].toolchain if self._deployments else "")
         self._check_running = False
         self._binary_path: Optional[Path] = None
+        self._delete_binary_after_deploy = delete_binary_after_deploy
+        self._delete_confirm_time = 0.0
 
     def compose(self) -> ComposeResult:
         bin_options = [(t("dc_dry_run"), "dry-run")]
@@ -128,13 +131,30 @@ class DeploymentCheckModal(ModalScreen[None]):
     def _start_check(self) -> None:
         if self._check_running:
             return
-        self._check_running = True
-        self._log_widget.write(f"[bold]{t('dc_starting')}[/bold]")
         try:
             binary_val = self.query_one("#check-binary", Select).value
-            self._binary_path = None if binary_val == "dry-run" else Path(str(binary_val))
+            binary_path = None if binary_val == "dry-run" else Path(str(binary_val))
         except Exception:
-            self._binary_path = None
+            binary_path = None
+
+        if (binary_path is not None
+                and self._delete_binary_after_deploy
+                and getattr(self.app.settings, "confirm_dangerous", True)):
+            import time
+            now = time.time()
+            if now - self._delete_confirm_time >= 3:
+                self._delete_confirm_time = now
+                self.notify(
+                    t("dc_delete_binary_confirm").format(name=binary_path.name),
+                    severity="warning",
+                    timeout=3,
+                )
+                return
+            self._delete_confirm_time = 0.0
+
+        self._check_running = True
+        self._log_widget.write(f"[bold]{t('dc_starting')}[/bold]")
+        self._binary_path = binary_path
         threading.Thread(target=self._run_thread, daemon=True).start()
 
     def _run_thread(self) -> None:
@@ -172,8 +192,18 @@ class DeploymentCheckModal(ModalScreen[None]):
         log(t("dc_target").format(name=self._target_name))
         log(t("dc_mode").format(mode=mode))
         log(t("dc_destinations").format(count=len(self._deployments)))
+
+        will_delete = (
+            binary_path is not None
+            and self._delete_binary_after_deploy
+        )
+        if will_delete and is_dry_run:
+            log(f"[yellow]{t('dc_delete_binary_warn_dry').format(name=binary_path.name)}[/yellow]")
+        elif will_delete:
+            log(f"[yellow]{t('dc_delete_binary_warn').format(name=binary_path.name)}[/yellow]")
         log("")
 
+        all_ok = True
         for idx, d in enumerate(self._deployments):
             name = d.name or f"#{idx + 1}"
             is_local = d.host in ("localhost", "127.0.0.1", "::1")
@@ -193,8 +223,26 @@ class DeploymentCheckModal(ModalScreen[None]):
                 auto_fix_host_keys=getattr(
                     self.app.settings, "auto_fix_stale_host_keys", False),
             )
-            deployer.run()
+            if not deployer.run():
+                all_ok = False
             log("")
+
+        if self._delete_binary_after_deploy and binary_path is not None:
+            try:
+                size_kb = binary_path.stat().st_size // 1024
+                size_str = f"{size_kb / 1024:.1f} MB" if size_kb >= 1024 else f"{size_kb} KB"
+            except OSError:
+                size_str = "?"
+            if is_dry_run:
+                log(f"[dim]{t('dc_delete_binary_dry').format(name=binary_path.name, size=size_str)}[/dim]")
+            elif not all_ok:
+                log(f"[yellow]{t('dc_delete_binary_kept').format(name=binary_path.name)}[/yellow]")
+            else:
+                try:
+                    binary_path.unlink()
+                    log(f"[dim]{t('dc_delete_binary_done').format(name=binary_path.name, size=size_str)}[/dim]")
+                except OSError as e:
+                    log(f"[yellow]{t('dc_delete_binary_error').format(name=binary_path.name, error=e)}[/yellow]")
 
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log(f"[bold]{t('dc_complete').format(time=now)}[/bold]")

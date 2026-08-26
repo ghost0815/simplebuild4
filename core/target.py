@@ -145,6 +145,7 @@ class Target:
     build: BuildSettings = field(default_factory=BuildSettings)
     deployment: list[DeploymentConfig] = field(default_factory=list)
     exclude_from_automation: bool = False
+    delete_binary_after_deploy: bool = False
 
     def save(self, path: Path) -> None:
         """Save target to YAML file."""
@@ -215,6 +216,8 @@ class Target:
         }
         if self.exclude_from_automation:
             data["exclude_from_automation"] = True
+        if self.delete_binary_after_deploy:
+            data["delete_binary_after_deploy"] = True
         path.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False), encoding="utf-8")
 
     @staticmethod
@@ -327,6 +330,7 @@ class Target:
             build=build,
             deployment=deployments,
             exclude_from_automation=bool(data.get("exclude_from_automation", False)),
+            delete_binary_after_deploy=bool(data.get("delete_binary_after_deploy", False)),
         )
 
     @classmethod
