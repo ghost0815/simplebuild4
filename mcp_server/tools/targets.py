@@ -135,6 +135,7 @@ def _target_summary(target: Target) -> dict[str, Any]:
         },
         "deployment": deployments,
         "exclude_from_automation": bool(target.exclude_from_automation),
+        "delete_binary_after_deploy": bool(target.delete_binary_after_deploy),
     }
 
 
@@ -174,8 +175,8 @@ def _apply_patch_to_target(target: Target, patch: dict[str, Any]) -> None:
     """Apply a JSON patch to an in-memory Target.
 
     Semantics:
-      * Simple top-level fields (name, description, exclude_from_automation)
-        are replaced.
+      * Simple top-level fields (name, description, exclude_from_automation,
+        delete_binary_after_deploy) are replaced.
       * ``build`` is a dict — only keys mentioned in the patch are replaced
         (other keys of ``build`` are preserved).
       * ``sources`` / ``toolchains`` / ``deployment`` are lists — the whole
@@ -187,6 +188,8 @@ def _apply_patch_to_target(target: Target, patch: dict[str, Any]) -> None:
         target.description = str(patch["description"] or "")
     if "exclude_from_automation" in patch:
         target.exclude_from_automation = bool(patch["exclude_from_automation"])
+    if "delete_binary_after_deploy" in patch:
+        target.delete_binary_after_deploy = bool(patch["delete_binary_after_deploy"])
     if "name" in patch:
         # note: the *file* is renamed elsewhere; keep fields in sync
         target.name = str(patch["name"] or "")
@@ -587,7 +590,8 @@ def register(server: Server, ctx: McpContext) -> list[Tool]:
                 description=(
                     "Create a new target.yaml. 'spec' is optional — its shape "
                     "matches get_target's return value (top-level: description, "
-                    "sources, toolchains, build, deployment, exclude_from_automation). "
+                    "sources, toolchains, build, deployment, exclude_from_automation, "
+                    "delete_binary_after_deploy). "
                     "If the spec omits build.modules / protocols / readers / "
                     "card_readers (or leaves them empty), s4 seeds each empty "
                     "category from the assigned source repo's config.sh "
