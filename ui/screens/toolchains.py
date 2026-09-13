@@ -4693,6 +4693,13 @@ class ToolchainsScreen(Screen):
             self._run_in_thread(lambda: self._setup_ctng_then_customize(ctng_path))
             return
 
+        # Work dir for .config / menuconfig: the --enable-local tree itself,
+        # or data/builders/crosstool-ng for a --prefix install / read-only tree.
+        from core.toolchain_builder import resolve_ctng_fallback_work_dir
+        work_dir = CrosstoolNG.resolve_work_dir(
+            ctng_path, resolve_ctng_fallback_work_dir(self.app.paths),
+        )
+
         # If we'd need to fork later, make sure no local copy exists yet
         if not tpl.is_local:
             local_yaml = self.app.paths.templates_local / f"{tpl.name}.yaml"
@@ -4719,18 +4726,19 @@ class ToolchainsScreen(Screen):
                 return ""
 
         try:
+            work_dir.mkdir(parents=True, exist_ok=True)
             # Clean any previous .config*
-            for stale in ctng_path.glob(".config*"):
+            for stale in work_dir.glob(".config*"):
                 try:
                     stale.unlink()
                 except Exception:
                     pass
-            _shutil.copy2(cfg_src, ctng_path / ".config")
+            _shutil.copy2(cfg_src, work_dir / ".config")
         except Exception as e:
             self.notify(t("customize_copy_failed", err=str(e)), severity="error")
             return
 
-        working_cfg = ctng_path / ".config"
+        working_cfg = work_dir / ".config"
         hash_before = _hash_file(working_cfg)
 
         def _rel(p):
@@ -4768,14 +4776,14 @@ class ToolchainsScreen(Screen):
         # binary path (not the hardcoded ./ct-ng) so a system-installed
         # ctng in bin/ct-ng also gets invoked correctly.
         cmd = [str(binary_path), "menuconfig"]
-        self._log_sync(f"[dim]$ {' '.join(cmd)}  (cwd={_rel(ctng_path)})[/dim]")
+        self._log_sync(f"[dim]$ {' '.join(cmd)}  (cwd={_rel(work_dir)})[/dim]")
 
         import subprocess as _sp
         try:
             self.app._suspended = True
             try:
                 with self.app.suspend():
-                    _sp.run(cmd, cwd=str(ctng_path))
+                    _sp.run(cmd, cwd=str(work_dir))
             finally:
                 self.app._suspended = False
         except Exception as e:

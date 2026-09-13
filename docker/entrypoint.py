@@ -23,6 +23,7 @@ recover from a bad config.
 from __future__ import annotations
 
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -284,14 +285,32 @@ def _spawn_ttyd(settings) -> subprocess.Popen | None:
     if not os.access(ttyd, os.X_OK):
         _log("ttyd: /usr/local/bin/ttyd not found — menuconfig-in-browser disabled")
         return None
-    ctng = str(APP_ROOT / "data" / "builders" / "crosstool-ng")
+    # Binary and work dir (.config) follow the ctng_dir setting, mirroring
+    # CrosstoolNG.resolve_binary() / resolve_work_dir(): a writable
+    # --enable-local tree (<dir>/ct-ng) is its own work dir; a --prefix
+    # install (<dir>/bin/ct-ng) or read-only tree uses
+    # data/builders/crosstool-ng. Decided in the shell at connect time,
+    # since setup may only build the binary after ttyd has started; a
+    # changed ctng_dir setting needs a container restart.
+    fallback = APP_ROOT / "data" / "builders" / "crosstool-ng"
+    raw = (getattr(settings, "ctng_dir", "") or "").strip()
+    ctng = Path(os.path.expanduser(raw)) if raw else fallback
+    if not ctng.is_absolute():
+        ctng = APP_ROOT / ctng
+    q_fb = shlex.quote(str(fallback))
+    q_ctng = shlex.quote(str(ctng))
     # Client disconnect → ttyd sends SIGHUP to its direct child (the outer
     # bash). Without the trap that only kills bash; make/mconf get orphaned
     # under dumb-init and keep running forever. The trap tears down the
     # whole process group so tab-close actually terminates menuconfig.
     inner = (
         f'trap "kill -TERM 0 2>/dev/null" EXIT HUP TERM INT; '
-        f'cd {ctng} && ./ct-ng menuconfig'
+        f'if [ -f {q_ctng}/ct-ng ] && [ -w {q_ctng} ]; '
+        f'then W={q_ctng}; CTNG={q_ctng}/ct-ng; '
+        f'else W={q_fb}; CTNG={q_ctng}/bin/ct-ng; '
+        f'[ -f {q_ctng}/ct-ng ] && CTNG={q_ctng}/ct-ng; fi; '
+        f'mkdir -p "$W" && cd "$W" || exit 1; '
+        f'"$CTNG" menuconfig'
     )
     cmd = [
         ttyd,

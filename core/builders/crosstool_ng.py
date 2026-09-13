@@ -4,10 +4,19 @@ Workflow (matches s3 behaviour):
 
 1. setup() — clone crosstool-ng, bootstrap, configure, make (if ct-ng
    is not present)
-2. build(template) — copy template config, patch CT_PREFIX_DIR/CT_LOCAL_TARBALLS_DIR/
-   CT_PARALLEL_JOBS, run `./ct-ng build`, leave the result in toolchains_dir/<name>/
+2. build(template) — copy template config into the work dir, patch
+   CT_PREFIX_DIR/CT_LOCAL_TARBALLS_DIR/CT_PARALLEL_JOBS, run `ct-ng build`,
+   leave the result in toolchains_dir/<name>/
 
 The crosstool-ng install lives at <ctng_dir> (default: data/builders/crosstool-ng).
+ct-ng uses the current directory as its work area (CT_TOP_DIR = pwd; .config,
+.build/, build.log) and finds its own scripts via the binary's location
+(--enable-local) or the configure prefix, so the work dir is chosen per
+layout (see resolve_work_dir()):
+
+  * --enable-local tree (<ctng_dir>/ct-ng), writable → the tree itself
+  * --prefix install (<ctng_dir>/bin/ct-ng) or a read-only tree
+    → fallback work dir (s4 passes data/builders/crosstool-ng)
 All builder configuration is hardcoded — no external YAML needed.
 """
 
@@ -59,6 +68,35 @@ def _format_bytes(n: int) -> str:
     return f"{n} B"
 
 
+# Per-build state ct-ng creates in its work dir (cf. `ct-ng clean` / `distclean`).
+_WORK_ARTIFACT_NAMES = {".build", ".build-all", "targets", "build.log"}
+_WORK_ARTIFACT_PREFIXES = (".config", "..config", "build.log.")
+
+
+def _is_work_artifact(name: str) -> bool:
+    return name in _WORK_ARTIFACT_NAMES or name.startswith(_WORK_ARTIFACT_PREFIXES)
+
+
+def _remove_work_artifact(path: Path) -> None:
+    """Remove one ct-ng work artifact (file or tree), like `ct-ng clean`.
+
+    ct-ng leaves parts of .build/ read-only, so restore u+rwx on the
+    directories first (same as its own `chmod -R u+w`) before deleting.
+    """
+    if path.is_dir() and not path.is_symlink():
+        for root, _dirs, _files in os.walk(path):
+            try:
+                os.chmod(root, 0o700)
+            except OSError:
+                pass
+        shutil.rmtree(path, ignore_errors=True)
+    else:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 class CrosstoolNG:
     """crosstool-ng builder runner."""
 
@@ -81,8 +119,12 @@ class CrosstoolNG:
         max_cpus: int = 4,
         log: Optional[Callable[[str], None]] = None,
         cancel_check: Optional[Callable[[], bool]] = None,
+        fallback_work_dir: Optional[Path] = None,
     ):
         self.ctng_dir = ctng_dir
+        # Work area used when ctng_dir can't serve as one (--prefix install
+        # or read-only tree); s4 passes data/builders/crosstool-ng.
+        self.fallback_work_dir = fallback_work_dir if fallback_work_dir is not None else ctng_dir
         self.toolchains_dir = toolchains_dir
         self.downloads_dir = downloads_dir
         self.max_cpus = max_cpus
@@ -103,6 +145,24 @@ class CrosstoolNG:
             if c.is_file():
                 return c
         return None
+
+    @classmethod
+    def resolve_work_dir(cls, ctng_dir: Path, fallback: Path) -> Path:
+        """Return the ct-ng work dir (.config, .build/, build.log).
+
+          * `<dir>/ct-ng` (--enable-local) and ``ctng_dir`` writable → the
+            tree itself, as crosstool-ng documents for local mode; build
+            scratch stays on the disk the user picked for crosstool-ng.
+          * `<dir>/bin/ct-ng` (--prefix install), or a tree s4 can't write
+            to → ``fallback``, so the install is only ever read from.
+        """
+        if (ctng_dir / cls.BINARY).is_file() and os.access(ctng_dir, os.W_OK):
+            return ctng_dir
+        return fallback
+
+    @property
+    def work_dir(self) -> Path:
+        return self.resolve_work_dir(self.ctng_dir, self.fallback_work_dir)
 
     @property
     def ct_ng(self) -> Path:
@@ -133,17 +193,26 @@ class CrosstoolNG:
             self.log(f"  [green]{self.ct_ng.name} already installed at {self.ctng_dir}[/green]")
             return True
 
-        # Detect a non-empty pre-existing dir we should not overwrite
+        # Detect a non-empty pre-existing dir we should not overwrite.
+        # ct-ng work artifacts (.config, .build/, build.log — left behind
+        # when this dir served as work dir for an external ct-ng install)
+        # don't count; they're removed so the clone can proceed.
         try:
-            preexisting = self.ctng_dir.is_dir() and any(self.ctng_dir.iterdir())
+            entries = list(self.ctng_dir.iterdir()) if self.ctng_dir.is_dir() else []
         except Exception:
-            preexisting = False
+            entries = []
+        artifacts = [e for e in entries if _is_work_artifact(e.name)]
+        preexisting = len(entries) > len(artifacts)
 
         if preexisting:
             self.log(
                 f"  [yellow]{self.ctng_dir} already exists — reusing the existing tree, "
                 f"skipping clone[/yellow]"
             )
+        elif artifacts:
+            self.log(f"  [dim]removing leftover ct-ng work files in {self.ctng_dir}[/dim]")
+            for e in artifacts:
+                _remove_work_artifact(e)
 
         self.ctng_dir.parent.mkdir(parents=True, exist_ok=True)
 
@@ -190,16 +259,24 @@ class CrosstoolNG:
         self.log(f"[bold]Building toolchain: {template.name}[/bold]")
         self.log(f"  Builder:    crosstool-ng")
         self.log(f"  Source cfg: {cfg_src}")
+        self.log(f"  Work dir:   {self.work_dir}")
+
+        work_dir = self.work_dir
+        try:
+            work_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self.log(f"[red]Cannot create work dir {work_dir}: {e}[/red]")
+            return False
 
         # Clean any previous .config*
-        for stale in self.ctng_dir.glob(".config*"):
+        for stale in work_dir.glob(".config*"):
             try:
                 stale.unlink()
             except Exception:
                 pass
 
         # Copy template → .config
-        target_cfg = self.ctng_dir / ".config"
+        target_cfg = work_dir / ".config"
         shutil.copy2(cfg_src, target_cfg)
         self.log(f"  Copied .config")
 
@@ -269,19 +346,19 @@ class CrosstoolNG:
             return False
 
         # Invoke the resolved binary (not a hardcoded ./ct-ng) so a
-        # `--prefix` install with the binary in bin/ct-ng works too. cwd
-        # stays ctng_dir: ct-ng reads .config / writes .build/ in cwd.
+        # `--prefix` install with the binary in bin/ct-ng works too. cwd is
+        # the work dir: ct-ng reads .config / writes .build/ in cwd.
         ct_ng = str(self.ct_ng)
 
         # Run ct-ng show-config (informational)
-        self._run([ct_ng, "show-config"], cwd=self.ctng_dir, ignore_failure=True)
+        self._run([ct_ng, "show-config"], cwd=work_dir, ignore_failure=True)
 
         # Run ct-ng build (raise file descriptor limit — crosstool-ng
         # needs more than the default 1024 for large toolchains)
         self.log("[bold]Running ct-ng build...[/bold]")
         ok = self._run(
             ["bash", "-c", f"ulimit -n 4096; {shlex.quote(ct_ng)} build"],
-            cwd=self.ctng_dir,
+            cwd=work_dir,
         )
 
         if not ok:
@@ -307,10 +384,10 @@ class CrosstoolNG:
         # The .config is also dropped — fine because every build() call
         # copies a fresh one from the template before configuring.
         try:
-            size_before = _dir_size(self.ctng_dir / ".build")
+            size_before = _dir_size(work_dir / ".build")
         except Exception:
             size_before = 0
-        self._run([ct_ng, "clean"], cwd=self.ctng_dir, ignore_failure=True)
+        self._run([ct_ng, "clean"], cwd=work_dir, ignore_failure=True)
         if size_before:
             self.log(f"  Cleaned ct-ng scratch tree ({_format_bytes(size_before)} freed)")
 

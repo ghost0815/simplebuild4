@@ -25,6 +25,16 @@ def resolve_ctng_dir(settings, paths) -> Path:
     return p
 
 
+def resolve_ctng_fallback_work_dir(paths) -> Path:
+    """Return the crosstool-ng fallback work dir (.config, .build/, build.log).
+
+    data/builders/crosstool-ng — owned and writable by s4. Used when
+    ctng_dir is a `--prefix` install or a tree s4 can't write to; see
+    CrosstoolNG.resolve_work_dir().
+    """
+    return paths.builders_dir / "crosstool-ng"
+
+
 def fix_pc_files(install_dir: Path, log=None) -> tuple[int, int]:
     """Fix prefix= paths in .pc files. Returns (total, fixed)."""
     def _log(msg):
@@ -230,6 +240,7 @@ def build_toolchain(
         max_cpus=settings.max_cpus,
         log=log,
         cancel_check=cancel_check,
+        fallback_work_dir=resolve_ctng_fallback_work_dir(paths),
     )
 
     if not ctng.is_installed():
