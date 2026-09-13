@@ -4597,6 +4597,50 @@ class ToolchainsScreen(Screen):
         ToolchainsScreen._pending_sb_overwrite = ""
         self._handle_selfbuild()
 
+    def _setup_ctng_then_customize(self, ctng_path: Path) -> None:
+        """Build/repair the crosstool-ng binary, then retry F6 Customize.
+
+        ``CrosstoolNG.setup()`` is idempotent — it's the same call
+        ``build_toolchain()`` already makes before every SelfBuild, and it
+        no-ops if the binary is already there. Runs in a background thread
+        (started via ``_run_in_thread`` in ``action_customize``) since a
+        real setup can take a while. The caller marks the screen as busy
+        (``_building``) so F5/F6 can't start a second setup in the same
+        tree; F5 cancels. On success ``action_customize`` is re-entered on
+        the main thread so it re-resolves the template/binary and proceeds
+        exactly as if the binary had been there all along.
+        """
+        from core.builders.crosstool_ng import CrosstoolNG
+        ok = False
+        try:
+            ctng = CrosstoolNG(
+                ctng_dir=ctng_path,
+                toolchains_dir=self.app.paths.toolchains_dir,
+                downloads_dir=self.app.paths.downloads_dir,
+                max_cpus=self.app.settings.max_cpus,
+                log=self._log,
+                cancel_check=lambda: self._cancel_requested,
+            )
+            ok = ctng.setup()
+        except Exception as e:
+            from rich.markup import escape as rich_escape
+            self._log(f"[red]crosstool-ng setup failed: {rich_escape(str(e))}[/red]")
+        finally:
+            cancelled = self._cancel_requested
+
+            def _done() -> None:
+                self._building = False
+                self._build_kind = ""
+                self._cancel_requested = False
+                self.app.build_timer_stop()
+                self._update_footer_state()
+                if ok:
+                    self.action_customize()
+                elif not cancelled:
+                    self.notify(t("ctng_setup_failed", name="crosstool-ng"), severity="error", timeout=10)
+
+            self.app.call_from_thread(_done)
+
     def action_customize(self) -> None:
         """F6 Customize — launch the builder's interactive configurator.
 
@@ -4631,9 +4675,22 @@ class ToolchainsScreen(Screen):
 
         # Check builder is installed (accepts both s4's local-build layout
         # and a system-style `--prefix` install with the binary in bin/).
+        # If it's missing (e.g. a manual crosstool-ng update left the
+        # binary rebuilt/removed), self-heal the same way F5 (Build)
+        # already does via build_toolchain() -> ctng.setup() — instead of
+        # just bailing out and forcing the user to run a full Build first.
         binary_path = CrosstoolNG.resolve_binary(ctng_path)
         if binary_path is None:
-            self.notify(t("customize_builder_missing", name="crosstool-ng"), severity="warning", timeout=10)
+            self._log_sync(
+                f"[yellow]crosstool-ng binary not found at {ctng_path} — running setup...[/yellow]"
+            )
+            self.notify(t("ctng_setup_running", name="crosstool-ng"), timeout=6)
+            self._building = True
+            self._build_kind = "selfbuild"
+            self._cancel_requested = False
+            self.app.build_timer_start("toolchains")
+            self._update_footer_state()
+            self._run_in_thread(lambda: self._setup_ctng_then_customize(ctng_path))
             return
 
         # If we'd need to fork later, make sure no local copy exists yet

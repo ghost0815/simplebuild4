@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import re
+import shlex
 import shutil
 import subprocess
 from pathlib import Path
@@ -267,13 +268,21 @@ class CrosstoolNG:
             self.log(f"[red]Failed to patch .config: {e}[/red]")
             return False
 
-        # Run ./ct-ng show-config (informational)
-        self._run(["./ct-ng", "show-config"], cwd=self.ctng_dir, ignore_failure=True)
+        # Invoke the resolved binary (not a hardcoded ./ct-ng) so a
+        # `--prefix` install with the binary in bin/ct-ng works too. cwd
+        # stays ctng_dir: ct-ng reads .config / writes .build/ in cwd.
+        ct_ng = str(self.ct_ng)
 
-        # Run ./ct-ng build (raise file descriptor limit — crosstool-ng
+        # Run ct-ng show-config (informational)
+        self._run([ct_ng, "show-config"], cwd=self.ctng_dir, ignore_failure=True)
+
+        # Run ct-ng build (raise file descriptor limit — crosstool-ng
         # needs more than the default 1024 for large toolchains)
         self.log("[bold]Running ct-ng build...[/bold]")
-        ok = self._run(["bash", "-c", "ulimit -n 4096; ./ct-ng build"], cwd=self.ctng_dir)
+        ok = self._run(
+            ["bash", "-c", f"ulimit -n 4096; {shlex.quote(ct_ng)} build"],
+            cwd=self.ctng_dir,
+        )
 
         if not ok:
             self.log("[red]ct-ng build failed[/red]")
@@ -301,7 +310,7 @@ class CrosstoolNG:
             size_before = _dir_size(self.ctng_dir / ".build")
         except Exception:
             size_before = 0
-        self._run(["./ct-ng", "clean"], cwd=self.ctng_dir, ignore_failure=True)
+        self._run([ct_ng, "clean"], cwd=self.ctng_dir, ignore_failure=True)
         if size_before:
             self.log(f"  Cleaned ct-ng scratch tree ({_format_bytes(size_before)} freed)")
 
