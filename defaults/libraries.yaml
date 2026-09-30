@@ -47,7 +47,7 @@ libraries:
       - version: "3.5.9"
         label: "3.5.x (LTS)"
         requires: "c11"
-      - version: "3.4.7"
+      - version: "3.4.8"
         label: "3.4.x"
         requires: "c11"
       - version: "3.3.7"
