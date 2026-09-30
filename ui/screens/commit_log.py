@@ -57,6 +57,12 @@ class CommitLogModal(ModalScreen[Optional[str]]):
     #log-buttons Button {
         margin: 0 0 0 1;
     }
+    #log-status {
+        width: 1fr;
+        height: 3;
+        content-align: left middle;
+        color: $text-muted;
+    }
     """
 
     def __init__(self, repo_path: Path, vcs: str, branch: str = "", limit: int = 100,
@@ -72,6 +78,9 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         self._current_rev: str = ""  # current HEAD sha/rev for highlighting
         self._sort_col: int | None = None
         self._sort_reverse: bool = False
+        self._git_ref: list[str] = []  # resolved branch args, reused for paging
+        self._loading: bool = False
+        self._exhausted: bool = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="log-box"):
@@ -79,6 +88,7 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             yield Input(placeholder=t("log_filter_ph"), id="log-filter")
             yield DataTable(id="log-table", cursor_type="row", zebra_stripes=True)
             with Horizontal(id="log-buttons"):
+                yield Static("", id="log-status")
                 yield Button(t("re_switch_to"), id="log-switch", variant="primary")
                 yield Button(t("cancel"), id="log-cancel")
 
@@ -95,6 +105,8 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         else:
             tbl.add_columns(t("log_col_rev"), t("log_col_subject"), t("log_col_date"), t("log_col_author"))
         tbl.loading = True
+        self._loading = True
+        self.watch(tbl, "scroll_y", self._on_table_scroll, init=False)
         threading.Thread(target=self._fetch, daemon=True).start()
 
     @staticmethod
@@ -125,19 +137,23 @@ class CommitLogModal(ModalScreen[Optional[str]]):
                     self._current_rev = f"r{out}"
                 except Exception:
                     pass
-            if self._vcs == "git":
-                self._rows = self._fetch_git()
-            else:
-                self._rows = self._fetch_svn()
+            self._rows = self._fetch_page()
         except Exception as e:
             self._rows = []
             self.app.call_from_thread(self.notify, f"Log failed: {e}", severity="error", markup=False)
+        self._exhausted = len(self._rows) < self._limit
         self.app.call_from_thread(self._apply_rows)
 
-    def _fetch_git(self) -> list[tuple[str, str, str, str, str]]:
-        sep = "\x1f"
-        fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
-        cmd = ["git", "log", f"-n{self._limit}", f"--pretty=format:{fmt}"]
+    def _fetch_page(self) -> list[tuple[str, str, str, str, str]]:
+        if self._vcs == "git":
+            return self._fetch_git(skip=len(self._rows))
+        last = self._rows[-1][0] if self._rows else ""
+        start = int(last[1:]) - 1 if last[1:].isdigit() else None
+        if start is not None and start < 1:
+            return []
+        return self._fetch_svn(start)
+
+    def _resolve_git_ref(self) -> list[str]:
         # No branch specified → resolve the remote's default branch so the
         # log doesn't just walk HEAD (which is the pinned commit on a
         # detached repo, hiding everything newer).
@@ -155,10 +171,17 @@ class CommitLogModal(ModalScreen[Optional[str]]):
                 except subprocess.CalledProcessError:
                     continue
         if branch:
-            cmd += [branch, "--"]
-        else:
-            # Last resort — walk every local ref so at least something shows.
-            cmd += ["--all"]
+            return [branch, "--"]
+        # Last resort — walk every local ref so at least something shows.
+        return ["--all"]
+
+    def _fetch_git(self, skip: int = 0) -> list[tuple[str, str, str, str, str]]:
+        sep = "\x1f"
+        fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
+        if not self._git_ref:
+            self._git_ref = self._resolve_git_ref()
+        cmd = ["git", "log", f"-n{self._limit}", f"--skip={skip}",
+               f"--pretty=format:{fmt}", *self._git_ref]
         out = subprocess.check_output(
             cmd, cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=20,
             env=self._auth_env,
@@ -175,10 +198,12 @@ class CommitLogModal(ModalScreen[Optional[str]]):
             rows.append((sha, date_short, author, subject, refs_clean))
         return rows
 
-    def _fetch_svn(self) -> list[tuple[str, str, str, str, str]]:
+    def _fetch_svn(self, start: int | None = None) -> list[tuple[str, str, str, str, str]]:
+        cmd = ["svn", "log", "-l", str(self._limit), "--non-interactive"]
+        if start is not None:
+            cmd += ["-r", f"{start}:1"]
         out = subprocess.check_output(
-            ["svn", "log", "-l", str(self._limit), "--non-interactive"],
-            cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=30,
+            cmd, cwd=self._repo_path, text=True, stderr=subprocess.DEVNULL, timeout=30,
         )
         rows = []
         # Format:
@@ -206,7 +231,68 @@ class CommitLogModal(ModalScreen[Optional[str]]):
     def _apply_rows(self) -> None:
         tbl = self.query_one("#log-table", DataTable)
         tbl.loading = False
+        self._loading = False
         self._rebuild_table(self._rows, initial=True)
+        self._update_status()
+
+    # -- Load more on scroll -------------------------------------------------
+
+    _LOAD_AHEAD_ROWS = 10
+
+    def _on_table_scroll(self, value: float) -> None:
+        tbl = self.query_one("#log-table", DataTable)
+        if tbl.max_scroll_y - value <= self._LOAD_AHEAD_ROWS // 2:
+            self._maybe_load_more()
+
+    def _maybe_load_more(self) -> None:
+        # A non-date sort would scatter appended rows across the table.
+        if self._loading or self._exhausted or self._sort_col is not None:
+            return
+        self._loading = True
+        self._update_status()
+        threading.Thread(target=self._fetch_more, daemon=True).start()
+
+    def _fetch_more(self) -> None:
+        try:
+            rows = self._fetch_page()
+        except Exception as e:
+            self.app.call_from_thread(self.notify, f"Log failed: {e}", severity="error", markup=False)
+            rows = None
+        self.app.call_from_thread(self._append_rows, rows)
+
+    def _append_rows(self, rows) -> None:
+        self._loading = False
+        if rows is None:
+            self._update_status()
+            return
+        if len(rows) < self._limit:
+            self._exhausted = True
+        known = {r[0] for r in self._rows}
+        rows = [r for r in rows if r[0] not in known]
+        self._rows.extend(rows)
+        try:
+            tbl = self.query_one("#log-table", DataTable)
+        except Exception:
+            return
+        term = self.query_one("#log-filter", Input).value.strip().lower()
+        for row in rows:
+            if not term or self._matches(row, term):
+                self._current_rows.append(row)
+                self._add_table_row(tbl, row)
+        self._update_status()
+
+    def _update_status(self) -> None:
+        n = len(self._rows)
+        if self._loading:
+            text = t("log_status_loading", n=n)
+        elif self._exhausted:
+            text = t("log_status_all", n=n)
+        else:
+            text = t("log_status_loaded", n=n)
+        try:
+            self.query_one("#log-status", Static).update(text)
+        except Exception:
+            pass
 
     # Map visible column index → index in the row tuple
     # (rev, date, author, subject, refs)
@@ -221,22 +307,8 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         tbl = self.query_one("#log-table", DataTable)
         tbl.clear()
         self._current_rows = list(rows)
-        for rev, date, author, subject, refs in self._current_rows:
-            refs_c = self._ellipsise(refs, self._MAX_REFS)
-            subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
-            auth_c = self._ellipsise(author, self._MAX_AUTHOR)
-            is_current = self._current_rev and rev == self._current_rev
-            if is_current:
-                _c = "bold green"
-                if self._vcs == "git":
-                    tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{refs_c}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
-                else:
-                    tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
-            else:
-                if self._vcs == "git":
-                    tbl.add_row(rev, refs_c, subj_c, date, auth_c, key=rev)
-                else:
-                    tbl.add_row(rev, subj_c, date, auth_c, key=rev)
+        for row in self._current_rows:
+            self._add_table_row(tbl, row)
         if tbl.row_count:
             # Land the cursor on the currently-checked-out commit so a
             # pinned repo opens right at its pin — otherwise row 0.
@@ -255,6 +327,24 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         else:
             tbl.tooltip = None
 
+    def _add_table_row(self, tbl: DataTable, row) -> None:
+        rev, date, author, subject, refs = row
+        refs_c = self._ellipsise(refs, self._MAX_REFS)
+        subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
+        auth_c = self._ellipsise(author, self._MAX_AUTHOR)
+        is_current = self._current_rev and rev == self._current_rev
+        if is_current:
+            _c = "bold green"
+            if self._vcs == "git":
+                tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{refs_c}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
+            else:
+                tbl.add_row(f"[{_c}]{rev}[/{_c}]", f"[{_c}]{subj_c}[/{_c}]", f"[{_c}]{date}[/{_c}]", f"[{_c}]{auth_c}[/{_c}]", key=rev)
+        else:
+            if self._vcs == "git":
+                tbl.add_row(rev, refs_c, subj_c, date, auth_c, key=rev)
+            else:
+                tbl.add_row(rev, subj_c, date, auth_c, key=rev)
+
     def _refresh_row_tooltip(self, row_index: int) -> None:
         tbl = self.query_one("#log-table", DataTable)
         if not (0 <= row_index < len(self._current_rows)):
@@ -269,6 +359,8 @@ class CommitLogModal(ModalScreen[Optional[str]]):
 
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         self._refresh_row_tooltip(event.cursor_row)
+        if event.cursor_row >= event.data_table.row_count - self._LOAD_AHEAD_ROWS:
+            self._maybe_load_more()
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col_index = event.column_index
@@ -306,14 +398,12 @@ class CommitLogModal(ModalScreen[Optional[str]]):
         if not term:
             self._rebuild_table(self._rows)
             return
-        filtered = [
-            r for r in self._rows
-            if term in r[0].lower()
-            or term in r[2].lower()
-            or term in r[3].lower()
-            or term in r[4].lower()
-        ]
-        self._rebuild_table(filtered)
+        self._rebuild_table([r for r in self._rows if self._matches(r, term)])
+
+    @staticmethod
+    def _matches(row, term: str) -> bool:
+        return (term in row[0].lower() or term in row[2].lower()
+                or term in row[3].lower() or term in row[4].lower())
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         try:

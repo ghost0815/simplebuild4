@@ -53,11 +53,19 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
     #s4u-buttons Button {
         margin: 0 0 0 1;
     }
+    #s4u-status {
+        width: 1fr;
+        height: 3;
+        content-align: left middle;
+        color: $text-muted;
+    }
     """
 
     _MAX_REFS = 12
     _MAX_SUBJECT = 78
     _MAX_AUTHOR = 12
+    _PAGE_SIZE = 100
+    _LOAD_AHEAD_ROWS = 10
 
     def __init__(self, root: Path) -> None:
         super().__init__()
@@ -72,6 +80,8 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         self._downgrade_confirm_time = 0.0
         self._sort_col: int | None = None
         self._sort_reverse: bool = False
+        self._loading: bool = False
+        self._exhausted: bool = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="s4u-box"):
@@ -79,6 +89,7 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
             yield Input(placeholder=t("log_filter_ph"), id="s4u-filter")
             yield DataTable(id="s4u-table", cursor_type="row", zebra_stripes=True)
             with Horizontal(id="s4u-buttons"):
+                yield Static("", id="s4u-status")
                 yield Button(t("s4u_update"), id="s4u-action", variant="primary")
                 yield Button(t("cancel"), id="s4u-cancel")
 
@@ -86,6 +97,8 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         tbl = self.query_one("#s4u-table", DataTable)
         tbl.add_columns(t("log_col_sha"), t("log_col_refs"), t("log_col_subject"), t("log_col_date"), t("log_col_author"))
         tbl.loading = True
+        self._loading = True
+        self.watch(tbl, "scroll_y", self._on_table_scroll, init=False)
         threading.Thread(target=self._fetch, daemon=True).start()
 
     def _fetch(self) -> None:
@@ -106,27 +119,32 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
                 capture_output=True, text=True, timeout=5,
             ).stdout.strip()
 
-            sep = "\x1f"
-            fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
-            out = subprocess.check_output(
-                ["git", "log", "-n200", f"--pretty=format:{fmt}", f"origin/{self._branch}", "--"],
-                cwd=root, text=True, stderr=subprocess.DEVNULL, timeout=20,
-            )
-            rows = []
-            for line in out.splitlines():
-                parts = line.split(sep, 4)
-                if len(parts) != 5:
-                    continue
-                sha, date, author, refs, subject = parts
-                date_short = date.split(" ", 1)[0] if date else ""
-                date_full = date.strip()  # "2026-04-12 14:51:48 +0200" for sorting
-                refs_clean = refs.strip().lstrip("(").rstrip(")").strip()
-                rows.append((sha, date_short, author, subject, refs_clean, date_full))
-            self._rows = rows
+            self._rows = self._fetch_page(skip=0)
         except Exception as e:
             self._rows = []
             self.app.call_from_thread(self.notify, f"Fetch failed: {e}", severity="error", markup=False)
+        self._exhausted = len(self._rows) < self._PAGE_SIZE
         self.app.call_from_thread(self._apply_rows)
+
+    def _fetch_page(self, skip: int) -> list[tuple[str, str, str, str, str, str]]:
+        sep = "\x1f"
+        fmt = f"%h{sep}%ci{sep}%an{sep}%d{sep}%s"
+        out = subprocess.check_output(
+            ["git", "log", f"-n{self._PAGE_SIZE}", f"--skip={skip}", f"--pretty=format:{fmt}",
+             f"origin/{self._branch}", "--"],
+            cwd=str(self._root), text=True, stderr=subprocess.DEVNULL, timeout=20,
+        )
+        rows = []
+        for line in out.splitlines():
+            parts = line.split(sep, 4)
+            if len(parts) != 5:
+                continue
+            sha, date, author, refs, subject = parts
+            date_short = date.split(" ", 1)[0] if date else ""
+            date_full = date.strip()  # "2026-04-12 14:51:48 +0200" for sorting
+            refs_clean = refs.strip().lstrip("(").rstrip(")").strip()
+            rows.append((sha, date_short, author, subject, refs_clean, date_full))
+        return rows
 
     def _apply_rows(self) -> None:
         try:
@@ -137,7 +155,69 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
             pass
         tbl = self.query_one("#s4u-table", DataTable)
         tbl.loading = False
+        self._loading = False
         self._rebuild_table(self._rows, initial=True)
+        self._update_status()
+
+    # -- Load more on scroll -------------------------------------------------
+
+    def _on_table_scroll(self, value: float) -> None:
+        tbl = self.query_one("#s4u-table", DataTable)
+        if tbl.max_scroll_y - value <= self._LOAD_AHEAD_ROWS // 2:
+            self._maybe_load_more()
+
+    def _maybe_load_more(self) -> None:
+        # A non-date sort would scatter appended rows across the table.
+        if self._loading or self._exhausted or self._sort_col is not None:
+            return
+        self._loading = True
+        self._update_status()
+        threading.Thread(target=self._fetch_more, daemon=True).start()
+
+    def _fetch_more(self) -> None:
+        try:
+            rows = self._fetch_page(skip=len(self._rows))
+        except Exception as e:
+            self.app.call_from_thread(self.notify, f"Fetch failed: {e}", severity="error", markup=False)
+            rows = None
+        self.app.call_from_thread(self._append_rows, rows)
+
+    def _append_rows(self, rows) -> None:
+        self._loading = False
+        if rows is None:
+            self._update_status()
+            return
+        if len(rows) < self._PAGE_SIZE:
+            self._exhausted = True
+        known = {r[0] for r in self._rows}
+        rows = [r for r in rows if r[0] not in known]
+        self._rows.extend(rows)
+        try:
+            tbl = self.query_one("#s4u-table", DataTable)
+        except Exception:
+            return
+        term = self.query_one("#s4u-filter", Input).value.strip().lower()
+        for row in rows:
+            if not term or self._matches(row, term):
+                self._current_rows.append(row)
+                self._add_table_row(tbl, row, len(self._current_rows) - 1)
+        # The current commit may only now be loaded, which flips update/downgrade.
+        if tbl.row_count:
+            self._update_button_label(tbl.cursor_row)
+        self._update_status()
+
+    def _update_status(self) -> None:
+        n = len(self._rows)
+        if self._loading:
+            text = t("log_status_loading", n=n)
+        elif self._exhausted:
+            text = t("log_status_all", n=n)
+        else:
+            text = t("log_status_loaded", n=n)
+        try:
+            self.query_one("#s4u-status", Static).update(text)
+        except Exception:
+            pass
 
     @staticmethod
     def _ellipsise(value: str, limit: int) -> str:
@@ -153,24 +233,8 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         self._current_rows = list(rows)
         self._current_index = -1
 
-        for i, (sha, date, author, subject, refs, _date_full) in enumerate(self._current_rows):
-            refs_c = self._ellipsise(refs, self._MAX_REFS)
-            subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
-            auth_c = self._ellipsise(author, self._MAX_AUTHOR)
-            is_current = (sha == self._current_sha)
-            if is_current:
-                self._current_index = i
-                _c = "bold green"
-                tbl.add_row(
-                    f"[{_c}]{sha}[/{_c}]",
-                    f"[{_c}]{refs_c}[/{_c}]",
-                    f"[{_c}]{subj_c}[/{_c}]",
-                    f"[{_c}]{date}[/{_c}]",
-                    f"[{_c}]{auth_c}[/{_c}]",
-                    key=sha,
-                )
-            else:
-                tbl.add_row(sha, refs_c, subj_c, date, auth_c, key=sha)
+        for i, row in enumerate(self._current_rows):
+            self._add_table_row(tbl, row, i)
 
         if tbl.row_count:
             tbl.move_cursor(row=0)
@@ -178,6 +242,25 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
                 tbl.focus()
             self._update_button_label(0)
             self._refresh_row_tooltip(0)
+
+    def _add_table_row(self, tbl: DataTable, row, index: int) -> None:
+        sha, date, author, subject, refs, _date_full = row
+        refs_c = self._ellipsise(refs, self._MAX_REFS)
+        subj_c = self._ellipsise(subject, self._MAX_SUBJECT)
+        auth_c = self._ellipsise(author, self._MAX_AUTHOR)
+        if sha == self._current_sha:
+            self._current_index = index
+            _c = "bold green"
+            tbl.add_row(
+                f"[{_c}]{sha}[/{_c}]",
+                f"[{_c}]{refs_c}[/{_c}]",
+                f"[{_c}]{subj_c}[/{_c}]",
+                f"[{_c}]{date}[/{_c}]",
+                f"[{_c}]{auth_c}[/{_c}]",
+                key=sha,
+            )
+        else:
+            tbl.add_row(sha, refs_c, subj_c, date, auth_c, key=sha)
 
     def _refresh_row_tooltip(self, row_index: int) -> None:
         tbl = self.query_one("#s4u-table", DataTable)
@@ -236,6 +319,8 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         if 0 <= event.cursor_row < len(self._current_rows):
             self._selected_sha = self._current_rows[event.cursor_row][0]
         self._downgrade_confirm_time = 0
+        if event.cursor_row >= event.data_table.row_count - self._LOAD_AHEAD_ROWS:
+            self._maybe_load_more()
 
     def on_data_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
         col_index = event.column_index
@@ -269,12 +354,12 @@ class S4UpdateModal(ModalScreen[Optional[str]]):
         if not term:
             self._rebuild_table(self._rows)
             return
-        filtered = [
-            r for r in self._rows
-            if term in r[0].lower() or term in r[2].lower()
-            or term in r[3].lower() or term in r[4].lower()
-        ]
-        self._rebuild_table(filtered)
+        self._rebuild_table([r for r in self._rows if self._matches(r, term)])
+
+    @staticmethod
+    def _matches(row, term: str) -> bool:
+        return (term in row[0].lower() or term in row[2].lower()
+                or term in row[3].lower() or term in row[4].lower())
 
     def _confirm_selection(self) -> None:
         """Confirm the selected SHA — downgrades require double confirmation."""
