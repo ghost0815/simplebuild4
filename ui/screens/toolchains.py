@@ -4217,24 +4217,33 @@ class ToolchainsScreen(Screen):
                         pass
                 elif "uclibc" in resolved.lower():
                     libc_type = "uclibc"
-                    # uclibc: version from filename (libuClibc-0.9.33.so)
+                    # uclibc: version from filename (libuClibc-0.9.33.2.so)
                     try:
                         name = libc_so.resolve().name
-                        ver_match = _re_libc.search(r'(\d+\.\d+\.\d+)', name)
+                        ver_match = _re_libc.search(r'(\d+(?:\.\d+){2,})', name)
                         if ver_match:
                             libc_ver = ver_match.group(1)
                     except Exception:
                         pass
                 else:
                     libc_type = "glibc"
-                    # glibc: strings libc.so | grep GLIBC_ → highest version (like s3)
+                    # glibc: read the target libc as bytes (never executed, foreign arch).
+                    # The release banner is authoritative; the highest GLIBC_x.y symbol
+                    # version lags when a release adds no new symbols (2.40 -> 2.39).
                     try:
-                        out = subprocess.check_output(
-                            ["strings", str(libc_so)], text=True, stderr=subprocess.DEVNULL, timeout=10,
+                        data = libc_so.read_bytes()
+                        banner = _re_libc.search(
+                            rb'GNU C Library[^\n]*?release version (\d+\.\d+(?:\.\d+)?)', data,
                         )
-                        glibc_versions = _re_libc.findall(r'GLIBC_(\d+\.\d+(?:\.\d+)?)', out)
-                        if glibc_versions:
-                            libc_ver = sorted(glibc_versions, key=lambda v: [int(x) for x in v.split(".")], reverse=True)[0]
+                        if banner:
+                            libc_ver = banner.group(1).decode()
+                        else:
+                            glibc_versions = _re_libc.findall(rb'GLIBC_(\d+\.\d+(?:\.\d+)?)', data)
+                            if glibc_versions:
+                                libc_ver = max(
+                                    (v.decode() for v in glibc_versions),
+                                    key=lambda v: [int(x) for x in v.split(".")],
+                                )
                     except Exception:
                         pass
                     # Fallback: version from resolved filename (e.g. libc-2.25.so)
